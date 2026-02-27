@@ -111,9 +111,10 @@ class ChatControllerImpl {
     // 現在のモーションを更新
     store.setCurrentMotion(response.motion)
 
-    // 感情に基づいて表情を設定
+    // 感情に基づいて表情を設定（expressionVersion により同じ値でも再発火する）
     if (response.emotion) {
       const expressionName = this.emotionToExpression(response.emotion)
+      console.log(`[ChatController] emotion=${response.emotion} → expression=${expressionName}`)
       store.setCurrentExpression(expressionName)
     }
   }

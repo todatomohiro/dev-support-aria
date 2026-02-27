@@ -112,6 +112,8 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // IME 変換中は送信しない
+    if (e.nativeEvent.isComposing) return
     // Shift+Enterで改行、Enterのみで送信
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()

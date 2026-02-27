@@ -41,6 +41,7 @@ function App() {
   const updateConfig = useAppStore((state) => state.updateConfig)
   const setError = useAppStore((state) => state.setError)
   const setCurrentExpression = useAppStore((state) => state.setCurrentExpression)
+  const expressionVersion = useAppStore((state) => state.expressionVersion)
 
   // 初期化処理
   useEffect(() => {
@@ -144,20 +145,23 @@ function App() {
   }, [config.profile])
 
   // 表情の変更を監視して再生（一定時間後に neutral に戻す）
+  // expressionVersion を依存に含めることで、同じ表情名でも確実に再発火する
   useEffect(() => {
     if (currentExpression) {
+      console.log(`[App] Playing expression: ${currentExpression} (v${expressionVersion})`)
       live2dRef.current?.playExpression(currentExpression)
 
-      // neutral 以外の表情は3秒後に neutral に戻す
+      // neutral 以外の表情は5秒後に neutral に戻す
       if (currentExpression !== 'exp_01') {
         const timer = setTimeout(() => {
           live2dRef.current?.playExpression('exp_01')
-        }, 3000)
+          setCurrentExpression(null)
+        }, 5000)
 
         return () => clearTimeout(timer)
       }
     }
-  }, [currentExpression])
+  }, [currentExpression, expressionVersion, setCurrentExpression])
 
   // TTS 音声のリアルタイム音量を Live2D の口パラメータに反映（リップシンク）
   useEffect(() => {

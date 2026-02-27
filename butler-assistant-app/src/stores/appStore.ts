@@ -15,6 +15,8 @@ export interface AppState {
   // Live2D関連
   currentMotion: string | null
   currentExpression: string | null
+  /** 表情変更のたびにインクリメントされるバージョン（useEffect 強制発火用） */
+  expressionVersion: number
   isMotionPlaying: boolean
   motionQueue: string[]
 
@@ -59,6 +61,7 @@ export const useAppStore = create<AppState>()(
       isLoading: false,
       currentMotion: null,
       currentExpression: null,
+      expressionVersion: 0,
       isMotionPlaying: false,
       motionQueue: [],
       config: defaultConfig,
@@ -83,7 +86,8 @@ export const useAppStore = create<AppState>()(
       // モーションアクション
       setCurrentMotion: (motion: string | null) => set({ currentMotion: motion }),
 
-      setCurrentExpression: (expression: string | null) => set({ currentExpression: expression }),
+      setCurrentExpression: (expression: string | null) =>
+        set((state) => ({ currentExpression: expression, expressionVersion: state.expressionVersion + 1 })),
 
       setMotionPlaying: (isPlaying: boolean) => set({ isMotionPlaying: isPlaying }),
 

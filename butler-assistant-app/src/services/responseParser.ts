@@ -50,6 +50,7 @@ class ResponseParserImpl implements ResponseParserService {
       return {
         text: response.text,
         motion: this.normalizeMotion(response.motion),
+        emotion: response.emotion,
         isValid: true,
       }
     } catch {
@@ -171,9 +172,12 @@ class ResponseParserImpl implements ResponseParserService {
         ? this.normalizeMotion(obj.motion)
         : DEFAULT_RESPONSE.motion
 
+    const emotion = typeof obj.emotion === 'string' ? (obj.emotion as ParsedResponse['emotion']) : undefined
+
     return {
       text,
       motion,
+      emotion,
       isValid: false,
       errors: validationErrors.map((e) => `${e.field}: ${e.message}`),
     }
