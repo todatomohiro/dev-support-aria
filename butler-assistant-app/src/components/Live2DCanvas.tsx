@@ -18,6 +18,8 @@ interface Live2DCanvasProps {
 export interface Live2DCanvasHandle {
   playMotion: (group: string, index: number) => void
   playExpression: (name: string) => void
+  /** リップシンク用: 口の開き具合を設定（0=閉 〜 1=全開） */
+  setMouthOpenness: (value: number) => void
 }
 
 /**
@@ -34,6 +36,8 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
   const appRef = useRef<PIXI.Application | null>(null)
   const modelRef = useRef<Live2DModel | null>(null)
   const originalSizeRef = useRef<{ width: number; height: number } | null>(null)
+  /** リップシンク用: 現在の口の開き具合（0〜1） */
+  const mouthOpennessRef = useRef(0)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showPlaceholder, setShowPlaceholder] = useState(true)
@@ -65,6 +69,9 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
           console.warn('[Live2DCanvas] Expression playback error:', e)
         }
       }
+    },
+    setMouthOpenness: (value: number) => {
+      mouthOpennessRef.current = value
     },
   }), [])
 
@@ -147,6 +154,38 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
             model.x = container.clientWidth / 2
             model.y = container.clientHeight / 2
             model.anchor.set(0.5, 0.5)
+
+            // リップシンク: 毎フレーム口の開きを反映
+            // beforeModelUpdate イベント（モーション適用後・描画前）を優先し、
+            // 未サポート時は PIXI Ticker でフォールバック
+            const internalModel = (model as any).internalModel
+            const applyLipSync = () => {
+              const v = mouthOpennessRef.current
+              const coreModel = internalModel?.coreModel
+              if (!coreModel) return
+              // パラメータインデックスを直接探してセット（CubismId 非依存）
+              const ids: string[] | undefined = coreModel._model?.parameters?.ids
+              if (ids) {
+                const idx = ids.indexOf('ParamA')
+                if (idx >= 0) {
+                  coreModel.setParameterValueByIndex(idx, v)
+                  return
+                }
+              }
+              // フォールバック: setParameterValueById を試行
+              try {
+                coreModel.setParameterValueById('ParamA', v)
+              } catch {
+                // パラメータが見つからない場合は無視
+              }
+            }
+
+            if (internalModel?.on) {
+              internalModel.on('beforeModelUpdate', applyLipSync)
+            } else {
+              // イベント未サポート時は PIXI Ticker で代替
+              app.ticker.add(applyLipSync)
+            }
 
             // ステージに追加
             app.stage.addChild(model)

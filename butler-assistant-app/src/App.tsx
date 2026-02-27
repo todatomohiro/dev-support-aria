@@ -10,6 +10,7 @@ import { currentPlatform, logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
 import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
 import { useAuthStore } from './auth'
+import { ttsService } from './services/ttsService'
 import { PollyPoc } from './poc'
 import './App.css'
 
@@ -157,6 +158,14 @@ function App() {
       }
     }
   }, [currentExpression])
+
+  // TTS 音声のリアルタイム音量を Live2D の口パラメータに反映（リップシンク）
+  useEffect(() => {
+    ttsService.setVolumeCallback((volume) => {
+      live2dRef.current?.setMouthOpenness(volume)
+    })
+    return () => ttsService.setVolumeCallback(null)
+  }, [])
 
   // ローディング画面
   if (!isInitialized) {
