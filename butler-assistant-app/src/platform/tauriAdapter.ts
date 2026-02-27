@@ -6,49 +6,59 @@ import type {
   SelectedFile,
 } from './types'
 
+/** Store ファイル名 */
+const STORE_FILENAME = 'secure-store.json'
+
 /**
  * Tauri Platform Adapter
  * Tauriデスクトップアプリ用のプラットフォーム実装
  *
- * Note: 実際のTauri APIは@tauri-apps/apiパッケージから提供されます。
- * このファイルはTauriをインストール後に実装を完成させます。
+ * Tauri プラグインは動的 import で読み込み、
+ * テスト環境・Web 環境でのインポートエラーを防止する。
  */
 class TauriAdapterImpl implements PlatformAdapter {
+  /** プラットフォーム種別を取得 */
   getPlatform(): Platform {
     return 'tauri'
   }
 
+  /**
+   * セキュアデータを保存（Tauri Store プラグイン使用）
+   */
   async saveSecureData(key: SecureStorageKey, value: string): Promise<void> {
-    // TODO: Tauri Secure Storage APIを使用
-    // await invoke('save_secure_data', { key, value })
-    console.warn('[TauriAdapter] saveSecureData: Tauri APIが未設定です')
-    localStorage.setItem(`tauri-secure:${key}`, value)
+    const { load } = await import('@tauri-apps/plugin-store')
+    const store = await load(STORE_FILENAME)
+    await store.set(key, value)
+    await store.save()
   }
 
+  /**
+   * セキュアデータを読み込み（Tauri Store プラグイン使用）
+   */
   async loadSecureData(key: SecureStorageKey): Promise<string | null> {
-    // TODO: Tauri Secure Storage APIを使用
-    // return await invoke('load_secure_data', { key })
-    console.warn('[TauriAdapter] loadSecureData: Tauri APIが未設定です')
-    return localStorage.getItem(`tauri-secure:${key}`)
+    const { load } = await import('@tauri-apps/plugin-store')
+    const store = await load(STORE_FILENAME)
+    const value = await store.get<string>(key)
+    return value ?? null
   }
 
+  /**
+   * セキュアデータを削除（Tauri Store プラグイン使用）
+   */
   async deleteSecureData(key: SecureStorageKey): Promise<void> {
-    // TODO: Tauri Secure Storage APIを使用
-    // await invoke('delete_secure_data', { key })
-    console.warn('[TauriAdapter] deleteSecureData: Tauri APIが未設定です')
-    localStorage.removeItem(`tauri-secure:${key}`)
+    const { load } = await import('@tauri-apps/plugin-store')
+    const store = await load(STORE_FILENAME)
+    await store.delete(key)
+    await store.save()
   }
 
+  /**
+   * ファイル選択ダイアログを表示（Web API 使用）
+   *
+   * Tauri の Dialog API はファイルパスのみ返却するため、
+   * webview 内で動作する Web File API を使用する。
+   */
   async selectFile(options?: FileSelectOptions): Promise<SelectedFile[] | null> {
-    // TODO: Tauri Dialog APIを使用
-    // const selected = await dialog.open({
-    //   multiple: options?.multiple,
-    //   filters: options?.accept?.map(ext => ({ name: ext, extensions: [ext.replace('.', '')] })),
-    //   directory: options?.directory,
-    // })
-    console.warn('[TauriAdapter] selectFile: Tauri APIが未設定です')
-
-    // フォールバック: Web APIを使用
     return new Promise((resolve) => {
       const input = document.createElement('input')
       input.type = 'file'
@@ -83,45 +93,58 @@ class TauriAdapterImpl implements PlatformAdapter {
     })
   }
 
-  async saveFile(_filename: string, _data: ArrayBuffer | string): Promise<string | null> {
-    // TODO: Tauri FS APIを使用
-    // const path = await dialog.save({ defaultPath: filename })
-    // if (path) {
-    //   await fs.writeBinaryFile(path, data)
-    //   return path
-    // }
-    console.warn('[TauriAdapter] saveFile: Tauri APIが未設定です')
-    return null
+  /**
+   * ファイルを保存（Web API 使用）
+   *
+   * Tauri webview 内で Blob download が動作するため Web API を維持。
+   */
+  async saveFile(filename: string, data: ArrayBuffer | string): Promise<string | null> {
+    const blob = data instanceof ArrayBuffer
+      ? new Blob([data])
+      : new Blob([data], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+    return filename
   }
 
+  /**
+   * アプリデータディレクトリのパスを取得（Tauri Path API 使用）
+   */
   async getAppDataPath(): Promise<string> {
-    // TODO: Tauri Path APIを使用
-    // return await path.appDataDir()
-    console.warn('[TauriAdapter] getAppDataPath: Tauri APIが未設定です')
-    return '/app-data'
+    const { appDataDir } = await import('@tauri-apps/api/path')
+    return await appDataDir()
   }
 
+  /**
+   * 通知を表示（Web Notifications API 使用）
+   *
+   * Tauri webview 内で Web Notifications API が動作するため維持。
+   */
   async showNotification(title: string, body: string): Promise<void> {
-    // TODO: Tauri Notification APIを使用
-    // await notification.sendNotification({ title, body })
-    console.warn('[TauriAdapter] showNotification: Tauri APIが未設定です')
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification(title, { body })
     }
   }
 
+  /**
+   * クリップボードにコピー（Web API 使用）
+   *
+   * Tauri webview 内で navigator.clipboard が動作するため維持。
+   */
   async copyToClipboard(text: string): Promise<void> {
-    // TODO: Tauri Clipboard APIを使用
-    // await clipboard.writeText(text)
-    console.warn('[TauriAdapter] copyToClipboard: Tauri APIが未設定です')
     await navigator.clipboard.writeText(text)
   }
 
+  /**
+   * 外部URLをOSデフォルトブラウザで開く（Tauri Opener プラグイン使用）
+   */
   async openExternalUrl(url: string): Promise<void> {
-    // TODO: Tauri Shell APIを使用
-    // await shell.open(url)
-    console.warn('[TauriAdapter] openExternalUrl: Tauri APIが未設定です')
-    window.open(url, '_blank')
+    const { openUrl } = await import('@tauri-apps/plugin-opener')
+    await openUrl(url)
   }
 }
 

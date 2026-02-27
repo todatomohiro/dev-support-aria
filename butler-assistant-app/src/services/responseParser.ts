@@ -6,6 +6,7 @@ import type {
   ResponseParserService,
 } from '@/types'
 import { SUPPORTED_MOTION_TAGS } from '@/types'
+import { measurePerformance } from '@/utils/performance'
 
 /**
  * デフォルトレスポンス
@@ -25,7 +26,7 @@ class ResponseParserImpl implements ResponseParserService {
    * LLMからのJSON文字列を解析
    */
   parse(jsonString: string): ParsedResponse {
-    return this.parseInternal(jsonString, false)
+    return measurePerformance('レスポンス解析', () => this.parseInternal(jsonString, false))
   }
 
   /**
@@ -183,3 +184,8 @@ class ResponseParserImpl implements ResponseParserService {
  * Response Parser のシングルトンインスタンス
  */
 export const responseParser: ResponseParserService = new ResponseParserImpl()
+
+/**
+ * テスト用にResponseParserImplクラスをエクスポート
+ */
+export { ResponseParserImpl }

@@ -4,6 +4,7 @@ import { motionController } from './motionController'
 import { useAppStore } from '@/stores/appStore'
 import type { Message, StructuredResponse, ConversationHistory, AppError } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
+import { measurePerformanceAsync } from '@/utils/performance'
 
 /**
  * エラー種別に対応するモーションタグ
@@ -51,7 +52,10 @@ class ChatControllerImpl {
       const history = this.buildConversationHistory()
 
       // LLMにメッセージを送信
-      const structuredResponse = await llmClient.sendMessage(content.trim(), history)
+      const structuredResponse = await measurePerformanceAsync(
+        'LLM送信→レスポンス受信',
+        () => llmClient.sendMessage(content.trim(), history)
+      )
 
       // アシスタントメッセージを作成
       const assistantMessage: Message = {

@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react'
 import * as PIXI from 'pixi.js'
 import { Live2DModel } from 'pixi-live2d-display/cubism4'
-import { createVisibilityHandler } from '@/utils/performance'
+import { createVisibilityHandler, throttle, createFPSCounter } from '@/utils/performance'
 
 // Cubism Core を window に登録（pixi-live2d-display が必要とする）
 if (typeof window !== 'undefined') {
@@ -79,16 +79,36 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
 
     const initApp = async () => {
       try {
+        // モバイル端末を検出し解像度を制限
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+        const resolution = isMobile
+          ? Math.min(window.devicePixelRatio, 1.5)
+          : window.devicePixelRatio
+
         // PixiJS アプリケーションを作成
         app = new PIXI.Application({
           backgroundAlpha: 0,
           resizeTo: container,
           antialias: true,
+          resolution,
         })
 
         // @ts-expect-error - PixiJS v7 の型との互換性
         container.appendChild(app.view)
         appRef.current = app
+
+        // DEV モード: FPS 計測ログ
+        if (import.meta.env.DEV) {
+          const fpsCounter = createFPSCounter()
+          const fpsLogInterval = setInterval(() => {
+            if (app && !app.stage.destroyed) {
+              console.log(`[Live2DCanvas] FPS: ${fpsCounter.getFPS()}`)
+            }
+          }, 5000)
+          app.ticker.add(() => fpsCounter.update())
+          // クリーンアップ用にインターバルIDを保存
+          ;(app as any).__fpsLogInterval = fpsLogInterval
+        }
 
         // モデルパスが有効な場合のみ読み込み
         if (modelPath && modelPath !== 'default') {
@@ -162,6 +182,10 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
         modelRef.current = null
       }
       if (app) {
+        // FPS 計測ログのクリーンアップ
+        if ((app as any).__fpsLogInterval) {
+          clearInterval((app as any).__fpsLogInterval)
+        }
         app.destroy(true, { children: true, texture: true, baseTexture: true })
         appRef.current = null
       }
@@ -225,21 +249,23 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
     model.y = container.clientHeight / 2
   }, [])
 
-  // ResizeObserver でコンテナサイズの変更を監視
+  // ResizeObserver でコンテナサイズの変更を監視（スロットル付き）
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
+    const throttledResize = throttle(handleResize, 100)
+
     const resizeObserver = new ResizeObserver(() => {
-      handleResize()
+      throttledResize()
     })
 
     resizeObserver.observe(container)
-    window.addEventListener('resize', handleResize)
+    window.addEventListener('resize', throttledResize)
 
     return () => {
       resizeObserver.disconnect()
-      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('resize', throttledResize)
     }
   }, [handleResize])
 

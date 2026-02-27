@@ -5,6 +5,7 @@ import type { Live2DCanvasHandle } from './components'
 import { chatController } from './services/chatController'
 import { llmClient } from './services/llmClient'
 import { currentPlatform, logPlatformInfo } from './platform'
+import { getMemoryUsage } from './utils/performance'
 import './App.css'
 
 function App() {
@@ -47,6 +48,29 @@ function App() {
 
     initialize()
   }, [config.llm.apiKey])
+
+  // DEV モード: メモリ使用量を定期的にログ出力
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+
+    const MEMORY_CHECK_INTERVAL = 30000 // 30秒
+    const MEMORY_WARNING_THRESHOLD = 400 * 1024 * 1024 // 400MB
+
+    const intervalId = setInterval(() => {
+      const memory = getMemoryUsage()
+      if (memory) {
+        const usedMB = ((memory.usedJSHeapSize ?? 0) / (1024 * 1024)).toFixed(1)
+        const totalMB = ((memory.totalJSHeapSize ?? 0) / (1024 * 1024)).toFixed(1)
+        console.log(`[Memory] Used: ${usedMB}MB / Total: ${totalMB}MB`)
+
+        if (memory.usedJSHeapSize && memory.usedJSHeapSize > MEMORY_WARNING_THRESHOLD) {
+          console.warn(`[Memory] メモリ使用量が400MBを超過しています: ${usedMB}MB`)
+        }
+      }
+    }, MEMORY_CHECK_INTERVAL)
+
+    return () => clearInterval(intervalId)
+  }, [])
 
   // メッセージ送信ハンドラー
   const handleSendMessage = useCallback(async (text: string) => {
@@ -139,10 +163,10 @@ function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
+    <div className="h-screen flex flex-col bg-gray-100 dark:bg-gray-900 pb-[env(safe-area-inset-bottom)]">
       {/* ヘッダー */}
-      <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 shrink-0">
-        <div className="flex items-center justify-between px-2 sm:px-4 py-2 sm:py-3">
+      <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 shrink-0 pt-[env(safe-area-inset-top)]">
+        <div className="flex items-center justify-between px-2 sm:px-4 py-2 sm:py-3 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))]">
           <div className="flex items-center gap-1 sm:gap-2">
             <h1 className="text-base sm:text-xl font-semibold text-gray-900 dark:text-gray-100">
               Butler Assistant

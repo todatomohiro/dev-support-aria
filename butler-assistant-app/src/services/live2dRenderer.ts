@@ -1,6 +1,7 @@
 import type { Live2DRendererService } from '@/types'
 import { MotionPriority } from '@/types'
 import { Live2DModel } from '@/lib/live2d/Live2DModel'
+import { createFPSCounter } from '@/utils/performance'
 
 /**
  * Live2D Renderer Service 実装
@@ -15,6 +16,7 @@ class Live2DRendererImpl implements Live2DRendererService {
   private model: Live2DModel | null = null
   private lastTime: number = 0
   private onMotionFinishedCallback: (() => void) | null = null
+  private fpsCounter = createFPSCounter()
 
   // SDKが読み込まれているかどうか
   private isSdkLoaded: boolean = false
@@ -27,6 +29,11 @@ class Live2DRendererImpl implements Live2DRendererService {
    * Live2Dモデルを初期化
    */
   async initialize(canvas: HTMLCanvasElement, modelPath: string): Promise<void> {
+    // 再初期化時はリソースを解放
+    if (this.isInitialized) {
+      this.dispose()
+    }
+
     this.canvas = canvas
     this._modelPath = modelPath
 
@@ -108,6 +115,7 @@ class Live2DRendererImpl implements Live2DRendererService {
 
       this.update(deltaTime)
       this.render()
+      this.fpsCounter.update()
 
       this.frameId = requestAnimationFrame(render)
     }
@@ -136,12 +144,21 @@ class Live2DRendererImpl implements Live2DRendererService {
       this.model = null
     }
 
+    this.fpsCounter.reset()
     this.canvas = null
     this.gl = null
     this.isInitialized = false
     this._modelPath = null
     this._currentMotionGroup = null
     this._currentMotionIndex = 0
+    this.onMotionFinishedCallback = null
+  }
+
+  /**
+   * 現在のFPSを取得
+   */
+  getFPS(): number {
+    return this.fpsCounter.getFPS()
   }
 
   /**

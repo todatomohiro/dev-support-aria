@@ -1,8 +1,62 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { webAdapter } from '../webAdapter'
-import { tauriAdapter } from '../tauriAdapter'
-import { capacitorAdapter } from '../capacitorAdapter'
 import type { PlatformAdapter } from '../types'
+
+// Tauri Store モック（共有 Map でラウンドトリップ対応）
+const tauriStoreData = new Map<string, unknown>()
+const mockStore = {
+  get: vi.fn(async (key: string) => tauriStoreData.get(key) ?? null),
+  set: vi.fn(async (key: string, value: unknown) => { tauriStoreData.set(key, value) }),
+  delete: vi.fn(async (key: string) => { tauriStoreData.delete(key) }),
+  save: vi.fn(async () => {}),
+}
+vi.mock('@tauri-apps/plugin-store', () => ({
+  load: vi.fn(async () => mockStore),
+}))
+
+// Tauri Opener モック
+const mockOpenUrl = vi.fn(async () => {})
+vi.mock('@tauri-apps/plugin-opener', () => ({
+  openUrl: mockOpenUrl,
+}))
+
+// Tauri Path API モック
+vi.mock('@tauri-apps/api/path', () => ({
+  appDataDir: vi.fn(async () => '/Users/test/Library/Application Support/com.butler-assistant.app'),
+}))
+
+// Capacitor Preferences モック（共有 Map でラウンドトリップ対応）
+const capacitorPrefsData = new Map<string, string>()
+const mockPreferences = {
+  set: vi.fn(async ({ key, value }: { key: string; value: string }) => {
+    capacitorPrefsData.set(key, value)
+  }),
+  get: vi.fn(async ({ key }: { key: string }) => ({
+    value: capacitorPrefsData.get(key) ?? null,
+  })),
+  remove: vi.fn(async ({ key }: { key: string }) => {
+    capacitorPrefsData.delete(key)
+  }),
+}
+vi.mock('@capacitor/preferences', () => ({
+  Preferences: mockPreferences,
+}))
+
+// Capacitor Browser モック
+const mockBrowserOpen = vi.fn(async () => {})
+vi.mock('@capacitor/browser', () => ({
+  Browser: { open: mockBrowserOpen },
+}))
+
+// Capacitor Clipboard モック
+const mockClipboardWrite = vi.fn(async () => {})
+vi.mock('@capacitor/clipboard', () => ({
+  Clipboard: { write: mockClipboardWrite },
+}))
+
+// tauriAdapter / capacitorAdapter はモック設定後に import する
+const { tauriAdapter } = await import('../tauriAdapter')
+const { capacitorAdapter } = await import('../capacitorAdapter')
 
 describe('Platform Adapters', () => {
   describe('WebAdapter', () => {
@@ -94,13 +148,8 @@ describe('Platform Adapters', () => {
     const adapter: PlatformAdapter = tauriAdapter
 
     beforeEach(() => {
-      localStorage.clear()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-    })
-
-    afterEach(() => {
-      localStorage.clear()
-      vi.restoreAllMocks()
+      tauriStoreData.clear()
+      vi.clearAllMocks()
     })
 
     describe('getPlatform', () => {
@@ -109,16 +158,61 @@ describe('Platform Adapters', () => {
       })
     })
 
-    describe('セキュアストレージ（フォールバック）', () => {
+    describe('セキュアストレージ（Tauri Store）', () => {
       it('データを保存して読み込める', async () => {
         await adapter.saveSecureData('gemini-api-key', 'tauri-test-key')
         const result = await adapter.loadSecureData('gemini-api-key')
         expect(result).toBe('tauri-test-key')
       })
 
-      it('警告が出力される', async () => {
-        await adapter.saveSecureData('gemini-api-key', 'test')
-        expect(console.warn).toHaveBeenCalled()
+      it('保存時にstore.setとstore.saveが呼ばれる', async () => {
+        await adapter.saveSecureData('gemini-api-key', 'test-value')
+        expect(mockStore.set).toHaveBeenCalledWith('gemini-api-key', 'test-value')
+        expect(mockStore.save).toHaveBeenCalled()
+      })
+
+      it('読み込み時にstore.getが呼ばれる', async () => {
+        await adapter.loadSecureData('claude-api-key')
+        expect(mockStore.get).toHaveBeenCalledWith('claude-api-key')
+      })
+
+      it('存在しないキーはnullを返す', async () => {
+        const result = await adapter.loadSecureData('claude-api-key')
+        expect(result).toBeNull()
+      })
+
+      it('データを削除できる', async () => {
+        await adapter.saveSecureData('gemini-api-key', 'to-delete')
+        await adapter.deleteSecureData('gemini-api-key')
+        const result = await adapter.loadSecureData('gemini-api-key')
+        expect(result).toBeNull()
+      })
+
+      it('削除時にstore.deleteとstore.saveが呼ばれる', async () => {
+        await adapter.deleteSecureData('app-settings')
+        expect(mockStore.delete).toHaveBeenCalledWith('app-settings')
+        expect(mockStore.save).toHaveBeenCalled()
+      })
+    })
+
+    describe('getAppDataPath', () => {
+      it('Tauri Path APIからパスを取得する', async () => {
+        const path = await adapter.getAppDataPath()
+        expect(path).toBe('/Users/test/Library/Application Support/com.butler-assistant.app')
+      })
+    })
+
+    describe('openExternalUrl', () => {
+      it('Tauri Opener APIでURLを開く', async () => {
+        await adapter.openExternalUrl('https://example.com')
+        expect(mockOpenUrl).toHaveBeenCalledWith('https://example.com')
+      })
+    })
+
+    describe('saveFile', () => {
+      it('ファイル名を返す', async () => {
+        const result = await adapter.saveFile('test.txt', 'content')
+        expect(result).toBe('test.txt')
       })
     })
   })
@@ -127,13 +221,8 @@ describe('Platform Adapters', () => {
     const adapter: PlatformAdapter = capacitorAdapter
 
     beforeEach(() => {
-      localStorage.clear()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-    })
-
-    afterEach(() => {
-      localStorage.clear()
-      vi.restoreAllMocks()
+      capacitorPrefsData.clear()
+      vi.clearAllMocks()
     })
 
     describe('getPlatform', () => {
@@ -142,16 +231,69 @@ describe('Platform Adapters', () => {
       })
     })
 
-    describe('セキュアストレージ（フォールバック）', () => {
+    describe('セキュアストレージ（Capacitor Preferences）', () => {
       it('データを保存して読み込める', async () => {
         await adapter.saveSecureData('claude-api-key', 'capacitor-test-key')
         const result = await adapter.loadSecureData('claude-api-key')
         expect(result).toBe('capacitor-test-key')
       })
 
-      it('警告が出力される', async () => {
-        await adapter.saveSecureData('claude-api-key', 'test')
-        expect(console.warn).toHaveBeenCalled()
+      it('保存時にPreferences.setが呼ばれる', async () => {
+        await adapter.saveSecureData('gemini-api-key', 'test-value')
+        expect(mockPreferences.set).toHaveBeenCalledWith({
+          key: 'gemini-api-key',
+          value: 'test-value',
+        })
+      })
+
+      it('読み込み時にPreferences.getが呼ばれる', async () => {
+        await adapter.loadSecureData('claude-api-key')
+        expect(mockPreferences.get).toHaveBeenCalledWith({ key: 'claude-api-key' })
+      })
+
+      it('存在しないキーはnullを返す', async () => {
+        const result = await adapter.loadSecureData('claude-api-key')
+        expect(result).toBeNull()
+      })
+
+      it('データを削除できる', async () => {
+        await adapter.saveSecureData('gemini-api-key', 'to-delete')
+        await adapter.deleteSecureData('gemini-api-key')
+        const result = await adapter.loadSecureData('gemini-api-key')
+        expect(result).toBeNull()
+      })
+
+      it('削除時にPreferences.removeが呼ばれる', async () => {
+        await adapter.deleteSecureData('app-settings')
+        expect(mockPreferences.remove).toHaveBeenCalledWith({ key: 'app-settings' })
+      })
+    })
+
+    describe('getAppDataPath', () => {
+      it('Capacitor用の固定パスを返す', async () => {
+        const path = await adapter.getAppDataPath()
+        expect(path).toBe('capacitor://app-data')
+      })
+    })
+
+    describe('openExternalUrl', () => {
+      it('Capacitor Browser APIでURLを開く', async () => {
+        await adapter.openExternalUrl('https://example.com')
+        expect(mockBrowserOpen).toHaveBeenCalledWith({ url: 'https://example.com' })
+      })
+    })
+
+    describe('copyToClipboard', () => {
+      it('Capacitor Clipboard APIでコピーする', async () => {
+        await adapter.copyToClipboard('test text')
+        expect(mockClipboardWrite).toHaveBeenCalledWith({ string: 'test text' })
+      })
+    })
+
+    describe('saveFile', () => {
+      it('ファイル名を返す', async () => {
+        const result = await adapter.saveFile('test.txt', 'content')
+        expect(result).toBe('test.txt')
       })
     })
   })
@@ -165,12 +307,15 @@ describe('Platform Adapters', () => {
 
     beforeEach(() => {
       localStorage.clear()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      tauriStoreData.clear()
+      capacitorPrefsData.clear()
+      vi.clearAllMocks()
     })
 
     afterEach(() => {
       localStorage.clear()
-      vi.restoreAllMocks()
+      tauriStoreData.clear()
+      capacitorPrefsData.clear()
     })
 
     it.each(adapters)('$name: セキュアストレージのラウンドトリップ', async ({ adapter }) => {

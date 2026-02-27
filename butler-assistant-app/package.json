@@ -18,14 +18,17 @@
     "tauri:build": "tauri build",
     "cap": "cap",
     "cap:sync": "cap sync",
-    "cap:ios": "cap open ios",
-    "cap:android": "cap open android"
+    "cap:ios": "cap open ios"
   },
   "dependencies": {
-    "@capacitor/android": "^8.1.0",
+    "@capacitor/browser": "^8.0.1",
+    "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.1.0",
     "@capacitor/ios": "^8.1.0",
     "@capacitor/preferences": "^8.0.1",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-opener": "^2.5.3",
+    "@tauri-apps/plugin-store": "^2.4.2",
     "pixi-live2d-display": "~0.4.0",
     "pixi.js": "^7.4.3",
     "react": "^19.2.0",

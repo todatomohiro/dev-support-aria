@@ -186,7 +186,7 @@ export class Live2DModel {
   /**
    * モデルを更新
    */
-  update(deltaTime: number): void {
+  update(_deltaTime: number): void {
     if (!this.model) return
 
     // パラメータの更新（呼吸アニメーションなど）

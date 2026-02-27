@@ -10,45 +10,46 @@ import type {
  * Capacitor Platform Adapter
  * iOS/Androidモバイルアプリ用のプラットフォーム実装
  *
- * Note: 実際のCapacitor APIは各プラグインパッケージから提供されます。
- * このファイルはCapacitorをインストール後に実装を完成させます。
+ * Capacitor プラグインは動的 import で読み込み、
+ * テスト環境・Web 環境でのインポートエラーを防止する。
  */
 class CapacitorAdapterImpl implements PlatformAdapter {
+  /** プラットフォーム種別を取得 */
   getPlatform(): Platform {
     return 'capacitor'
   }
 
+  /**
+   * セキュアデータを保存（Capacitor Preferences プラグイン使用）
+   */
   async saveSecureData(key: SecureStorageKey, value: string): Promise<void> {
-    // TODO: @capacitor-community/secure-storage-plugin を使用
-    // await SecureStoragePlugin.set({ key, value })
-    console.warn('[CapacitorAdapter] saveSecureData: Capacitor APIが未設定です')
-    localStorage.setItem(`capacitor-secure:${key}`, value)
+    const { Preferences } = await import('@capacitor/preferences')
+    await Preferences.set({ key, value })
   }
 
+  /**
+   * セキュアデータを読み込み（Capacitor Preferences プラグイン使用）
+   */
   async loadSecureData(key: SecureStorageKey): Promise<string | null> {
-    // TODO: @capacitor-community/secure-storage-plugin を使用
-    // const result = await SecureStoragePlugin.get({ key })
-    // return result.value
-    console.warn('[CapacitorAdapter] loadSecureData: Capacitor APIが未設定です')
-    return localStorage.getItem(`capacitor-secure:${key}`)
+    const { Preferences } = await import('@capacitor/preferences')
+    const result = await Preferences.get({ key })
+    return result.value
   }
 
+  /**
+   * セキュアデータを削除（Capacitor Preferences プラグイン使用）
+   */
   async deleteSecureData(key: SecureStorageKey): Promise<void> {
-    // TODO: @capacitor-community/secure-storage-plugin を使用
-    // await SecureStoragePlugin.remove({ key })
-    console.warn('[CapacitorAdapter] deleteSecureData: Capacitor APIが未設定です')
-    localStorage.removeItem(`capacitor-secure:${key}`)
+    const { Preferences } = await import('@capacitor/preferences')
+    await Preferences.remove({ key })
   }
 
+  /**
+   * ファイル選択ダイアログを表示（Web API 使用）
+   *
+   * WKWebView 内で Web File API が動作するため維持。
+   */
   async selectFile(options?: FileSelectOptions): Promise<SelectedFile[] | null> {
-    // TODO: @capacitor/filesystem を使用
-    // const result = await FilePicker.pickFiles({
-    //   types: options?.accept,
-    //   multiple: options?.multiple,
-    // })
-    console.warn('[CapacitorAdapter] selectFile: Capacitor APIが未設定です')
-
-    // フォールバック: Web APIを使用
     return new Promise((resolve) => {
       const input = document.createElement('input')
       input.type = 'file'
@@ -83,56 +84,58 @@ class CapacitorAdapterImpl implements PlatformAdapter {
     })
   }
 
-  async saveFile(_filename: string, _data: ArrayBuffer | string): Promise<string | null> {
-    // TODO: @capacitor/filesystem を使用
-    // const result = await Filesystem.writeFile({
-    //   path: filename,
-    //   data: typeof data === 'string' ? data : arrayBufferToBase64(data),
-    //   directory: Directory.Documents,
-    // })
-    // return result.uri
-    console.warn('[CapacitorAdapter] saveFile: Capacitor APIが未設定です')
-    return null
+  /**
+   * ファイルを保存（Web API 使用）
+   *
+   * WKWebView 内で Blob download が動作するため Web API を維持。
+   */
+  async saveFile(filename: string, data: ArrayBuffer | string): Promise<string | null> {
+    const blob = data instanceof ArrayBuffer
+      ? new Blob([data])
+      : new Blob([data], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+    return filename
   }
 
+  /**
+   * アプリデータディレクトリのパスを取得
+   *
+   * Capacitor はファイルパスをプラグインが抽象化するため固定パスを返す。
+   */
   async getAppDataPath(): Promise<string> {
-    // TODO: @capacitor/filesystem を使用
-    // const result = await Filesystem.getUri({
-    //   path: '',
-    //   directory: Directory.Data,
-    // })
-    // return result.uri
-    console.warn('[CapacitorAdapter] getAppDataPath: Capacitor APIが未設定です')
-    return '/app-data'
+    return 'capacitor://app-data'
   }
 
+  /**
+   * 通知を表示（Web Notifications API 使用）
+   *
+   * WKWebView 内で Web Notifications API が動作するため維持。
+   */
   async showNotification(title: string, body: string): Promise<void> {
-    // TODO: @capacitor/local-notifications を使用
-    // await LocalNotifications.schedule({
-    //   notifications: [{
-    //     title,
-    //     body,
-    //     id: Date.now(),
-    //   }],
-    // })
-    console.warn('[CapacitorAdapter] showNotification: Capacitor APIが未設定です')
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification(title, { body })
     }
   }
 
+  /**
+   * クリップボードにコピー（Capacitor Clipboard プラグイン使用）
+   */
   async copyToClipboard(text: string): Promise<void> {
-    // TODO: @capacitor/clipboard を使用
-    // await Clipboard.write({ string: text })
-    console.warn('[CapacitorAdapter] copyToClipboard: Capacitor APIが未設定です')
-    await navigator.clipboard.writeText(text)
+    const { Clipboard } = await import('@capacitor/clipboard')
+    await Clipboard.write({ string: text })
   }
 
+  /**
+   * 外部URLをSFSafariViewControllerで開く（Capacitor Browser プラグイン使用）
+   */
   async openExternalUrl(url: string): Promise<void> {
-    // TODO: @capacitor/browser を使用
-    // await Browser.open({ url })
-    console.warn('[CapacitorAdapter] openExternalUrl: Capacitor APIが未設定です')
-    window.open(url, '_blank')
+    const { Browser } = await import('@capacitor/browser')
+    await Browser.open({ url })
   }
 }
 

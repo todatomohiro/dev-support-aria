@@ -26,11 +26,7 @@
       "csp": null
     }
   },
-  "plugins": {
-    "store": {
-      "path": ".butler-store.json"
-    }
-  },
+  "plugins": {},
   "bundle": {
     "active": true,
     "targets": "all",
