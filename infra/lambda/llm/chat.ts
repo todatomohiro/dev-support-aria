@@ -1,7 +1,56 @@
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime'
+import {
+  BedrockAgentCoreClient,
+  RetrieveMemoryRecordsCommand,
+} from '@aws-sdk/client-bedrock-agentcore'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 
 const bedrock = new BedrockRuntimeClient({})
+const agentCore = new BedrockAgentCoreClient({})
+
+const MEMORY_ID = process.env.MEMORY_ID ?? ''
+
+/**
+ * AgentCore Memory からユーザーに関する記憶を検索
+ *
+ * 失敗時は空文字を返し、チャット機能を壊さない。
+ */
+async function retrieveMemories(userId: string, query: string): Promise<string> {
+  if (!MEMORY_ID) {
+    return ''
+  }
+
+  try {
+    const result = await agentCore.send(new RetrieveMemoryRecordsCommand({
+      memoryId: MEMORY_ID,
+      namespace: `user/${userId}`,
+      searchCriteria: {
+        searchQuery: query,
+      },
+      maxResults: 10,
+    }))
+
+    const records = result.memoryRecordSummaries ?? []
+    if (records.length === 0) {
+      return ''
+    }
+
+    const memoryLines = records
+      .map((record) => record.content?.text)
+      .filter(Boolean)
+      .map((text) => `- ${text}`)
+      .join('\n')
+
+    if (!memoryLines) {
+      return ''
+    }
+
+    return `\n\nあなたが過去の会話から覚えていること：\n${memoryLines}`
+  } catch (error) {
+    console.warn('[Memory] メモリ検索エラー（スキップ）:', error)
+    return ''
+  }
+}
 
 /**
  * POST /llm/chat — Bedrock Claude でチャット応答を生成
@@ -33,6 +82,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return response(400, { error: 'Invalid JSON' })
   }
 
+  // メモリ検索（失敗してもチャットは続行）
+  const memoryContext = await retrieveMemories(userId, message)
+  const enhancedSystemPrompt = systemPrompt + memoryContext
+
   const messages = [
     ...history.map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: message },
@@ -47,7 +100,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         anthropic_version: 'bedrock-2023-05-31',
         max_tokens: 1024,
         temperature: 0.7,
-        system: systemPrompt,
+        system: enhancedSystemPrompt,
         messages,
       }),
     }))

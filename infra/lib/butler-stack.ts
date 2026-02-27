@@ -108,14 +108,20 @@ export class ButlerStack extends cdk.Stack {
       resources: ['*'],
     }))
 
-    // LLM Lambda（Bedrock 用 — DynamoDB 不要）
+    // MEMORY_ID（AgentCore Memory — CLI で事前作成）
+    const memoryId = process.env.MEMORY_ID ?? ''
+
+    // LLM Lambda（Bedrock + AgentCore Memory 検索）
     const llmChatFn = new lambdaNode.NodejsFunction(this, 'LlmChatFn', {
       runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
-      timeout: cdk.Duration.seconds(30),
+      timeout: cdk.Duration.seconds(45),
       memorySize: 256,
       entry: path.join(__dirname, '..', 'lambda', 'llm', 'chat.ts'),
       functionName: 'butler-llm-chat',
+      environment: {
+        MEMORY_ID: memoryId,
+      },
       bundling: {
         minify: true,
         sourceMap: true,
@@ -130,6 +136,36 @@ export class ButlerStack extends cdk.Stack {
         'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
         `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
       ],
+    }))
+
+    // AgentCore Memory 検索権限
+    llmChatFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock-agentcore:RetrieveMemoryRecords'],
+      resources: ['*'],
+    }))
+
+    // Memory Events Lambda（AgentCore Memory にイベント記録）
+    const memoryEventsFn = new lambdaNode.NodejsFunction(this, 'MemoryEventsFn', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      entry: path.join(__dirname, '..', 'lambda', 'memory', 'events.ts'),
+      functionName: 'butler-memory-events',
+      environment: {
+        MEMORY_ID: memoryId,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node22',
+      },
+    })
+
+    // AgentCore Memory イベント作成権限
+    memoryEventsFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock-agentcore:CreateEvent'],
+      resources: ['*'],
     }))
 
     // DynamoDB への読み書き権限
@@ -180,6 +216,11 @@ export class ButlerStack extends cdk.Stack {
     const llmResource = api.root.addResource('llm')
     const llmChatResource = llmResource.addResource('chat')
     llmChatResource.addMethod('POST', new apigateway.LambdaIntegration(llmChatFn), authMethodOptions)
+
+    // /memory/events
+    const memoryResource = api.root.addResource('memory')
+    const memoryEventsResource = memoryResource.addResource('events')
+    memoryEventsResource.addMethod('POST', new apigateway.LambdaIntegration(memoryEventsFn), authMethodOptions)
 
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {

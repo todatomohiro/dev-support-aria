@@ -3,6 +3,7 @@ import { ChatControllerImpl } from '../chatController'
 import { llmClient } from '../llmClient'
 import { motionController } from '../motionController'
 import { useAppStore } from '@/stores/appStore'
+import { useAuthStore } from '@/auth/authStore'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
 
 // モックセットアップ
@@ -22,11 +23,16 @@ vi.mock('../motionController', () => ({
 const mockLLMClient = vi.mocked(llmClient)
 const mockMotionController = vi.mocked(motionController)
 
+// fetch モック
+const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+vi.stubGlobal('fetch', mockFetch)
+
 describe('ChatController', () => {
   let chatController: ChatControllerImpl
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockFetch.mockResolvedValue({ ok: true })
     // ストアをリセット
     useAppStore.setState({
       messages: [],
@@ -35,6 +41,8 @@ describe('ChatController', () => {
       motionQueue: [],
       lastError: null,
     })
+    // 認証ストアをリセット（メモリイベントはデフォルトで送信しない）
+    useAuthStore.setState({ accessToken: null })
     chatController = new ChatControllerImpl()
   })
 
@@ -94,6 +102,114 @@ describe('ChatController', () => {
 
       expect(mockMotionController.playMotion).toHaveBeenCalledWith('happy')
       expect(useAppStore.getState().currentMotion).toBe('happy')
+    })
+  })
+
+  describe('メモリイベント', () => {
+    it('成功時にメモリイベントが送信される', async () => {
+      // 環境変数とアクセストークンを設定
+      vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
+      useAuthStore.setState({ accessToken: 'test-token' })
+
+      mockLLMClient.sendMessage.mockResolvedValue({
+        text: 'ご主人様、かしこまりました。',
+        motion: 'bow',
+      })
+
+      await chatController.sendMessage('こんにちは')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.example.com/memory/events',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer test-token',
+          }),
+          body: JSON.stringify({
+            messages: [
+              { role: 'user', content: 'こんにちは' },
+              { role: 'assistant', content: 'ご主人様、かしこまりました。' },
+            ],
+          }),
+        })
+      )
+
+      vi.unstubAllEnvs()
+    })
+
+    it('API URL が未設定の場合、メモリイベントは送信されない', async () => {
+      vi.stubEnv('VITE_API_BASE_URL', '')
+      useAuthStore.setState({ accessToken: 'test-token' })
+
+      mockLLMClient.sendMessage.mockResolvedValue({
+        text: 'test',
+        motion: 'idle',
+      })
+
+      await chatController.sendMessage('テスト')
+
+      expect(mockFetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/memory/events'),
+        expect.anything()
+      )
+
+      vi.unstubAllEnvs()
+    })
+
+    it('アクセストークンがない場合、メモリイベントは送信されない', async () => {
+      vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
+      useAuthStore.setState({ accessToken: null })
+
+      mockLLMClient.sendMessage.mockResolvedValue({
+        text: 'test',
+        motion: 'idle',
+      })
+
+      await chatController.sendMessage('テスト')
+
+      expect(mockFetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/memory/events'),
+        expect.anything()
+      )
+
+      vi.unstubAllEnvs()
+    })
+
+    it('メモリイベント送信が失敗してもチャットは正常に完了する', async () => {
+      vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
+      useAuthStore.setState({ accessToken: 'test-token' })
+      mockFetch.mockRejectedValueOnce(new Error('Network error'))
+
+      mockLLMClient.sendMessage.mockResolvedValue({
+        text: 'ご主人様、かしこまりました。',
+        motion: 'bow',
+      })
+
+      await chatController.sendMessage('こんにちは')
+
+      // チャットメッセージは正常に追加されている
+      const state = useAppStore.getState()
+      expect(state.messages).toHaveLength(2)
+      expect(state.messages[1].content).toBe('ご主人様、かしこまりました。')
+
+      vi.unstubAllEnvs()
+    })
+
+    it('エラー時にはメモリイベントは送信されない', async () => {
+      vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
+      useAuthStore.setState({ accessToken: 'test-token' })
+
+      mockLLMClient.sendMessage.mockRejectedValue(new NetworkError('ネットワークエラー'))
+
+      await chatController.sendMessage('テスト')
+
+      expect(mockFetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/memory/events'),
+        expect.anything()
+      )
+
+      vi.unstubAllEnvs()
     })
   })
 

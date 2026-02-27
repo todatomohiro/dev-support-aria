@@ -7,7 +7,7 @@
 ```bash
 cd butler-assistant-app
 
-pnpm test             # 全テスト実行（345テスト / 20ファイル）
+pnpm test             # 全テスト実行（350テスト / 20ファイル）
 pnpm dev              # 開発サーバー（http://localhost:5173）
 pnpm typecheck        # 型チェック
 pnpm lint             # ESLint
@@ -64,7 +64,8 @@ infra/
     ├── settings/           #   設定 get/put
     ├── messages/           #   メッセージ list/put
     ├── tts/                #   音声合成 synthesize
-    └── llm/                #   LLM チャット（Bedrock Claude）
+    ├── llm/                #   LLM チャット（Bedrock Claude + メモリ検索）
+    └── memory/             #   長期記憶イベント保存（AgentCore Memory）
 ```
 
 ## コーディング規約
@@ -149,20 +150,35 @@ test.prop([fc.string()])(
 | `motionController` | `MotionControllerImpl` | モーションキュー管理・再生制御 |
 | `live2dRenderer` | `Live2DRendererImpl` | Live2D 描画・アニメーション |
 | `modelLoader` | `ModelLoaderImpl` | モデルファイル読み込み・永続化 |
-| `chatController` | `ChatControllerImpl` | チャットフロー統合（LLM→Parser→Motion→TTS→Store） |
+| `chatController` | `ChatControllerImpl` | チャットフロー統合（LLM→Parser→Motion→TTS→Store→Memory） |
 | `syncService` | `SyncServiceImpl` | データ同期（ローカル↔サーバー） |
 | `ttsService` | `TtsServiceImpl` | Amazon Polly 音声合成・再生（Kazuha/neural） |
 
 ### LLM 通信アーキテクチャ
 
 ```
-ブラウザ → API Gateway → Lambda → Bedrock Claude Sonnet 4.6
-              ↑ Cognito JWT      ↑ IAM ロール
+ユーザー発言 → chatController
+  ├→ llmClient → Lambda /llm/chat
+  │              ↓ RetrieveMemoryRecords（メモリ検索）
+  │              ↓ systemPrompt にメモリ情報を注入
+  │              ↓ Bedrock Claude 呼び出し
+  │              → レスポンス返却
+  └→ fire-and-forget: Lambda /memory/events
+                       ↓ CreateEvent（会話を記録）
+                       → AgentCore Memory が自動で要約・抽出
 ```
 
 - フロントエンドに API キーは存在しない（IAM ロールで認証）
 - Lambda: `infra/lambda/llm/chat.ts`（inference profile: `jp.anthropic.claude-sonnet-4-6`）
 - フロントエンド: `src/services/llmClient.ts`（JSON 非準拠応答のフォールバック処理付き）
+
+### 長期記憶（AgentCore Memory）
+
+- **Memory ID**: 環境変数 `MEMORY_ID` で設定（CDK デプロイ時に `MEMORY_ID=xxx npx cdk deploy`）
+- **記憶保存**: `chatController` が成功レスポンス後に `/memory/events` へ fire-and-forget で送信
+- **記憶検索**: `/llm/chat` Lambda が Bedrock 呼び出し前にメモリを検索し systemPrompt に注入
+- **ストラテジー**: `facts`（SEMANTIC）+ `preferences`（USER_PREFERENCE）
+- **フォールバック**: メモリ検索失敗時は通常のチャットとして動作
 
 ### コンポーネント層（src/components/ — 6コンポーネント）
 
@@ -206,9 +222,10 @@ Zustand + persist。主要ステート：
 | DynamoDB | `butler-assistant` テーブル（PK/SK、ポイントインタイム復旧） |
 | Cognito | ユーザープール + SPA クライアント（SRP 認証） |
 | API Gateway | REST API（CORS 設定済み、Cognito 認可） |
-| Lambda × 6 | Node.js 22.x / ARM_64（settings, messages, tts/synthesize, llm/chat） |
+| Lambda × 7 | Node.js 22.x / ARM_64（settings, messages, tts/synthesize, llm/chat, memory/events） |
+| AgentCore Memory | 長期記憶（SEMANTIC + USER_PREFERENCE ストラテジー） |
 
-API エンドポイント: `/settings`（GET/PUT）, `/messages`（GET/POST）, `/tts/synthesize`（POST）, `/llm/chat`（POST）
+API エンドポイント: `/settings`（GET/PUT）, `/messages`（GET/POST）, `/tts/synthesize`（POST）, `/llm/chat`（POST）, `/memory/events`（POST）
 
 ## 環境変数
 

@@ -4,6 +4,7 @@ import { motionController } from './motionController'
 import { syncService } from './syncService'
 import { ttsService } from './ttsService'
 import { useAppStore } from '@/stores/appStore'
+import { useAuthStore } from '@/auth/authStore'
 import type { Message, StructuredResponse, ConversationHistory, AppError } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
 import { measurePerformanceAsync } from '@/utils/performance'
@@ -78,6 +79,9 @@ class ChatControllerImpl {
         ttsService.synthesizeAndPlay(assistantMessage.content)
       }
 
+      // メモリイベント保存（fire-and-forget）
+      this.storeMemoryEvent(content.trim(), structuredResponse.text)
+
       // モーションと表情を再生
       await this.playMotionAndExpression(structuredResponse)
 
@@ -141,6 +145,31 @@ class ChatControllerImpl {
       messages: store.messages,
       maxLength: 50, // 最大50メッセージまで保持
     }
+  }
+
+  /**
+   * メモリイベントを AgentCore Memory に保存（fire-and-forget）
+   */
+  private storeMemoryEvent(userMessage: string, assistantMessage: string): void {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
+    const accessToken = useAuthStore.getState().accessToken
+    if (!apiBaseUrl || !accessToken) return
+
+    fetch(`${apiBaseUrl}/memory/events`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        messages: [
+          { role: 'user', content: userMessage },
+          { role: 'assistant', content: assistantMessage },
+        ],
+      }),
+    }).catch((error) => {
+      console.warn('[Memory] メモリイベント保存エラー:', error)
+    })
   }
 
   /**
