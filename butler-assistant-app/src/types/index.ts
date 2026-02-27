@@ -18,7 +18,7 @@ export {
 export type { MotionDefinition, MotionMapping, ModelConfig, MotionTag } from './model'
 
 // Config types
-export { DEFAULT_LLM_CONFIG, DEFAULT_UI_CONFIG } from './config'
+export { DEFAULT_UI_CONFIG } from './config'
 export type { LLMProvider, LLMConfig, ModelReference, UIConfig, AppConfig } from './config'
 
 // Error types

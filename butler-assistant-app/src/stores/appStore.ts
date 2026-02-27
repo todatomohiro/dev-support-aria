@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Message, AppConfig, AppError } from '@/types'
-import { DEFAULT_LLM_CONFIG, DEFAULT_UI_CONFIG } from '@/types'
+import { DEFAULT_UI_CONFIG } from '@/types'
 import { MAX_MESSAGE_HISTORY } from '@/utils/performance'
 
 /**
@@ -41,7 +41,6 @@ export interface AppState {
  * デフォルトの設定
  */
 const defaultConfig: AppConfig = {
-  llm: DEFAULT_LLM_CONFIG,
   model: {
     currentModelId: '/models/mao_pro_jp/mao_pro.model3.json',
   },
@@ -108,10 +107,6 @@ export const useAppStore = create<AppState>()(
           config: {
             ...state.config,
             ...configUpdate,
-            llm: {
-              ...state.config.llm,
-              ...(configUpdate.llm || {}),
-            },
             model: {
               ...state.config.model,
               ...(configUpdate.model || {}),

@@ -59,7 +59,7 @@ export const RESPONSE_SCHEMA = {
  */
 class LLMClientImpl implements LLMClientService {
   private provider: LLMProvider = 'gemini'
-  private apiKey: string = ''
+  private apiKey: string = import.meta.env.VITE_GEMINI_API_KEY ?? ''
   private systemPrompt: string = BUTLER_SYSTEM_PROMPT
 
   setProvider(provider: LLMProvider): void {

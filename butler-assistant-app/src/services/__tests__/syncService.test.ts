@@ -38,13 +38,6 @@ describe('SyncService', () => {
     useAppStore.setState({
       messages: [],
       config: {
-        llm: {
-          provider: 'gemini',
-          apiKey: 'secret-api-key',
-          systemPrompt: '',
-          temperature: 0.7,
-          maxTokens: 1024,
-        },
         model: { currentModelId: '/models/mao_pro_jp/mao_pro.model3.json' },
         ui: { theme: 'light', fontSize: 14, characterSize: 100 },
       },
@@ -109,7 +102,6 @@ describe('SyncService', () => {
   describe('onLogin', () => {
     it('サーバーから設定とメッセージを取得してストアにマージする', async () => {
       const serverSettings = {
-        llm: { provider: 'claude', apiKey: '', systemPrompt: 'カスタム', temperature: 0.5, maxTokens: 2048 },
         ui: { theme: 'dark', fontSize: 16, characterSize: 100 },
       }
 
@@ -126,8 +118,7 @@ describe('SyncService', () => {
       await syncService.onLogin(mockToken)
 
       const state = useAppStore.getState()
-      // 設定がマージされる（API キーはローカルのまま）
-      expect(state.config.llm.provider).toBe('claude')
+      // 設定がマージされる
       expect(state.config.ui.theme).toBe('dark')
       // メッセージがマージされる
       expect(state.messages).toHaveLength(1)
@@ -173,7 +164,7 @@ describe('SyncService', () => {
 
       await syncService.onLogin(mockToken)
 
-      expect(useAppStore.getState().config.llm.provider).toBe(originalConfig.llm.provider)
+      expect(useAppStore.getState().config.ui.theme).toBe(originalConfig.ui.theme)
     })
   })
 
@@ -213,7 +204,7 @@ describe('SyncService', () => {
   })
 
   describe('saveSettings', () => {
-    it('API キーを除外して設定を送信する', async () => {
+    it('設定をサーバーに送信する', async () => {
       vi.useFakeTimers()
 
       mockFetch.mockResolvedValue({
@@ -230,13 +221,6 @@ describe('SyncService', () => {
       })
 
       const config: AppConfig = {
-        llm: {
-          provider: 'gemini',
-          apiKey: 'secret-key-should-not-be-sent',
-          systemPrompt: '',
-          temperature: 0.7,
-          maxTokens: 1024,
-        },
         model: { currentModelId: '/models/test.json' },
         ui: { theme: 'dark', fontSize: 16, characterSize: 100 },
       }
@@ -250,7 +234,7 @@ describe('SyncService', () => {
 
       expect(mockFetch).toHaveBeenCalled()
       const body = JSON.parse(mockFetch.mock.calls[0][1].body)
-      expect(body.llm.apiKey).toBe('')
+      expect(body.ui.theme).toBe('dark')
     })
 
     it('未ログインの場合は何もしない', () => {

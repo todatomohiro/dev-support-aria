@@ -140,13 +140,7 @@ class SyncServiceImpl {
 
     if (!data.settings) return null
 
-    // API キーはサーバーから取得しない（ローカルのみ）
-    const settings = data.settings as Partial<AppConfig>
-    if (settings.llm) {
-      settings.llm = { ...settings.llm, apiKey: '' }
-    }
-
-    return settings
+    return data.settings as Partial<AppConfig>
   }
 
   /**
@@ -162,15 +156,9 @@ class SyncServiceImpl {
    * サーバーに設定を保存
    */
   private async saveSettingsToServer(config: AppConfig): Promise<void> {
-    // API キーを除外して送信
-    const sanitized = {
-      ...config,
-      llm: { ...config.llm, apiKey: '' },
-    }
-
     await this.fetch('/settings', {
       method: 'PUT',
-      body: JSON.stringify(sanitized),
+      body: JSON.stringify(config),
     })
   }
 

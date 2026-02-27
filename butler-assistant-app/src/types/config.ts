@@ -34,20 +34,8 @@ export interface UIConfig {
  * アプリケーション設定
  */
 export interface AppConfig {
-  llm: LLMConfig
   model: ModelReference
   ui: UIConfig
-}
-
-/**
- * デフォルトのLLM設定
- */
-export const DEFAULT_LLM_CONFIG: LLMConfig = {
-  provider: 'gemini',
-  apiKey: '',
-  systemPrompt: '',
-  temperature: 0.7,
-  maxTokens: 1024,
 }
 
 /**

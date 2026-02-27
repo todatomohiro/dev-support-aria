@@ -3,7 +3,6 @@ import { useAppStore } from './stores'
 import { ChatUI, Live2DCanvas, Settings, ErrorNotification, ModelImporter, MotionPanel } from './components'
 import type { Live2DCanvasHandle } from './components'
 import { chatController } from './services/chatController'
-import { llmClient } from './services/llmClient'
 import { currentPlatform, logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
 import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
@@ -36,27 +35,18 @@ function App() {
 
   // 初期化処理
   useEffect(() => {
-    const initialize = async () => {
-      try {
-        // プラットフォーム情報をログ出力（開発用）
-        if (import.meta.env.DEV) {
-          logPlatformInfo()
-        }
-
-        // APIキーが未設定の場合は設定画面を開く
-        if (!config.llm.apiKey) {
-          setIsSettingsOpen(true)
-        }
-
-        setIsInitialized(true)
-      } catch (error) {
-        console.error('初期化エラー:', error)
-        setIsInitialized(true)
+    try {
+      // プラットフォーム情報をログ出力（開発用）
+      if (import.meta.env.DEV) {
+        logPlatformInfo()
       }
-    }
 
-    initialize()
-  }, [config.llm.apiKey])
+      setIsInitialized(true)
+    } catch (error) {
+      console.error('初期化エラー:', error)
+      setIsInitialized(true)
+    }
+  }, [])
 
   // DEV モード: メモリ使用量を定期的にログ出力
   useEffect(() => {
@@ -103,9 +93,8 @@ function App() {
 
   // 設定保存ハンドラー
   const handleSaveSettings = useCallback(
-    (newConfig: { llm: Partial<typeof config.llm>; ui: Partial<typeof config.ui> }) => {
+    (newConfig: { ui: Partial<typeof config.ui> }) => {
       updateConfig({
-        llm: { ...config.llm, ...newConfig.llm },
         ui: { ...config.ui, ...newConfig.ui },
       })
     },
@@ -134,14 +123,6 @@ function App() {
       document.documentElement.classList.remove('dark')
     }
   }, [config.ui.theme])
-
-  // LLM設定の適用
-  useEffect(() => {
-    llmClient.setProvider(config.llm.provider)
-    if (config.llm.apiKey) {
-      llmClient.setApiKey(config.llm.apiKey)
-    }
-  }, [config.llm.provider, config.llm.apiKey])
 
   // 表情の変更を監視して再生（一定時間後に neutral に戻す）
   useEffect(() => {

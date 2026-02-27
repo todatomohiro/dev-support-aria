@@ -257,19 +257,17 @@ describe('ストア統合テスト', () => {
   })
 
   describe('設定の更新', () => {
-    it('LLM設定が正しく更新される', () => {
+    it('モデル設定が正しく更新される', () => {
       const store = useAppStore.getState()
 
       store.updateConfig({
-        llm: {
-          provider: 'claude',
-          temperature: 0.9,
+        model: {
+          currentModelId: '/models/new/new.model3.json',
         },
       })
 
       const state = useAppStore.getState()
-      expect(state.config.llm.provider).toBe('claude')
-      expect(state.config.llm.temperature).toBe(0.9)
+      expect(state.config.model.currentModelId).toBe('/models/new/new.model3.json')
     })
 
     it('UI設定が正しく更新される', () => {
