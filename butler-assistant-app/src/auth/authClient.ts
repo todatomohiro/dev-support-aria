@@ -139,12 +139,12 @@ export async function getAuthUser(): Promise<AuthUser | null> {
 }
 
 /**
- * アクセストークンを取得
+ * ID トークンを取得（API Gateway Cognito Authorizer 用）
  */
-export async function getAccessToken(): Promise<string | null> {
+export async function getIdToken(): Promise<string | null> {
   try {
     const session = await fetchAuthSession()
-    return session.tokens?.accessToken?.toString() ?? null
+    return session.tokens?.idToken?.toString() ?? null
   } catch {
     return null
   }

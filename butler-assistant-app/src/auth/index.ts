@@ -9,7 +9,7 @@ export {
   confirmForgotPassword,
   logout,
   getAuthUser,
-  getAccessToken,
+  getIdToken,
   listenAuthEvents,
 } from './authClient'
 export { useAuthStore } from './authStore'

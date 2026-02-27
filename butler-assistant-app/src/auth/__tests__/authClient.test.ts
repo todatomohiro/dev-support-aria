@@ -207,27 +207,27 @@ describe('authClient', () => {
     })
   })
 
-  describe('getAccessToken', () => {
-    it('アクセストークンを返す', async () => {
+  describe('getIdToken', () => {
+    it('IDトークンを返す', async () => {
       mockFetchAuthSession.mockResolvedValue({
         tokens: {
-          accessToken: {
-            toString: () => 'mock-access-token',
+          idToken: {
+            toString: () => 'mock-id-token',
           },
         },
       })
 
-      const { getAccessToken } = await import('../authClient')
-      const token = await getAccessToken()
+      const { getIdToken } = await import('../authClient')
+      const token = await getIdToken()
 
-      expect(token).toBe('mock-access-token')
+      expect(token).toBe('mock-id-token')
     })
 
     it('セッションがない場合は null を返す', async () => {
       mockFetchAuthSession.mockRejectedValue(new Error('No session'))
 
-      const { getAccessToken } = await import('../authClient')
-      const token = await getAccessToken()
+      const { getIdToken } = await import('../authClient')
+      const token = await getIdToken()
 
       expect(token).toBeNull()
     })

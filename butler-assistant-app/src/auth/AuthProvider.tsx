@@ -4,7 +4,7 @@ import {
   configureAmplify,
   isAuthConfigured,
   getAuthUser,
-  getAccessToken,
+  getIdToken,
   listenAuthEvents,
 } from './authClient'
 import { syncService } from '@/services/syncService'
@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const user = await getAuthUser()
-        const token = await getAccessToken()
+        const token = await getIdToken()
 
         if (user && token) {
           login(user, token)
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         case 'signedIn':
         case 'tokenRefresh': {
           const user = await getAuthUser()
-          const token = await getAccessToken()
+          const token = await getIdToken()
           if (user && token) {
             login(user, token)
             await syncService.onLogin(token)
