@@ -126,10 +126,18 @@ class LLMClientImpl implements LLMClientService {
 
       const jsonMatch = cleanJson.match(/\{[\s\S]*\}/)
       if (!jsonMatch) {
-        throw new ParseError('JSON形式のレスポンスが見つかりません')
+        // JSON が返らなかった場合、テキストをそのまま使用
+        console.warn('[LLM] JSON形式でない応答をフォールバック処理:', cleanJson.slice(0, 100))
+        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral' } as StructuredResponse
       }
 
-      return JSON.parse(jsonMatch[0]) as StructuredResponse
+      try {
+        return JSON.parse(jsonMatch[0]) as StructuredResponse
+      } catch {
+        // JSON パースに失敗した場合もフォールバック
+        console.warn('[LLM] JSONパース失敗、フォールバック処理')
+        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral' } as StructuredResponse
+      }
     } catch (error) {
       if (
         error instanceof NetworkError ||

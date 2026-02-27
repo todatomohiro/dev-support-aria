@@ -108,7 +108,7 @@ describe('LLMClient', () => {
       await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(APIError)
     })
 
-    it('JSON パース失敗時は ParseError をスローする', async () => {
+    it('JSON 形式でない応答はフォールバックで idle モーションになる', async () => {
       const mockResponse = { content: 'これはJSONではありません' }
 
       global.fetch = vi.fn().mockResolvedValue({
@@ -116,7 +116,11 @@ describe('LLMClient', () => {
         json: async () => mockResponse,
       })
 
-      await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(ParseError)
+      const result = await llmClient.sendMessage('こんにちは')
+
+      expect(result.text).toBe('これはJSONではありません')
+      expect(result.motion).toBe('idle')
+      expect(result.emotion).toBe('neutral')
     })
 
     it('会話履歴を正しい形式で送信する', async () => {
