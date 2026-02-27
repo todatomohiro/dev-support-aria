@@ -12,10 +12,17 @@ function getApiBaseUrl(): string {
 /**
  * データ同期サービス
  * ログイン時にサーバーからデータを取得し、変更時に都度保存する
+ * 同一ブラウザのタブ間は BroadcastChannel、異なる端末間はポーリングで同期する
  */
 class SyncServiceImpl {
   private accessToken: string | null = null
   private configUnsubscribe: (() => void) | null = null
+  private channel: BroadcastChannel | null = null
+  private pollingTimer: ReturnType<typeof setInterval> | null = null
+  private visibilityHandler: (() => void) | null = null
+
+  /** ポーリング間隔（ミリ秒） */
+  static readonly POLLING_INTERVAL = 30_000
 
   /**
    * 設定保存（2秒デバウンス）
@@ -57,6 +64,12 @@ class SyncServiceImpl {
 
     // 設定変更の監視を開始
     this.startConfigSubscription()
+
+    // タブ間同期（BroadcastChannel）を開始
+    this.startBroadcastChannel()
+
+    // クロスデバイス同期（ポーリング）を開始
+    this.startPolling()
   }
 
   /**
@@ -65,6 +78,8 @@ class SyncServiceImpl {
   onLogout(): void {
     this.accessToken = null
     this.stopConfigSubscription()
+    this.stopBroadcastChannel()
+    this.stopPolling()
   }
 
   /**
@@ -76,6 +91,9 @@ class SyncServiceImpl {
     this.postMessages([message]).catch((error) => {
       console.error('[Sync] メッセージ保存エラー:', error)
     })
+
+    // 他タブへ即時通知
+    this.channel?.postMessage(message)
   }
 
   /**
@@ -104,6 +122,106 @@ class SyncServiceImpl {
 
     // timestamp 順にソート
     return Array.from(map.values()).sort((a, b) => a.timestamp - b.timestamp)
+  }
+
+  /**
+   * BroadcastChannel を開設し、他タブからのメッセージを受信する
+   */
+  private startBroadcastChannel(): void {
+    this.stopBroadcastChannel()
+
+    try {
+      this.channel = new BroadcastChannel('butler-sync')
+      this.channel.onmessage = (event: MessageEvent<Message>) => {
+        const message = event.data
+        const store = useAppStore.getState()
+
+        // ID 重複チェック
+        if (store.messages.some((m) => m.id === message.id)) return
+
+        store.addMessage(message)
+      }
+    } catch {
+      // BroadcastChannel 非対応環境では無視
+    }
+  }
+
+  /**
+   * BroadcastChannel を閉じる
+   */
+  private stopBroadcastChannel(): void {
+    if (this.channel) {
+      this.channel.close()
+      this.channel = null
+    }
+  }
+
+  /**
+   * クロスデバイスポーリングを開始する
+   * バックグラウンド時は停止し、フォアグラウンド復帰時に再開する
+   */
+  private startPolling(): void {
+    this.stopPolling()
+
+    this.pollingTimer = setInterval(() => {
+      this.pollMessages()
+    }, SyncServiceImpl.POLLING_INTERVAL)
+
+    this.visibilityHandler = () => {
+      if (document.hidden) {
+        // バックグラウンド: ポーリング停止
+        if (this.pollingTimer) {
+          clearInterval(this.pollingTimer)
+          this.pollingTimer = null
+        }
+      } else {
+        // フォアグラウンド復帰: 即座にフェッチ＋ポーリング再開
+        // iOS WKWebView ではバックグラウンド中に JS が凍結され、
+        // hidden ハンドラーが呼ばれずタイマーが死ぬため、常に再作成する
+        this.pollMessages()
+        if (this.pollingTimer) {
+          clearInterval(this.pollingTimer)
+        }
+        this.pollingTimer = setInterval(() => {
+          this.pollMessages()
+        }, SyncServiceImpl.POLLING_INTERVAL)
+      }
+    }
+
+    document.addEventListener('visibilitychange', this.visibilityHandler)
+  }
+
+  /**
+   * ポーリングを停止する
+   */
+  private stopPolling(): void {
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer)
+      this.pollingTimer = null
+    }
+
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler)
+      this.visibilityHandler = null
+    }
+  }
+
+  /**
+   * サーバーからメッセージを取得し、差分があればストアを更新する
+   */
+  private async pollMessages(): Promise<void> {
+    try {
+      const serverMessages = await this.fetchMessages()
+      const store = useAppStore.getState()
+      const merged = this.mergeMessages(store.messages, serverMessages)
+
+      // 件数に差分がある場合のみ更新
+      if (merged.length !== store.messages.length) {
+        useAppStore.setState({ messages: merged })
+      }
+    } catch {
+      // ポーリングエラーはクラッシュさせない
+    }
   }
 
   /**

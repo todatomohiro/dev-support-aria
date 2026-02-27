@@ -4,6 +4,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb'
 import * as apigateway from 'aws-cdk-lib/aws-apigateway'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs'
+import * as iam from 'aws-cdk-lib/aws-iam'
 import type { Construct } from 'constructs'
 import * as path from 'path'
 
@@ -86,6 +87,27 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-messages-put',
     })
 
+    // TTS Lambda（Polly 用 — DynamoDB 不要）
+    const ttsSynthesizeFn = new lambdaNode.NodejsFunction(this, 'TtsSynthesizeFn', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      entry: path.join(__dirname, '..', 'lambda', 'tts', 'synthesize.ts'),
+      functionName: 'butler-tts-synthesize',
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node22',
+      },
+    })
+
+    // Polly 音声合成権限
+    ttsSynthesizeFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['polly:SynthesizeSpeech'],
+      resources: ['*'],
+    }))
+
     // DynamoDB への読み書き権限
     table.grantReadData(settingsGetFn)
     table.grantReadWriteData(settingsPutFn)
@@ -124,6 +146,11 @@ export class ButlerStack extends cdk.Stack {
     const messagesResource = api.root.addResource('messages')
     messagesResource.addMethod('GET', new apigateway.LambdaIntegration(messagesListFn), authMethodOptions)
     messagesResource.addMethod('POST', new apigateway.LambdaIntegration(messagesPutFn), authMethodOptions)
+
+    // /tts/synthesize
+    const ttsResource = api.root.addResource('tts')
+    const ttsSynthesizeResource = ttsResource.addResource('synthesize')
+    ttsSynthesizeResource.addMethod('POST', new apigateway.LambdaIntegration(ttsSynthesizeFn), authMethodOptions)
 
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {

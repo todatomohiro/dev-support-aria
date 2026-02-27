@@ -5,7 +5,7 @@
 ## クイックリファレンス
 
 ```bash
-cd butler-assistant-app
+cd butler-assistant-app」
 
 pnpm test             # 全テスト実行（328テスト / 20ファイル）
 pnpm dev              # 開発サーバー（http://localhost:5173）

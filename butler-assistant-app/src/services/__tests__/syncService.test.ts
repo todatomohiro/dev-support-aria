@@ -7,6 +7,26 @@ import type { Message, AppConfig } from '@/types'
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
+// BroadcastChannel モック
+let mockChannelInstance: {
+  postMessage: ReturnType<typeof vi.fn>
+  close: ReturnType<typeof vi.fn>
+  onmessage: ((event: MessageEvent) => void) | null
+} | null = null
+
+vi.stubGlobal(
+  'BroadcastChannel',
+  class MockBroadcastChannel {
+    postMessage = vi.fn()
+    close = vi.fn()
+    onmessage: ((event: MessageEvent) => void) | null = null
+
+    constructor() {
+      mockChannelInstance = this
+    }
+  }
+)
+
 // 環境変数モック
 vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
 
@@ -33,6 +53,7 @@ describe('SyncService', () => {
   beforeEach(() => {
     syncService = new SyncServiceImpl()
     vi.clearAllMocks()
+    mockChannelInstance = null
 
     // ストアをリセット
     useAppStore.setState({
@@ -46,6 +67,7 @@ describe('SyncService', () => {
 
   afterEach(() => {
     syncService.onLogout()
+    vi.useRealTimers()
   })
 
   describe('mergeMessages', () => {
@@ -263,6 +285,282 @@ describe('SyncService', () => {
 
       syncService.saveMessage(mockMessage)
       expect(mockFetch).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('BroadcastChannel', () => {
+    /** onLogin のデフォルトモック */
+    function mockLoginFetch() {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ settings: null, messages: [] }),
+      })
+    }
+
+    it('saveMessage 時に BroadcastChannel へ postMessage される', async () => {
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true }),
+      })
+
+      syncService.saveMessage(mockMessage)
+
+      expect(mockChannelInstance!.postMessage).toHaveBeenCalledWith(mockMessage)
+    })
+
+    it('他タブからのメッセージがストアに追加される', async () => {
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+
+      expect(mockChannelInstance).not.toBeNull()
+      expect(mockChannelInstance!.onmessage).not.toBeNull()
+
+      // 他タブからメッセージ受信をシミュレート
+      mockChannelInstance!.onmessage!({ data: mockAssistantMessage } as MessageEvent)
+
+      const state = useAppStore.getState()
+      expect(state.messages).toHaveLength(1)
+      expect(state.messages[0].id).toBe('msg-2')
+    })
+
+    it('重複メッセージ（同一 ID）は追加されない', async () => {
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+
+      // 先にストアにメッセージを追加
+      useAppStore.getState().addMessage(mockMessage)
+
+      // 同じ ID のメッセージを受信
+      mockChannelInstance!.onmessage!({ data: mockMessage } as MessageEvent)
+
+      const state = useAppStore.getState()
+      expect(state.messages).toHaveLength(1)
+    })
+
+    it('onLogout 時にチャンネルが close される', async () => {
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+
+      syncService.onLogout()
+
+      expect(mockChannelInstance!.close).toHaveBeenCalled()
+    })
+  })
+
+  describe('ポーリング', () => {
+    /** onLogin のデフォルトモック */
+    function mockLoginFetch() {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ settings: null, messages: [] }),
+      })
+    }
+
+    it('onLogin 後にポーリングが開始される', async () => {
+      vi.useFakeTimers()
+
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+      vi.clearAllMocks()
+
+      // ポーリング用のレスポンスをセットアップ
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ messages: [mockMessage] }),
+      })
+
+      // 30秒進める
+      await vi.advanceTimersByTimeAsync(SyncServiceImpl.POLLING_INTERVAL)
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/messages?limit=100'),
+        expect.any(Object)
+      )
+    })
+
+    it('30秒後にサーバーからメッセージを取得する', async () => {
+      vi.useFakeTimers()
+
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+      vi.clearAllMocks()
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ messages: [mockMessage] }),
+      })
+
+      await vi.advanceTimersByTimeAsync(SyncServiceImpl.POLLING_INTERVAL)
+
+      const state = useAppStore.getState()
+      expect(state.messages).toHaveLength(1)
+      expect(state.messages[0].id).toBe('msg-1')
+    })
+
+    it('新しいメッセージがあればストアに反映される', async () => {
+      vi.useFakeTimers()
+
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+
+      // 既にストアにメッセージがある状態
+      useAppStore.getState().addMessage(mockMessage)
+      vi.clearAllMocks()
+
+      // サーバーに追加メッセージがある
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({ messages: [mockMessage, mockAssistantMessage] }),
+      })
+
+      await vi.advanceTimersByTimeAsync(SyncServiceImpl.POLLING_INTERVAL)
+
+      const state = useAppStore.getState()
+      expect(state.messages).toHaveLength(2)
+    })
+
+    it('件数に差分がなければ setState を呼ばない', async () => {
+      vi.useFakeTimers()
+
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+
+      // 既にストアにメッセージがある
+      useAppStore.getState().addMessage(mockMessage)
+      vi.clearAllMocks()
+
+      const setStateSpy = vi.spyOn(useAppStore, 'setState')
+
+      // サーバーにも同じメッセージのみ
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ messages: [mockMessage] }),
+      })
+
+      await vi.advanceTimersByTimeAsync(SyncServiceImpl.POLLING_INTERVAL)
+
+      expect(setStateSpy).not.toHaveBeenCalled()
+      setStateSpy.mockRestore()
+    })
+
+    it('onLogout 時にポーリングが停止される', async () => {
+      vi.useFakeTimers()
+
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+      syncService.onLogout()
+      vi.clearAllMocks()
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ messages: [mockMessage] }),
+      })
+
+      await vi.advanceTimersByTimeAsync(SyncServiceImpl.POLLING_INTERVAL)
+
+      // ポーリングが停止しているので fetch は呼ばれない
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('バックグラウンド時にポーリングが停止される', async () => {
+      vi.useFakeTimers()
+
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+      vi.clearAllMocks()
+
+      // バックグラウンドへ遷移
+      Object.defineProperty(document, 'hidden', {
+        value: true,
+        writable: true,
+        configurable: true,
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ messages: [mockMessage] }),
+      })
+
+      // 30秒進めてもフェッチされない
+      await vi.advanceTimersByTimeAsync(SyncServiceImpl.POLLING_INTERVAL)
+
+      expect(mockFetch).not.toHaveBeenCalled()
+
+      // フォアグラウンド復帰
+      Object.defineProperty(document, 'hidden', {
+        value: false,
+        writable: true,
+        configurable: true,
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      // 復帰時に即座にフェッチされる
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/messages?limit=100'),
+        expect.any(Object)
+      )
+    })
+
+    it('iOS: hidden を経由せずフォアグラウンド復帰してもポーリングが再開される', async () => {
+      vi.useFakeTimers()
+
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+      vi.clearAllMocks()
+
+      // iOS ではバックグラウンド中に JS が凍結され、hidden ハンドラーが呼ばれない。
+      // フォアグラウンド復帰時に直接 visible イベントが発火するケースをシミュレート。
+      Object.defineProperty(document, 'hidden', {
+        value: false,
+        writable: true,
+        configurable: true,
+      })
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ messages: [mockMessage] }),
+      })
+
+      // hidden を経由せず直接 visible で復帰
+      document.dispatchEvent(new Event('visibilitychange'))
+      await vi.advanceTimersByTimeAsync(0)
+
+      // 復帰時に即座にフェッチされる
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      vi.clearAllMocks()
+
+      // さらに30秒後にもポーリングが動くことを確認
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ messages: [mockMessage] }),
+      })
+
+      await vi.advanceTimersByTimeAsync(SyncServiceImpl.POLLING_INTERVAL)
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('ポーリングエラー時にクラッシュしない', async () => {
+      vi.useFakeTimers()
+
+      mockLoginFetch()
+      await syncService.onLogin(mockToken)
+      vi.clearAllMocks()
+
+      mockFetch.mockRejectedValue(new Error('Network error'))
+
+      // エラーが発生してもクラッシュしない
+      await vi.advanceTimersByTimeAsync(SyncServiceImpl.POLLING_INTERVAL)
+
+      // ストアは変更されない
+      expect(useAppStore.getState().messages).toHaveLength(0)
     })
   })
 })
