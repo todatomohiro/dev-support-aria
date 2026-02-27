@@ -124,6 +124,7 @@ export const useAppStore = create<AppState>()(
     {
       name: 'butler-app-storage',
       partialize: (state) => ({
+        messages: state.messages,
         config: state.config,
       }),
     }
