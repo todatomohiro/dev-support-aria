@@ -20,6 +20,9 @@ function App() {
   // Auth store
   const authStatus = useAuthStore((s) => s.status)
 
+  // 認証が必要かつ未認証かを判定
+  const requiresAuth = isAuthConfigured() && authStatus !== 'authenticated'
+
   // Zustand store
   const messages = useAppStore((state) => state.messages)
   const isLoading = useAppStore((state) => state.isLoading)
@@ -196,75 +199,106 @@ function App() {
               </button>
             )}
             <UserMenu />
-            <button
-              onClick={() => setIsModelImporterOpen(true)}
-              className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-              title="モデルをインポート"
-              data-testid="model-import-button"
-            >
-              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
-            </button>
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-              title="設定"
-              data-testid="settings-button"
-            >
-              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-            </button>
+            {!requiresAuth && (
+              <>
+                <button
+                  onClick={() => setIsModelImporterOpen(true)}
+                  className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
+                  title="モデルをインポート"
+                  data-testid="model-import-button"
+                >
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
+                  title="設定"
+                  data-testid="settings-button"
+                >
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
+                </button>
+              </>
+            )}
           </nav>
         </div>
       </header>
 
       {/* メインコンテンツ */}
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        {/* Live2Dキャラクター表示エリア */}
-        <div className="h-[40vh] md:h-auto md:w-1/3 md:min-w-[280px] md:max-w-[400px] bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0">
-          <div className="flex-1 flex items-center justify-center min-h-0">
-            <Live2DCanvas
-              ref={live2dRef}
-              modelPath={config.model.currentModelId}
-              currentMotion={currentMotion}
-              onMotionComplete={handleMotionComplete}
-            />
+        {requiresAuth ? (
+          /* 未認証時: ログイン促進画面 */
+          <div className="flex-1 flex items-center justify-center" data-testid="login-prompt">
+            <div className="text-center px-6">
+              <svg className="w-16 h-16 mx-auto mb-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                ログインが必要です
+              </h2>
+              <p className="text-gray-500 dark:text-gray-400 mb-6">
+                アシスタント機能を利用するにはログインしてください
+              </p>
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                data-testid="login-prompt-button"
+              >
+                ログイン
+              </button>
+            </div>
           </div>
-          {/* モーションコントロールパネル */}
-          <div className="p-1 md:p-2 border-t border-gray-200 dark:border-gray-700 overflow-x-auto">
-            <MotionPanel
-              onPlayMotion={handlePlayMotion}
-              onPlayExpression={handlePlayExpression}
-            />
-          </div>
-        </div>
+        ) : (
+          /* 認証済み or ゲストモード: 通常コンテンツ */
+          <>
+            {/* Live2Dキャラクター表示エリア */}
+            <div className="h-[40vh] md:h-auto md:w-1/3 md:min-w-[280px] md:max-w-[400px] bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0">
+              <div className="flex-1 flex items-center justify-center min-h-0">
+                <Live2DCanvas
+                  ref={live2dRef}
+                  modelPath={config.model.currentModelId}
+                  currentMotion={currentMotion}
+                  onMotionComplete={handleMotionComplete}
+                />
+              </div>
+              {/* モーションコントロールパネル */}
+              <div className="p-1 md:p-2 border-t border-gray-200 dark:border-gray-700 overflow-x-auto">
+                <MotionPanel
+                  onPlayMotion={handlePlayMotion}
+                  onPlayExpression={handlePlayExpression}
+                />
+              </div>
+            </div>
 
-        {/* チャットエリア */}
-        <div className="flex-1 flex flex-col min-h-0" style={{ fontSize: `${config.ui.fontSize}px` }}>
-          <ChatUI
-            messages={messages}
-            isLoading={isLoading}
-            onSendMessage={handleSendMessage}
-          />
-        </div>
+            {/* チャットエリア */}
+            <div className="flex-1 flex flex-col min-h-0" style={{ fontSize: `${config.ui.fontSize}px` }}>
+              <ChatUI
+                messages={messages}
+                isLoading={isLoading}
+                onSendMessage={handleSendMessage}
+              />
+            </div>
+          </>
+        )}
       </main>
 
       {/* 設定モーダル */}
