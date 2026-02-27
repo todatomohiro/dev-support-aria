@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { llmClient } from './llmClient'
 import { motionController } from './motionController'
+import { syncService } from './syncService'
 import { useAppStore } from '@/stores/appStore'
 import type { Message, StructuredResponse, ConversationHistory, AppError } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
@@ -43,6 +44,7 @@ class ChatControllerImpl {
 
     // ストアにユーザーメッセージを追加
     store.addMessage(userMessage)
+    syncService.saveMessage(userMessage)
 
     // ローディング状態を開始
     store.setLoading(true)
@@ -68,6 +70,7 @@ class ChatControllerImpl {
 
       // ストアにアシスタントメッセージを追加
       store.addMessage(assistantMessage)
+      syncService.saveMessage(assistantMessage)
 
       // モーションと表情を再生
       await this.playMotionAndExpression(structuredResponse)
@@ -165,6 +168,7 @@ class ChatControllerImpl {
       motion: motionTag,
     }
     store.addMessage(assistantMessage)
+    syncService.saveMessage(assistantMessage)
   }
 
   /**

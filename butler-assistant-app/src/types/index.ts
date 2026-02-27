@@ -30,6 +30,8 @@ export {
   ParseError,
   ValidationError,
   ModelLoadError,
+  AuthError,
+  SyncError,
 } from './errors'
 export type { ErrorLog } from './errors'
 

@@ -77,6 +77,24 @@ export class ModelLoadError extends AppError {
 }
 
 /**
+ * 認証エラー
+ */
+export class AuthError extends AppError {
+  constructor(message: string = '認証に失敗しました', details?: unknown) {
+    super(message, 'AUTH_ERROR', details)
+  }
+}
+
+/**
+ * 同期エラー
+ */
+export class SyncError extends AppError {
+  constructor(message: string = 'データの同期に失敗しました', details?: unknown) {
+    super(message, 'SYNC_ERROR', details)
+  }
+}
+
+/**
  * エラーログ
  */
 export interface ErrorLog {

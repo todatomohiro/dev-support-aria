@@ -6,13 +6,19 @@ import { chatController } from './services/chatController'
 import { llmClient } from './services/llmClient'
 import { currentPlatform, logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
+import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
+import { useAuthStore } from './auth'
 import './App.css'
 
 function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isModelImporterOpen, setIsModelImporterOpen] = useState(false)
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
   const live2dRef = useRef<Live2DCanvasHandle>(null)
+
+  // Auth store
+  const authStatus = useAuthStore((s) => s.status)
 
   // Zustand store
   const messages = useAppStore((state) => state.messages)
@@ -153,16 +159,19 @@ function App() {
   // ローディング画面
   if (!isInitialized) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-900">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">初期化中...</p>
+      <AuthProvider>
+        <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-900">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-gray-600 dark:text-gray-400">初期化中...</p>
+          </div>
         </div>
-      </div>
+      </AuthProvider>
     )
   }
 
   return (
+    <AuthProvider>
     <div className="h-screen flex flex-col bg-gray-100 dark:bg-gray-900 pb-[env(safe-area-inset-bottom)]">
       {/* ヘッダー */}
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 shrink-0 pt-[env(safe-area-inset-top)]">
@@ -177,6 +186,16 @@ function App() {
           </div>
 
           <nav className="flex items-center gap-1 sm:gap-2">
+            {isAuthConfigured() && authStatus !== 'authenticated' && authStatus !== 'loading' && (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                data-testid="login-button"
+              >
+                ログイン
+              </button>
+            )}
+            <UserMenu />
             <button
               onClick={() => setIsModelImporterOpen(true)}
               className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
@@ -285,6 +304,9 @@ function App() {
         </div>
       )}
 
+      {/* 認証モーダル */}
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+
       {/* エラー通知 */}
       <ErrorNotification
         error={lastError}
@@ -292,6 +314,7 @@ function App() {
         autoDismissDelay={5000}
       />
     </div>
+    </AuthProvider>
   )
 }
 
