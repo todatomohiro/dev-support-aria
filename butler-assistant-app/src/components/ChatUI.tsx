@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Message } from '@/types'
 import { ttsService } from '@/services/ttsService'
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 
 interface ChatUIProps {
   messages: Message[]
@@ -15,7 +16,76 @@ interface ChatUIProps {
  */
 export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
+  const [autoSendEnabled, setAutoSendEnabled] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inputTextRef = useRef('')
+  const autoSendEnabledRef = useRef(false)
+  const isLoadingRef = useRef(false)
+
+  const { status: sttStatus, interimText, error: sttError, toggleListening, isSupported: sttSupported } =
+    useSpeechRecognition({
+      lang: 'ja-JP',
+      continuous: autoSendEnabled,
+      onResult: (text) => {
+        setInputText((prev) => prev + text)
+        resetAutoSendTimer()
+      },
+    })
+
+  // ref を最新値に同期（setTimeout クロージャ問題回避）
+  useEffect(() => { inputTextRef.current = inputText }, [inputText])
+  useEffect(() => { autoSendEnabledRef.current = autoSendEnabled }, [autoSendEnabled])
+  useEffect(() => { isLoadingRef.current = isLoading }, [isLoading])
+
+
+  /** 自動送信タイマーをリセット */
+  const resetAutoSendTimer = useCallback(() => {
+    if (autoSendTimerRef.current) {
+      clearTimeout(autoSendTimerRef.current)
+      autoSendTimerRef.current = null
+    }
+    if (!autoSendEnabledRef.current || isLoadingRef.current) return
+    autoSendTimerRef.current = setTimeout(() => {
+      const text = inputTextRef.current.trim()
+      if (text) {
+        onSendMessage(text)
+        setInputText('')
+      }
+      autoSendTimerRef.current = null
+    }, 3500)
+  }, [onSendMessage])
+
+  // 中間結果（話し続けている最中）でもタイマーリセット
+  useEffect(() => {
+    if (interimText && autoSendEnabledRef.current && !isLoadingRef.current) {
+      resetAutoSendTimer()
+    }
+  }, [interimText, resetAutoSendTimer])
+
+  // 返事が来た後、入力テキストがあればタイマー開始
+  useEffect(() => {
+    if (!isLoading && autoSendEnabledRef.current && inputTextRef.current.trim()) {
+      resetAutoSendTimer()
+    }
+  }, [isLoading, resetAutoSendTimer])
+
+  // 自動送信 OFF 時にタイマーをクリア
+  useEffect(() => {
+    if (!autoSendEnabled && autoSendTimerRef.current) {
+      clearTimeout(autoSendTimerRef.current)
+      autoSendTimerRef.current = null
+    }
+  }, [autoSendEnabled])
+
+  // アンマウント時にタイマーをクリア
+  useEffect(() => {
+    return () => {
+      if (autoSendTimerRef.current) {
+        clearTimeout(autoSendTimerRef.current)
+      }
+    }
+  }, [])
 
   // 新しいメッセージ追加時に自動スクロール
   useEffect(() => {
@@ -32,6 +102,10 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 
   const handleSendClick = () => {
     if (inputText.trim() && !isLoading) {
+      if (autoSendTimerRef.current) {
+        clearTimeout(autoSendTimerRef.current)
+        autoSendTimerRef.current = null
+      }
       onSendMessage(inputText.trim())
       setInputText('')
     }
@@ -62,45 +136,104 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 
       {/* 入力エリア */}
       <div className="border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4">
-        <div className="flex flex-col sm:flex-row gap-2">
-          <textarea
-            value={inputText}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="メッセージを入力..."
-            className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 p-2 sm:p-3 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-            rows={2}
-            disabled={isLoading}
-            data-testid="chat-input"
-          />
+        <textarea
+          value={inputText}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          placeholder="メッセージを入力..."
+          className="w-full resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 p-2 sm:p-3 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+          rows={2}
+          disabled={isLoading}
+          data-testid="chat-input"
+        />
+        {/* 中間結果（認識中テキスト） */}
+        {interimText && (
+          <p className="text-xs text-gray-400 italic px-1 mt-0.5 mb-1 truncate">
+            {interimText}
+          </p>
+        )}
+        {/* STT エラー表示 */}
+        {sttError && (
+          <p className="text-xs text-red-500 px-1 mt-0.5 mb-1">
+            {sttError}
+          </p>
+        )}
+        <div className="flex items-center gap-2 mt-1">
+          {/* マイクボタン（対応ブラウザのみ） */}
+          {sttSupported && (
+            <button
+              onClick={toggleListening}
+              className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+                sttStatus === 'listening'
+                  ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
+                  : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300'
+              }`}
+              title={sttStatus === 'listening' ? '音声認識を停止' : '音声入力'}
+              data-testid="stt-mic-button"
+            >
+              {sttStatus === 'listening' ? (
+                /* 停止アイコン */
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="1" />
+                </svg>
+              ) : (
+                /* マイクアイコン */
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+              )}
+            </button>
+          )}
           <button
             onClick={handleSendClick}
             disabled={!inputText.trim() || isLoading}
-            className="px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm sm:text-base"
+            className="flex-1 px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm sm:text-base"
             data-testid="send-button"
           >
             送信
           </button>
         </div>
         <div className="flex items-center justify-between mt-1 sm:mt-2">
-          <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="tts-toggle">
-            <span className="text-xs text-gray-500">🔊 自動読み上げ</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={ttsEnabled}
-              onClick={() => onToggleTts(!ttsEnabled)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                ttsEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-              }`}
-            >
-              <span
-                className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                  ttsEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+          <div className="flex items-center gap-3">
+            {sttSupported && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="auto-send-toggle">
+                <span className="text-xs text-gray-500">🎤 音声自動送信</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoSendEnabled}
+                  onClick={() => setAutoSendEnabled(!autoSendEnabled)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    autoSendEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                      autoSendEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                    }`}
+                  />
+                </button>
+              </label>
+            )}
+            <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="tts-toggle">
+              <span className="text-xs text-gray-500">🔊 自動読み上げ</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={ttsEnabled}
+                onClick={() => onToggleTts(!ttsEnabled)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                  ttsEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
                 }`}
-              />
-            </button>
-          </label>
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                    ttsEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                  }`}
+                />
+              </button>
+            </label>
+          </div>
           <p className="text-xs text-gray-500 hidden sm:block">
             Enter で送信、Shift+Enter で改行
           </p>

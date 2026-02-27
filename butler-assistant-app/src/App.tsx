@@ -11,7 +11,7 @@ import { getMemoryUsage } from './utils/performance'
 import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
 import { useAuthStore } from './auth'
 import { ttsService } from './services/ttsService'
-import { PollyPoc } from './poc'
+import { PollyPoc, SttPoc } from './poc'
 import './App.css'
 
 function App() {
@@ -272,6 +272,7 @@ function App() {
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
         <Routes>
           <Route path="/poc/polly" element={<PollyPoc />} />
+          <Route path="/poc/stt" element={<SttPoc />} />
           <Route path="*" element={
             requiresAuth ? (
               /* 未認証時: ログイン促進画面 */
