@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { llmClient, retryWithBackoff } from '../llmClient'
+import { llmClient, retryWithBackoff, buildSystemPrompt, BUTLER_SYSTEM_PROMPT } from '../llmClient'
 import { APIError, NetworkError, RateLimitError } from '@/types'
+import type { UserProfile } from '@/types'
 
 describe('LLMClient', () => {
   const originalFetch = global.fetch
@@ -127,6 +128,110 @@ describe('LLMClient', () => {
         expect(errorMessage).not.toContain(sensitiveApiKey)
       }
     })
+  })
+})
+
+describe('buildSystemPrompt', () => {
+  it('プロフィール未設定の場合はベースプロンプトのみ返す', () => {
+    const result = buildSystemPrompt()
+    expect(result).toBe(BUTLER_SYSTEM_PROMPT)
+  })
+
+  it('プロフィールがundefinedの場合はベースプロンプトのみ返す', () => {
+    const result = buildSystemPrompt(undefined)
+    expect(result).toBe(BUTLER_SYSTEM_PROMPT)
+  })
+
+  it('ニックネームが空の場合はベースプロンプトのみ返す', () => {
+    const profile: UserProfile = { nickname: '', honorific: '', gender: '' }
+    const result = buildSystemPrompt(profile)
+    expect(result).toBe(BUTLER_SYSTEM_PROMPT)
+  })
+
+  it('ニックネームのみ設定された場合、呼び捨てで呼ぶ指示が追加される', () => {
+    const profile: UserProfile = { nickname: '太郎', honorific: '', gender: '' }
+    const result = buildSystemPrompt(profile)
+    expect(result).toContain('ユーザーの名前は「太郎」です')
+    expect(result).toContain('「太郎」と呼んでください')
+  })
+
+  it('ニックネームと敬称が設定された場合、敬称付きで呼ぶ指示が追加される', () => {
+    const profile: UserProfile = { nickname: '太郎', honorific: 'さん', gender: '' }
+    const result = buildSystemPrompt(profile)
+    expect(result).toContain('「太郎さん」と呼んでください')
+  })
+
+  it('敬称「くん」が正しく反映される', () => {
+    const profile: UserProfile = { nickname: '太郎', honorific: 'くん', gender: '' }
+    const result = buildSystemPrompt(profile)
+    expect(result).toContain('「太郎くん」と呼んでください')
+  })
+
+  it('敬称「様」が正しく反映される', () => {
+    const profile: UserProfile = { nickname: '太郎', honorific: '様', gender: '' }
+    const result = buildSystemPrompt(profile)
+    expect(result).toContain('「太郎様」と呼んでください')
+  })
+
+  it('性別が女性の場合、その情報が追加される', () => {
+    const profile: UserProfile = { nickname: '花子', honorific: 'さん', gender: 'female' }
+    const result = buildSystemPrompt(profile)
+    expect(result).toContain('ユーザーは女性です')
+  })
+
+  it('性別が男性の場合、その情報が追加される', () => {
+    const profile: UserProfile = { nickname: '太郎', honorific: 'くん', gender: 'male' }
+    const result = buildSystemPrompt(profile)
+    expect(result).toContain('ユーザーは男性です')
+  })
+
+  it('性別が未設定の場合、性別情報は追加されない', () => {
+    const profile: UserProfile = { nickname: '太郎', honorific: '', gender: '' }
+    const result = buildSystemPrompt(profile)
+    expect(result).not.toContain('ユーザーは女性です')
+    expect(result).not.toContain('ユーザーは男性です')
+  })
+
+  it('ベースプロンプトを含んでいる', () => {
+    const profile: UserProfile = { nickname: '太郎', honorific: 'さん', gender: 'male' }
+    const result = buildSystemPrompt(profile)
+    expect(result).toContain(BUTLER_SYSTEM_PROMPT)
+  })
+})
+
+describe('setUserProfile', () => {
+  const originalFetch = global.fetch
+
+  afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  it('プロフィール設定後のsendMessageでプロンプトにユーザー情報が含まれる', async () => {
+    llmClient.setApiKey('test-key')
+    llmClient.setProvider('gemini')
+    llmClient.setUserProfile({ nickname: '太郎', honorific: 'さん', gender: 'male' })
+
+    const mockResponse = {
+      candidates: [
+        {
+          content: {
+            parts: [{ text: '{"text": "太郎さん、こんにちは！", "motion": "smile"}' }],
+          },
+        },
+      ],
+    }
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockResponse,
+    })
+
+    await llmClient.sendMessage('こんにちは')
+
+    const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const body = JSON.parse(fetchCall[1].body)
+    expect(body.systemInstruction.parts[0].text).toContain('太郎さん')
+    expect(body.systemInstruction.parts[0].text).toContain('ユーザーは男性です')
   })
 })
 

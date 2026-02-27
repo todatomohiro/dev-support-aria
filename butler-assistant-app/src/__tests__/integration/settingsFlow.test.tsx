@@ -10,6 +10,11 @@ describe('設定フロー統合テスト', () => {
       fontSize: 14,
       characterSize: 100,
     },
+    profile: {
+      nickname: '' as string,
+      honorific: '' as '' | 'さん' | 'くん' | '様',
+      gender: '' as '' | 'female' | 'male',
+    },
   }
 
   const mockOnClose = vi.fn()

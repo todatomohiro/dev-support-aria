@@ -1,7 +1,7 @@
 import type { ConversationHistory } from './message'
 import type { ModelConfig, MotionPriority } from './model'
 import type { ParsedResponse, StructuredResponse, ValidationResult } from './response'
-import type { LLMProvider } from './config'
+import type { LLMProvider, UserProfile } from './config'
 
 /**
  * LLM Client Service インターフェース
@@ -21,6 +21,11 @@ export interface LLMClientService {
    * APIキーを設定
    */
   setApiKey(apiKey: string): void
+
+  /**
+   * ユーザープロフィールを設定
+   */
+  setUserProfile(profile: UserProfile): void
 }
 
 /**

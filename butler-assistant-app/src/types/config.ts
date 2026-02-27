@@ -31,11 +31,21 @@ export interface UIConfig {
 }
 
 /**
+ * ユーザープロフィール
+ */
+export interface UserProfile {
+  nickname: string
+  honorific: '' | 'さん' | 'くん' | '様'
+  gender: '' | 'female' | 'male'
+}
+
+/**
  * アプリケーション設定
  */
 export interface AppConfig {
   model: ModelReference
   ui: UIConfig
+  profile: UserProfile
 }
 
 /**
@@ -45,4 +55,13 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   theme: 'light',
   fontSize: 14,
   characterSize: 100,
+}
+
+/**
+ * デフォルトのユーザープロフィール
+ */
+export const DEFAULT_USER_PROFILE: UserProfile = {
+  nickname: '',
+  honorific: '',
+  gender: '',
 }

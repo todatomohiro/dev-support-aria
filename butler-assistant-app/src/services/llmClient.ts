@@ -3,6 +3,7 @@ import type {
   LLMProvider,
   ConversationHistory,
   StructuredResponse,
+  UserProfile,
 } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
 
@@ -57,12 +58,35 @@ export const RESPONSE_SCHEMA = {
 }
 
 /**
+ * ユーザープロフィールを含むシステムプロンプトを構築
+ */
+export function buildSystemPrompt(profile?: UserProfile): string {
+  let prompt = BUTLER_SYSTEM_PROMPT
+
+  if (!profile || !profile.nickname) return prompt
+
+  const callName = profile.honorific
+    ? `${profile.nickname}${profile.honorific}`
+    : profile.nickname
+  prompt += `\n\nユーザー情報：`
+  prompt += `\n- ユーザーの名前は「${profile.nickname}」です。「${callName}」と呼んでください`
+
+  if (profile.gender === 'female') {
+    prompt += `\n- ユーザーは女性です`
+  } else if (profile.gender === 'male') {
+    prompt += `\n- ユーザーは男性です`
+  }
+
+  return prompt
+}
+
+/**
  * LLM Client Service 実装
  */
 class LLMClientImpl implements LLMClientService {
   private provider: LLMProvider = 'gemini'
   private apiKey: string = import.meta.env.VITE_GEMINI_API_KEY ?? ''
-  private systemPrompt: string = BUTLER_SYSTEM_PROMPT
+  private userProfile?: UserProfile
 
   setProvider(provider: LLMProvider): void {
     this.provider = provider
@@ -70,6 +94,10 @@ class LLMClientImpl implements LLMClientService {
 
   setApiKey(apiKey: string): void {
     this.apiKey = apiKey
+  }
+
+  setUserProfile(profile: UserProfile): void {
+    this.userProfile = profile
   }
 
   async sendMessage(message: string, history?: ConversationHistory): Promise<StructuredResponse> {
@@ -92,7 +120,7 @@ class LLMClientImpl implements LLMClientService {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${this.apiKey}`
 
     const contents = this.buildGeminiContents(message, history)
-    const systemInstruction = this.systemPrompt + '\n\n必ず以下のJSON形式で回答してください：\n{"text": "回答テキスト", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)"}'
+    const systemInstruction = buildSystemPrompt(this.userProfile) + '\n\n必ず以下のJSON形式で回答してください：\n{"text": "回答テキスト", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)"}'
 
     // デバッグ用: 送信するプロンプトをコンソールに出力
     console.group('🤖 Gemini API Request')
@@ -195,7 +223,7 @@ class LLMClientImpl implements LLMClientService {
           max_tokens: 1024,
           temperature: 0.7,
           system:
-            this.systemPrompt +
+            buildSystemPrompt(this.userProfile) +
             '\n\n必ず以下のJSON形式で回答してください：\n{"text": "回答テキスト", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)"}',
           messages,
         }),

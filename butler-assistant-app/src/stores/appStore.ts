@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Message, AppConfig, AppError } from '@/types'
-import { DEFAULT_UI_CONFIG } from '@/types'
+import { DEFAULT_UI_CONFIG, DEFAULT_USER_PROFILE } from '@/types'
 import { MAX_MESSAGE_HISTORY } from '@/utils/performance'
 
 /**
@@ -45,6 +45,7 @@ const defaultConfig: AppConfig = {
     currentModelId: '/models/mao_pro_jp/mao_pro.model3.json',
   },
   ui: DEFAULT_UI_CONFIG,
+  profile: DEFAULT_USER_PROFILE,
 }
 
 /**
@@ -114,6 +115,10 @@ export const useAppStore = create<AppState>()(
             ui: {
               ...state.config.ui,
               ...(configUpdate.ui || {}),
+            },
+            profile: {
+              ...state.config.profile,
+              ...(configUpdate.profile || {}),
             },
           },
         })),

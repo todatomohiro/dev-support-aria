@@ -1,23 +1,30 @@
 import { useState, useEffect } from 'react'
-import type { UIConfig } from '@/types'
+import type { UIConfig, UserProfile } from '@/types'
 
 interface SettingsProps {
   isOpen: boolean
   onClose: () => void
   config: {
     ui: UIConfig
+    profile: UserProfile
   }
-  onSave: (config: { ui: Partial<UIConfig> }) => void
+  onSave: (config: { ui?: Partial<UIConfig>; profile?: Partial<UserProfile> }) => void
 }
 
 /**
- * 設定パネル コンポーネント（表示設定のみ）
+ * 設定パネル コンポーネント
  */
 export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
-  // ローカル状態
+  // UI設定のローカル状態
   const [theme, setTheme] = useState<'light' | 'dark'>(config.ui.theme)
   const [fontSize, setFontSize] = useState(config.ui.fontSize)
   const [characterSize, setCharacterSize] = useState(config.ui.characterSize)
+
+  // プロフィールのローカル状態
+  const [nickname, setNickname] = useState(config.profile.nickname)
+  const [honorific, setHonorific] = useState<UserProfile['honorific']>(config.profile.honorific)
+  const [gender, setGender] = useState<UserProfile['gender']>(config.profile.gender)
+
   const [isSaving, setIsSaving] = useState(false)
 
   // 設定が変更された時にローカル状態を更新
@@ -25,6 +32,9 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
     setTheme(config.ui.theme)
     setFontSize(config.ui.fontSize)
     setCharacterSize(config.ui.characterSize)
+    setNickname(config.profile.nickname)
+    setHonorific(config.profile.honorific)
+    setGender(config.profile.gender)
   }, [config])
 
   const handleSave = async () => {
@@ -35,6 +45,11 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
           theme,
           fontSize,
           characterSize,
+        },
+        profile: {
+          nickname,
+          honorific,
+          gender,
         },
       })
 
@@ -51,6 +66,9 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
     setTheme(config.ui.theme)
     setFontSize(config.ui.fontSize)
     setCharacterSize(config.ui.characterSize)
+    setNickname(config.profile.nickname)
+    setHonorific(config.profile.honorific)
+    setGender(config.profile.gender)
     onClose()
   }
 
@@ -71,7 +89,7 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
         {/* ヘッダー */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-            表示設定
+            設定
           </h2>
           <button
             onClick={handleCancel}
@@ -96,72 +114,139 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
 
         {/* コンテンツ */}
         <div className="p-6 overflow-y-auto max-h-[60vh]">
-          <div className="space-y-6">
-            {/* テーマ */}
+          <div className="space-y-8">
+            {/* プロフィール設定セクション */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                テーマ
-              </label>
-              <div className="flex gap-4">
-                <label className="flex items-center">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4" data-testid="profile-section-title">
+                プロフィール
+              </h3>
+              <div className="space-y-4">
+                {/* ニックネーム */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    ニックネーム
+                  </label>
                   <input
-                    type="radio"
-                    name="theme"
-                    value="light"
-                    checked={theme === 'light'}
-                    onChange={() => setTheme('light')}
-                    className="mr-2"
-                    data-testid="theme-light"
+                    type="text"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value.slice(0, 20))}
+                    maxLength={20}
+                    placeholder="名前を入力"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    data-testid="nickname-input"
                   />
-                  <span className="text-gray-900 dark:text-gray-100">ライト</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    name="theme"
-                    value="dark"
-                    checked={theme === 'dark'}
-                    onChange={() => setTheme('dark')}
-                    className="mr-2"
-                    data-testid="theme-dark"
-                  />
-                  <span className="text-gray-900 dark:text-gray-100">ダーク</span>
-                </label>
+                </div>
+
+                {/* 敬称 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    敬称
+                  </label>
+                  <select
+                    value={honorific}
+                    onChange={(e) => setHonorific(e.target.value as UserProfile['honorific'])}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    data-testid="honorific-select"
+                  >
+                    <option value="">なし</option>
+                    <option value="さん">さん</option>
+                    <option value="くん">くん</option>
+                    <option value="様">様</option>
+                  </select>
+                </div>
+
+                {/* 性別 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    性別
+                  </label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value as UserProfile['gender'])}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    data-testid="gender-select"
+                  >
+                    <option value="">未設定</option>
+                    <option value="female">女性</option>
+                    <option value="male">男性</option>
+                  </select>
+                </div>
               </div>
             </div>
 
-            {/* フォントサイズ */}
+            {/* 表示設定セクション */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                フォントサイズ: {fontSize}px
-              </label>
-              <input
-                type="range"
-                min="12"
-                max="24"
-                step="1"
-                value={fontSize}
-                onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
-                className="w-full"
-                data-testid="font-size-slider"
-              />
-            </div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4" data-testid="display-section-title">
+                表示設定
+              </h3>
+              <div className="space-y-6">
+                {/* テーマ */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    テーマ
+                  </label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="theme"
+                        value="light"
+                        checked={theme === 'light'}
+                        onChange={() => setTheme('light')}
+                        className="mr-2"
+                        data-testid="theme-light"
+                      />
+                      <span className="text-gray-900 dark:text-gray-100">ライト</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="theme"
+                        value="dark"
+                        checked={theme === 'dark'}
+                        onChange={() => setTheme('dark')}
+                        className="mr-2"
+                        data-testid="theme-dark"
+                      />
+                      <span className="text-gray-900 dark:text-gray-100">ダーク</span>
+                    </label>
+                  </div>
+                </div>
 
-            {/* キャラクターサイズ */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                キャラクターサイズ: {characterSize}%
-              </label>
-              <input
-                type="range"
-                min="50"
-                max="150"
-                step="10"
-                value={characterSize}
-                onChange={(e) => setCharacterSize(parseInt(e.target.value, 10))}
-                className="w-full"
-                data-testid="character-size-slider"
-              />
+                {/* フォントサイズ */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    フォントサイズ: {fontSize}px
+                  </label>
+                  <input
+                    type="range"
+                    min="12"
+                    max="24"
+                    step="1"
+                    value={fontSize}
+                    onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
+                    className="w-full"
+                    data-testid="font-size-slider"
+                  />
+                </div>
+
+                {/* キャラクターサイズ */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    キャラクターサイズ: {characterSize}%
+                  </label>
+                  <input
+                    type="range"
+                    min="50"
+                    max="150"
+                    step="10"
+                    value={characterSize}
+                    onChange={(e) => setCharacterSize(parseInt(e.target.value, 10))}
+                    className="w-full"
+                    data-testid="character-size-slider"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>

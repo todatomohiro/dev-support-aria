@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from './stores'
 import { ChatUI, Live2DCanvas, Settings, ErrorNotification, ModelImporter, MotionPanel } from './components'
 import type { Live2DCanvasHandle } from './components'
+import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
+import { llmClient } from './services/llmClient'
 import { currentPlatform, logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
 import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
@@ -93,10 +95,15 @@ function App() {
 
   // 設定保存ハンドラー
   const handleSaveSettings = useCallback(
-    (newConfig: { ui: Partial<typeof config.ui> }) => {
-      updateConfig({
-        ui: { ...config.ui, ...newConfig.ui },
-      })
+    (newConfig: { ui?: Partial<UIConfig>; profile?: Partial<UserProfile> }) => {
+      const update: Partial<{ ui: UIConfig; profile: UserProfile }> = {}
+      if (newConfig.ui) {
+        update.ui = { ...config.ui, ...newConfig.ui }
+      }
+      if (newConfig.profile) {
+        update.profile = { ...config.profile, ...newConfig.profile }
+      }
+      updateConfig(update)
     },
     [config, updateConfig]
   )
@@ -123,6 +130,11 @@ function App() {
       document.documentElement.classList.remove('dark')
     }
   }, [config.ui.theme])
+
+  // プロフィールをLLMクライアントに反映
+  useEffect(() => {
+    llmClient.setUserProfile(config.profile)
+  }, [config.profile])
 
   // 表情の変更を監視して再生（一定時間後に neutral に戻す）
   useEffect(() => {
@@ -286,7 +298,7 @@ function App() {
       <Settings
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        config={config}
+        config={{ ui: config.ui, profile: config.profile }}
         onSave={handleSaveSettings}
       />
 
