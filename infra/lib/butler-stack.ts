@@ -18,7 +18,7 @@ export class ButlerStack extends cdk.Stack {
       sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
-      pointInTimeRecoveryEnabled: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
     })
 
     // ── Cognito User Pool ──
