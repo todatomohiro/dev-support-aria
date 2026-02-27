@@ -97,7 +97,7 @@ export class ButlerStack extends cdk.Stack {
       restApiName: 'Butler Assistant API',
       description: 'Butler Assistant App backend API',
       defaultCorsPreflightOptions: {
-        allowOrigins: ['http://localhost:5173', 'https://butler-assistant.example.com'],
+        allowOrigins: ['http://localhost:5173', 'capacitor://localhost', 'https://butler-assistant.example.com'],
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization'],
         allowCredentials: true,

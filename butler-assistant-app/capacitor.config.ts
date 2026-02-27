@@ -8,6 +8,9 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
   },
   plugins: {
+    CapacitorHttp: {
+      enabled: true,
+    },
     Preferences: {
       group: 'ButlerAssistantSettings',
     },
