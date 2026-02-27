@@ -1,16 +1,19 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Message } from '@/types'
+import { ttsService } from '@/services/ttsService'
 
 interface ChatUIProps {
   messages: Message[]
   isLoading: boolean
   onSendMessage: (text: string) => void
+  ttsEnabled: boolean
+  onToggleTts: (enabled: boolean) => void
 }
 
 /**
  * チャットUI コンポーネント
  */
-export function ChatUI({ messages, isLoading, onSendMessage }: ChatUIProps) {
+export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -79,9 +82,29 @@ export function ChatUI({ messages, isLoading, onSendMessage }: ChatUIProps) {
             送信
           </button>
         </div>
-        <p className="text-xs text-gray-500 mt-1 sm:mt-2 hidden sm:block">
-          Enter で送信、Shift+Enter で改行
-        </p>
+        <div className="flex items-center justify-between mt-1 sm:mt-2">
+          <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="tts-toggle">
+            <span className="text-xs text-gray-500">🔊 自動読み上げ</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={ttsEnabled}
+              onClick={() => onToggleTts(!ttsEnabled)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                ttsEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                  ttsEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                }`}
+              />
+            </button>
+          </label>
+          <p className="text-xs text-gray-500 hidden sm:block">
+            Enter で送信、Shift+Enter で改行
+          </p>
+        </div>
       </div>
     </div>
   )
@@ -92,6 +115,16 @@ export function ChatUI({ messages, isLoading, onSendMessage }: ChatUIProps) {
  */
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
+  const [isSpeaking, setIsSpeaking] = useState(false)
+
+  const handleSpeak = useCallback(async () => {
+    setIsSpeaking(true)
+    try {
+      await ttsService.synthesizeAndPlay(message.content)
+    } finally {
+      setIsSpeaking(false)
+    }
+  }, [message.content])
 
   return (
     <div
@@ -108,9 +141,30 @@ function MessageBubble({ message }: { message: Message }) {
         }`}
       >
         <p className="whitespace-pre-wrap text-sm sm:text-base">{message.content}</p>
-        <span className="text-[10px] sm:text-xs opacity-70 mt-1 block">
-          {formatTime(message.timestamp)}
-        </span>
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-[10px] sm:text-xs opacity-70">
+            {formatTime(message.timestamp)}
+          </span>
+          {!isUser && (
+            <button
+              onClick={handleSpeak}
+              disabled={isSpeaking}
+              className="ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity disabled:opacity-30"
+              title="読み上げ"
+              data-testid="tts-speak-button"
+            >
+              {isSpeaking ? (
+                <svg className="w-3.5 h-3.5 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+                </svg>
+              )}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

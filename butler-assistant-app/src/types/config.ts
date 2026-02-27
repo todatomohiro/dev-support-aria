@@ -28,6 +28,7 @@ export interface UIConfig {
   theme: 'light' | 'dark'
   fontSize: number
   characterSize: number
+  ttsEnabled: boolean
 }
 
 /**
@@ -55,6 +56,7 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   theme: 'light',
   fontSize: 14,
   characterSize: 100,
+  ttsEnabled: false,
 }
 
 /**

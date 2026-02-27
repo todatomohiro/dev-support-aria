@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { llmClient } from './llmClient'
 import { motionController } from './motionController'
 import { syncService } from './syncService'
+import { ttsService } from './ttsService'
 import { useAppStore } from '@/stores/appStore'
 import type { Message, StructuredResponse, ConversationHistory, AppError } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
@@ -71,6 +72,11 @@ class ChatControllerImpl {
       // ストアにアシスタントメッセージを追加
       store.addMessage(assistantMessage)
       syncService.saveMessage(assistantMessage)
+
+      // TTS 自動再生（fire-and-forget）
+      if (store.config.ui.ttsEnabled) {
+        ttsService.synthesizeAndPlay(assistantMessage.content)
+      }
 
       // モーションと表情を再生
       await this.playMotionAndExpression(structuredResponse)
@@ -169,6 +175,11 @@ class ChatControllerImpl {
     }
     store.addMessage(assistantMessage)
     syncService.saveMessage(assistantMessage)
+
+    // TTS 自動再生（fire-and-forget）
+    if (store.config.ui.ttsEnabled) {
+      ttsService.synthesizeAndPlay(assistantMessage.content)
+    }
   }
 
   /**
