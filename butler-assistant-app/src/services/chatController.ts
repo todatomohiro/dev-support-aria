@@ -195,21 +195,21 @@ class ChatControllerImpl {
    */
   private getErrorMessage(error: unknown): string {
     if (error instanceof NetworkError) {
-      return '申し訳ございません。ネットワーク接続に問題が発生しました。インターネット接続をご確認ください。'
+      return 'あれ、ネットがつながらないみたい…ネット接続を確認してみて！'
     }
     if (error instanceof RateLimitError) {
-      return '申し訳ございません。現在リクエストが集中しております。少々お待ちいただいてから再度お試しください。'
+      return 'ごめんね、今ちょっと混み合ってるみたい。少し待ってからもう一回試してみて！'
     }
     if (error instanceof APIError) {
-      return '申し訳ございません。サービスとの通信に問題が発生しました。APIキーの設定をご確認ください。'
+      return 'うーん、なんかうまくいかなかった…ちょっと時間をおいて試してみてね！'
     }
     if (error instanceof ParseError) {
-      return '申し訳ございません。応答の処理中にエラーが発生しました。'
+      return 'あれ？うまく返事できなかった…もう一回聞いてくれる？'
     }
     if (error instanceof Error) {
-      return `申し訳ございません。予期せぬエラーが発生しました: ${error.message}`
+      return `ごめん、なんかエラーが出ちゃった…：${error.message}`
     }
-    return '申し訳ございません。予期せぬエラーが発生しました。'
+    return 'ごめんね、なんかうまくいかなかったみたい…もう一回試してみて！'
   }
 
   /**

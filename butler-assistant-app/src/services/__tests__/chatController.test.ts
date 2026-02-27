@@ -139,7 +139,7 @@ describe('ChatController', () => {
       const state = useAppStore.getState()
       expect(state.messages).toHaveLength(2)
       expect(state.messages[1].role).toBe('assistant')
-      expect(state.messages[1].content).toContain('ネットワーク接続')
+      expect(state.messages[1].content).toContain('ネット')
     })
 
     it('AppErrorがストアに設定される', async () => {
@@ -198,7 +198,7 @@ describe('ChatController', () => {
 
       const state = useAppStore.getState()
       const lastMessage = state.messages[state.messages.length - 1]
-      expect(lastMessage.content).toContain('インターネット接続')
+      expect(lastMessage.content).toContain('ネットがつながらない')
     })
 
     it('RateLimitErrorの場合、適切なメッセージが表示される', async () => {
@@ -208,7 +208,7 @@ describe('ChatController', () => {
 
       const state = useAppStore.getState()
       const lastMessage = state.messages[state.messages.length - 1]
-      expect(lastMessage.content).toContain('リクエストが集中')
+      expect(lastMessage.content).toContain('混み合ってる')
     })
 
     it('APIErrorの場合、適切なメッセージが表示される', async () => {
@@ -218,7 +218,7 @@ describe('ChatController', () => {
 
       const state = useAppStore.getState()
       const lastMessage = state.messages[state.messages.length - 1]
-      expect(lastMessage.content).toContain('APIキー')
+      expect(lastMessage.content).toContain('うまくいかなかった')
     })
 
     it('ParseErrorの場合、適切なメッセージが表示される', async () => {
@@ -228,7 +228,7 @@ describe('ChatController', () => {
 
       const state = useAppStore.getState()
       const lastMessage = state.messages[state.messages.length - 1]
-      expect(lastMessage.content).toContain('処理中にエラー')
+      expect(lastMessage.content).toContain('うまく返事できなかった')
     })
 
     it('不明なエラーの場合、適切なメッセージが表示される', async () => {
@@ -238,7 +238,7 @@ describe('ChatController', () => {
 
       const state = useAppStore.getState()
       const lastMessage = state.messages[state.messages.length - 1]
-      expect(lastMessage.content).toContain('予期せぬエラー')
+      expect(lastMessage.content).toContain('エラーが出ちゃった')
     })
   })
 })
