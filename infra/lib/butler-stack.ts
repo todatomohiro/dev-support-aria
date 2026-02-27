@@ -108,6 +108,30 @@ export class ButlerStack extends cdk.Stack {
       resources: ['*'],
     }))
 
+    // LLM Lambda（Bedrock 用 — DynamoDB 不要）
+    const llmChatFn = new lambdaNode.NodejsFunction(this, 'LlmChatFn', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      entry: path.join(__dirname, '..', 'lambda', 'llm', 'chat.ts'),
+      functionName: 'butler-llm-chat',
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node22',
+      },
+    })
+
+    // Bedrock InvokeModel 権限（inference profile + foundation model）
+    llmChatFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: [
+        'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
+        `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
+      ],
+    }))
+
     // DynamoDB への読み書き権限
     table.grantReadData(settingsGetFn)
     table.grantReadWriteData(settingsPutFn)
@@ -151,6 +175,11 @@ export class ButlerStack extends cdk.Stack {
     const ttsResource = api.root.addResource('tts')
     const ttsSynthesizeResource = ttsResource.addResource('synthesize')
     ttsSynthesizeResource.addMethod('POST', new apigateway.LambdaIntegration(ttsSynthesizeFn), authMethodOptions)
+
+    // /llm/chat
+    const llmResource = api.root.addResource('llm')
+    const llmChatResource = llmResource.addResource('chat')
+    llmChatResource.addMethod('POST', new apigateway.LambdaIntegration(llmChatFn), authMethodOptions)
 
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {

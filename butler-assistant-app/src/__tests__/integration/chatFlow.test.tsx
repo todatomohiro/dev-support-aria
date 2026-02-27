@@ -10,8 +10,7 @@ import type { StructuredResponse } from '@/types'
 vi.mock('@/services/llmClient', () => ({
   llmClient: {
     sendMessage: vi.fn(),
-    setProvider: vi.fn(),
-    setApiKey: vi.fn(),
+    setUserProfile: vi.fn(),
   },
 }))
 

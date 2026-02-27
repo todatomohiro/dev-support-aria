@@ -1,20 +1,4 @@
 /**
- * LLMプロバイダー
- */
-export type LLMProvider = 'gemini' | 'claude'
-
-/**
- * LLM設定
- */
-export interface LLMConfig {
-  provider: LLMProvider
-  apiKey: string
-  systemPrompt: string
-  temperature: number
-  maxTokens: number
-}
-
-/**
  * モデル参照
  */
 export interface ModelReference {

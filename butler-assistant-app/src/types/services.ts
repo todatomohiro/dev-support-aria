@@ -1,7 +1,7 @@
 import type { ConversationHistory } from './message'
 import type { ModelConfig, MotionPriority } from './model'
 import type { ParsedResponse, StructuredResponse, ValidationResult } from './response'
-import type { LLMProvider, UserProfile } from './config'
+import type { UserProfile } from './config'
 
 /**
  * LLM Client Service インターフェース
@@ -11,16 +11,6 @@ export interface LLMClientService {
    * LLMにメッセージを送信し、構造化された回答を取得
    */
   sendMessage(message: string, history?: ConversationHistory): Promise<StructuredResponse>
-
-  /**
-   * 使用するLLMプロバイダーを設定
-   */
-  setProvider(provider: LLMProvider): void
-
-  /**
-   * APIキーを設定
-   */
-  setApiKey(apiKey: string): void
 
   /**
    * ユーザープロフィールを設定

@@ -1,13 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { llmClient, retryWithBackoff, buildSystemPrompt, BUTLER_SYSTEM_PROMPT } from '../llmClient'
-import { APIError, NetworkError, RateLimitError } from '@/types'
+import { APIError, NetworkError, RateLimitError, ParseError } from '@/types'
 import type { UserProfile } from '@/types'
+import { useAuthStore } from '@/auth/authStore'
+
+// useAuthStore をモック
+vi.mock('@/auth/authStore', () => ({
+  useAuthStore: {
+    getState: vi.fn(() => ({ accessToken: 'test-access-token' })),
+  },
+}))
+
+// VITE_API_BASE_URL をモック
+const MOCK_API_BASE_URL = 'https://api.example.com/prod'
+vi.stubEnv('VITE_API_BASE_URL', MOCK_API_BASE_URL)
 
 describe('LLMClient', () => {
   const originalFetch = global.fetch
 
   beforeEach(() => {
     vi.resetAllMocks()
+    // useAuthStore のモックをリセット
+    vi.mocked(useAuthStore.getState).mockReturnValue({
+      accessToken: 'test-access-token',
+    } as ReturnType<typeof useAuthStore.getState>)
   })
 
   afterEach(() => {
@@ -15,37 +31,62 @@ describe('LLMClient', () => {
   })
 
   describe('sendMessage', () => {
-    it('APIキーが未設定の場合はエラーをスローする', async () => {
-      // APIキーをリセット（新しいインスタンスではデフォルトで空）
-      llmClient.setApiKey('')
+    it('Lambda /llm/chat を正しいペイロードで呼び出す', async () => {
+      const mockResponse = { content: '{"text": "こんにちは！", "motion": "smile", "emotion": "happy"}' }
 
-      await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(APIError)
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      await llmClient.sendMessage('こんにちは')
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      expect(fetchCall[0]).toBe(`${MOCK_API_BASE_URL}/llm/chat`)
+      expect(fetchCall[1].method).toBe('POST')
+
+      const body = JSON.parse(fetchCall[1].body)
+      expect(body.message).toBe('こんにちは')
+      expect(body.systemPrompt).toContain(BUTLER_SYSTEM_PROMPT)
+      expect(body.history).toEqual([])
     })
 
-    it('ネットワークエラー時はNetworkErrorをスローする', async () => {
-      llmClient.setApiKey('test-key')
+    it('認証トークンを Authorization ヘッダーに含める', async () => {
+      const mockResponse = { content: '{"text": "はい！", "motion": "nod", "emotion": "neutral"}' }
 
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      await llmClient.sendMessage('テスト')
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      expect(fetchCall[1].headers.Authorization).toBe('Bearer test-access-token')
+    })
+
+    it('Lambda からの正常レスポンスを StructuredResponse にパースする', async () => {
+      const mockResponse = { content: '{"text": "かしこまりました", "motion": "bow", "emotion": "happy"}' }
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const result = await llmClient.sendMessage('お願いします')
+
+      expect(result.text).toBe('かしこまりました')
+      expect(result.motion).toBe('bow')
+      expect(result.emotion).toBe('happy')
+    })
+
+    it('ネットワークエラー時は NetworkError をスローする', async () => {
       global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
 
       await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(NetworkError)
     })
 
-    it('401エラー時は適切なAPIErrorをスローする', async () => {
-      llmClient.setApiKey('invalid-key')
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 401,
-        headers: new Headers(),
-        text: async () => 'Unauthorized',
-      })
-
-      await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(APIError)
-    })
-
-    it('429エラー時はRateLimitErrorをスローする', async () => {
-      llmClient.setApiKey('test-key')
-
+    it('Lambda の 429 レスポンス時は RateLimitError をスローする', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 429,
@@ -56,64 +97,7 @@ describe('LLMClient', () => {
       await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(RateLimitError)
     })
 
-    it('Gemini APIから正常なレスポンスを受信できる', async () => {
-      llmClient.setApiKey('test-key')
-      llmClient.setProvider('gemini')
-
-      const mockResponse = {
-        candidates: [
-          {
-            content: {
-              parts: [{ text: '{"text": "かしこまりました", "motion": "bow"}' }],
-            },
-          },
-        ],
-      }
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      })
-
-      const result = await llmClient.sendMessage('こんにちは')
-
-      expect(result.text).toBe('かしこまりました')
-      expect(result.motion).toBe('bow')
-    })
-
-    it('Claude APIから正常なレスポンスを受信できる', async () => {
-      llmClient.setApiKey('test-key')
-      llmClient.setProvider('claude')
-
-      const mockResponse = {
-        content: [{ text: '{"text": "かしこまりました", "motion": "smile"}' }],
-      }
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      })
-
-      const result = await llmClient.sendMessage('こんにちは')
-
-      expect(result.text).toBe('かしこまりました')
-      expect(result.motion).toBe('smile')
-    })
-  })
-
-  describe('setProvider', () => {
-    it('プロバイダーを切り替えられる', () => {
-      expect(() => llmClient.setProvider('gemini')).not.toThrow()
-      expect(() => llmClient.setProvider('claude')).not.toThrow()
-    })
-  })
-
-  // Property 20: APIキーのログ出力防止
-  describe('Property Tests', () => {
-    it('Feature: butler-assistant-app, Property 20: エラーメッセージにAPIキーが含まれない', async () => {
-      const sensitiveApiKey = 'super-secret-api-key-12345'
-      llmClient.setApiKey(sensitiveApiKey)
-
+    it('Lambda の 500 レスポンス時は APIError をスローする', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 500,
@@ -121,12 +105,69 @@ describe('LLMClient', () => {
         text: async () => 'Internal Server Error',
       })
 
-      try {
-        await llmClient.sendMessage('test')
-      } catch (error) {
-        const errorMessage = (error as Error).message
-        expect(errorMessage).not.toContain(sensitiveApiKey)
+      await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(APIError)
+    })
+
+    it('JSON パース失敗時は ParseError をスローする', async () => {
+      const mockResponse = { content: 'これはJSONではありません' }
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(ParseError)
+    })
+
+    it('会話履歴を正しい形式で送信する', async () => {
+      const mockResponse = { content: '{"text": "元気だよ！", "motion": "smile", "emotion": "happy"}' }
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const history = {
+        messages: [
+          { role: 'user' as const, content: '最初のメッセージ' },
+          { role: 'assistant' as const, content: '最初の応答' },
+        ],
+        maxLength: 10,
       }
+
+      await llmClient.sendMessage('元気？', history)
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      const body = JSON.parse(fetchCall[1].body)
+      expect(body.history).toEqual([
+        { role: 'user', content: '最初のメッセージ' },
+        { role: 'assistant', content: '最初の応答' },
+      ])
+    })
+
+    it('マークダウンコードブロックで囲まれた JSON を正しくパースする', async () => {
+      const mockResponse = { content: '```json\n{"text": "テスト", "motion": "idle", "emotion": "neutral"}\n```' }
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const result = await llmClient.sendMessage('テスト')
+
+      expect(result.text).toBe('テスト')
+      expect(result.motion).toBe('idle')
+    })
+
+    it('401 エラー時は認証エラーメッセージを返す', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        text: async () => 'Unauthorized',
+      })
+
+      await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow('認証エラーです')
     })
   })
 })
@@ -207,19 +248,9 @@ describe('setUserProfile', () => {
   })
 
   it('プロフィール設定後のsendMessageでプロンプトにユーザー情報が含まれる', async () => {
-    llmClient.setApiKey('test-key')
-    llmClient.setProvider('gemini')
     llmClient.setUserProfile({ nickname: '太郎', honorific: 'さん', gender: 'male' })
 
-    const mockResponse = {
-      candidates: [
-        {
-          content: {
-            parts: [{ text: '{"text": "太郎さん、こんにちは！", "motion": "smile"}' }],
-          },
-        },
-      ],
-    }
+    const mockResponse = { content: '{"text": "太郎さん、こんにちは！", "motion": "smile", "emotion": "happy"}' }
 
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -230,8 +261,8 @@ describe('setUserProfile', () => {
 
     const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
     const body = JSON.parse(fetchCall[1].body)
-    expect(body.systemInstruction.parts[0].text).toContain('太郎さん')
-    expect(body.systemInstruction.parts[0].text).toContain('ユーザーは男性です')
+    expect(body.systemPrompt).toContain('太郎さん')
+    expect(body.systemPrompt).toContain('ユーザーは男性です')
   })
 })
 
