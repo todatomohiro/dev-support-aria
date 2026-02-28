@@ -7,7 +7,7 @@
 ```bash
 cd butler-assistant-app
 
-pnpm test             # 全テスト実行（581テスト / 36ファイル）
+pnpm test             # 全テスト実行（587テスト / 40ファイル）
 pnpm dev              # 開発サーバー（http://localhost:5173）
 pnpm typecheck        # 型チェック
 pnpm lint             # ESLint
@@ -69,8 +69,9 @@ infra/
     ├── tts/                # 音声合成 synthesize
     ├── llm/                # LLM チャット（Bedrock Claude + Tool Use + メモリ検索）
     │   └── skills/         #   スキル実装（Google Calendar, Google Places）
-    ├── friends/            # フレンド管理（generateCode, getCode, link, list）
-    ├── conversations/      # マルチチャット会話（list, messagesList, messagesSend, messagesPoll）
+    ├── friends/            # フレンド管理（generateCode, getCode, link, list, unfriend）
+    ├── groups/             # グループ管理（create, addMember, leave, members）
+    ├── conversations/      # グループチャット会話（list, messagesList, messagesSend, messagesPoll）
     ├── ws/                 # WebSocket（authorizer, connect, disconnect）
     ├── skills/             # OAuth 管理（callback, connections, disconnect）
     └── memory/             # 長期記憶イベント保存（AgentCore Memory）
@@ -121,7 +122,7 @@ export const responseParser = new ResponseParserImpl()
 
 ## テスト
 
-- **Vitest** + **jsdom** 環境（581テスト / 36ファイル）
+- **Vitest** + **jsdom** 環境（587テスト / 40ファイル）
 - セットアップ: `src/__tests__/setup.ts`（Live2D SDK・PixiJS のモック定義済み）
 - プロパティベーステスト: `fast-check`（`@fast-check/vitest`）、最低100回実行
 
@@ -162,8 +163,8 @@ test.prop([fc.string()])(
 | `syncService` | `SyncServiceImpl` | データ同期（ローカル↔サーバー） |
 | `ttsService` | `TtsServiceImpl` | Amazon Polly 音声合成・再生（Kazuha/neural） |
 | `skillClient` | — | スキル連携管理（OAuth コールバック・接続状態） |
-| `friendService` | `FriendServiceImpl` | フレンドコード生成・リンク・一覧管理 |
-| `conversationService` | `ConversationServiceImpl` | マルチチャット会話管理（メッセージ送受信・ポーリング・既読管理） |
+| `friendService` | `FriendServiceImpl` | フレンド管理（ユーザーコード生成・リンク・一覧・解除） |
+| `groupService` | `GroupServiceImpl` | グループチャット管理（グループ作成・メンバー管理・メッセージ送受信・ポーリング） |
 | `wsService` | `WsServiceImpl` | WebSocket リアルタイム通信（接続管理・再接続・メッセージ配信） |
 
 ### LLM 通信アーキテクチャ
@@ -206,7 +207,7 @@ test.prop([fc.string()])(
 - **ストラテジー**: `facts`（SEMANTIC）+ `preferences`（USER_PREFERENCE）
 - **フォールバック**: メモリ検索失敗時は通常のチャットとして動作
 
-### コンポーネント層（src/components/ — 15コンポーネント）
+### コンポーネント層（src/components/ — 17コンポーネント）
 
 | コンポーネント | 説明 |
 |---------------|------|
@@ -220,11 +221,13 @@ test.prop([fc.string()])(
 | `MotionPanel` | モーション・表情ボタンパネル |
 | `OAuthCallback` | Google OAuth コールバック処理 |
 | `SkillsModal` | スキル連携管理モーダル（Google カレンダー接続/切断） |
-| `MultiChatScreen` | `/multi-chat` のトップレベル画面（会話一覧 or チャット表示） |
-| `ConversationList` | マルチチャット会話一覧（相手名・最新メッセージ・時刻） |
-| `ConversationChat` | 1対1テキストチャット（自分右寄せ・相手左寄せ・WebSocket + ポーリングフォールバック） |
-| `FriendCodeModal` | フレンドコード共有・入力モーダル |
-| `ParticipantPanel` | チャット相手情報パネル（アバタープレースホルダー） |
+| `GroupChatScreen` | `/groups` のトップレベル画面（グループ一覧 or チャット表示） |
+| `GroupList` | グループ一覧（グループ名・最新メッセージ・未読バッジ・WS ステータス） |
+| `GroupChat` | グループチャット（N人対応・送信者名表示・WebSocket + ポーリングフォールバック） |
+| `GroupInfoPanel` | グループ情報パネル（メンバー一覧・メンバー追加・グループ退出） |
+| `UserCodeModal` | ユーザーコード共有・入力モーダル（フレンド追加） |
+| `CreateGroupModal` | グループ作成モーダル（グループ名入力） |
+| `AddMemberModal` | メンバー追加モーダル（フレンド選択 or ユーザーコード入力） |
 
 ### 認証（src/auth/）
 
@@ -243,8 +246,8 @@ test.prop([fc.string()])(
 **appStore.ts** — Zustand + persist。主要ステート：
 `messages`, `isLoading`, `currentMotion`, `currentExpression`, `motionQueue`, `config`, `lastError`
 
-**multiChatStore.ts** — Zustand（永続化なし、サーバーが信頼元）。主要ステート：
-`friends`, `myFriendCode`, `conversations`, `activeConversationId`, `activeMessages`, `lastPollTimestamp`, `isSending`, `error`, `wsStatus`, `unreadCounts`
+**groupChatStore.ts** — Zustand（永続化なし、サーバーが信頼元）。主要ステート：
+`friends`, `myUserCode`, `groups`, `activeGroupId`, `activeMessages`, `activeMembers`, `lastPollTimestamp`, `isSending`, `error`, `wsStatus`, `unreadCounts`
 
 ### プラットフォーム（src/platform/）
 
@@ -261,7 +264,7 @@ test.prop([fc.string()])(
 | Cognito | ユーザープール + SPA クライアント（SRP 認証） |
 | API Gateway (REST) | REST API（CORS 設定済み、Cognito 認可） |
 | API Gateway (WebSocket) | WebSocket API（JWT 認証、リアルタイムメッセージ配信） |
-| Lambda × 22 | Node.js 22.x / ARM_64 |
+| Lambda × 26 | Node.js 22.x / ARM_64 |
 | AgentCore Memory | 長期記憶（SEMANTIC + USER_PREFERENCE ストラテジー） |
 
 **Lambda 関数一覧:**
@@ -282,11 +285,16 @@ test.prop([fc.string()])(
 | `butler-friends-get-code` | `GET /friends/code` | フレンドコード取得 |
 | `butler-friends-link` | `POST /friends/link` | フレンドコードでリンク（双方向） |
 | `butler-friends-list` | `GET /friends` | フレンド一覧取得 |
-| `butler-conversations-list` | `GET /conversations` | 会話一覧取得（GSI2 updatedAt 降順） |
-| `butler-conversations-messages-list` | `GET /conversations/{id}/messages` | 会話メッセージ取得 |
-| `butler-conversations-messages-send` | `POST /conversations/{id}/messages` | メッセージ送信 |
-| `butler-conversations-messages-poll` | `GET /conversations/{id}/messages/new` | 新着メッセージポーリング |
-| `butler-conversations-messages-read` | `POST /conversations/{id}/messages/read` | 既読位置更新 |
+| `butler-friends-unfriend` | `DELETE /friends/{id}` | フレンド解除 |
+| `butler-groups-create` | `POST /groups` | グループ作成 |
+| `butler-groups-add-member` | `POST /groups/{id}/members` | グループメンバー追加（userId or userCode） |
+| `butler-groups-leave` | `DELETE /groups/{id}/members/me` | グループ退出 |
+| `butler-groups-members` | `GET /groups/{id}/members` | グループメンバー一覧取得 |
+| `butler-groups-list` | `GET /groups` | グループ一覧取得（GSI2 updatedAt 降順） |
+| `butler-groups-messages-list` | `GET /groups/{id}/messages` | グループメッセージ取得 |
+| `butler-groups-messages-send` | `POST /groups/{id}/messages` | グループメッセージ送信 |
+| `butler-groups-messages-poll` | `GET /groups/{id}/messages/new` | 新着メッセージポーリング |
+| `butler-groups-messages-read` | `POST /groups/{id}/messages/read` | 既読位置更新 |
 | `butler-ws-authorizer` | WebSocket `$connect` | Cognito JWT 認証（クエリパラメータ） |
 | `butler-ws-connect` | WebSocket `$connect` | 接続レコード保存（DynamoDB TTL 2時間） |
 | `butler-ws-disconnect` | WebSocket `$disconnect` | 接続レコード削除 |

@@ -9,7 +9,7 @@ const TABLE_NAME = process.env.TABLE_NAME!
 const WEBSOCKET_ENDPOINT = process.env.WEBSOCKET_ENDPOINT
 
 /**
- * POST /conversations/{id}/messages — メッセージを送信
+ * POST /groups/{id}/messages — メッセージを送信
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const userId = event.requestContext.authorizer?.claims?.sub

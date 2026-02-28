@@ -1,7 +1,7 @@
-import { useMultiChatStore } from '@/stores/multiChatStore'
+import { useGroupChatStore } from '@/stores/groupChatStore'
 import { useAuthStore } from '@/auth/authStore'
-import { conversationService } from '@/services/conversationService'
-import type { ConversationMessage } from '@/types'
+import { groupService } from '@/services/groupService'
+import type { GroupMessage } from '@/types'
 
 /** 最大再接続試行回数 */
 const MAX_RECONNECT_ATTEMPTS = 5
@@ -16,8 +16,8 @@ export interface WsServiceType {
   connect(token: string): void
   disconnect(): void
   reconnect(): void
-  subscribe(conversationId: string): void
-  unsubscribe(conversationId: string): void
+  subscribe(groupId: string): void
+  unsubscribe(groupId: string): void
 }
 
 /**
@@ -30,7 +30,7 @@ export class WsServiceImpl implements WsServiceType {
   private ws: WebSocket | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempts = 0
-  private subscribedConversations = new Set<string>()
+  private subscribedGroups = new Set<string>()
   private currentToken: string | null = null
 
   /**
@@ -50,7 +50,7 @@ export class WsServiceImpl implements WsServiceType {
 
     this.cleanup()
 
-    const store = useMultiChatStore.getState()
+    const store = useGroupChatStore.getState()
     store.setWsStatus('connecting')
 
     this.ws = new WebSocket(`${wsUrl}?token=${token}`)
@@ -58,16 +58,16 @@ export class WsServiceImpl implements WsServiceType {
     this.ws.onopen = () => {
       const wasReconnect = this.reconnectAttempts > 0
       this.reconnectAttempts = 0
-      useMultiChatStore.getState().setWsStatus('open')
+      useGroupChatStore.getState().setWsStatus('open')
 
       // 再接続時に取りこぼしを補完
       if (wasReconnect) {
-        const { activeConversationId, lastPollTimestamp } = useMultiChatStore.getState()
-        if (activeConversationId && lastPollTimestamp) {
-          conversationService.pollNewMessages(activeConversationId, lastPollTimestamp)
+        const { activeGroupId, lastPollTimestamp } = useGroupChatStore.getState()
+        if (activeGroupId && lastPollTimestamp) {
+          groupService.pollNewMessages(activeGroupId, lastPollTimestamp)
             .then((msgs) => {
               if (msgs.length > 0) {
-                const s = useMultiChatStore.getState()
+                const s = useGroupChatStore.getState()
                 s.appendMessages(msgs)
                 const maxTs = Math.max(...msgs.map((m) => m.timestamp))
                 s.setLastPollTimestamp(maxTs)
@@ -103,7 +103,7 @@ export class WsServiceImpl implements WsServiceType {
   disconnect(): void {
     this.currentToken = null
     this.cleanup()
-    useMultiChatStore.getState().setWsStatus('disconnected')
+    useGroupChatStore.getState().setWsStatus('disconnected')
   }
 
   /**
@@ -119,42 +119,56 @@ export class WsServiceImpl implements WsServiceType {
   }
 
   /**
-   * 会話を購読（メッセージ受信対象に追加）
+   * グループを購読（メッセージ受信対象に追加）
    */
-  subscribe(conversationId: string): void {
-    this.subscribedConversations.add(conversationId)
+  subscribe(groupId: string): void {
+    this.subscribedGroups.add(groupId)
   }
 
   /**
-   * 会話の購読を解除
+   * グループの購読を解除
    */
-  unsubscribe(conversationId: string): void {
-    this.subscribedConversations.delete(conversationId)
+  unsubscribe(groupId: string): void {
+    this.subscribedGroups.delete(groupId)
   }
 
   /**
    * 受信メッセージを処理
    */
-  private handleMessage(data: { type: string; conversationId: string; message?: unknown; lastMessage?: string; updatedAt?: number; lastReadAt?: number; userId?: string }): void {
-    const store = useMultiChatStore.getState()
+  private handleMessage(data: { type: string; conversationId?: string; groupId?: string; message?: unknown; lastMessage?: string; updatedAt?: number; userId?: string; nickname?: string; lastReadAt?: number }): void {
+    const store = useGroupChatStore.getState()
+    // conversationId と groupId の両方をサポート（後方互換）
+    const targetId = data.groupId ?? data.conversationId
 
-    if (data.type === 'new_message' && data.message) {
-      const msg = data.message as ConversationMessage
-      if (this.subscribedConversations.has(data.conversationId)) {
+    if (data.type === 'new_message' && data.message && targetId) {
+      const msg = data.message as GroupMessage
+      if (this.subscribedGroups.has(targetId)) {
         store.appendMessages([msg])
         store.setLastPollTimestamp(msg.timestamp)
       } else {
-        store.incrementUnread(data.conversationId)
+        store.incrementUnread(targetId)
       }
     }
 
-    if (data.type === 'conversation_updated' && data.lastMessage !== undefined && data.updatedAt !== undefined) {
-      store.updateConversationSummary(data.conversationId, data.lastMessage, data.updatedAt)
+    if (data.type === 'conversation_updated' && targetId && data.lastMessage !== undefined && data.updatedAt !== undefined) {
+      store.updateGroupSummary(targetId, data.lastMessage, data.updatedAt)
     }
 
-    if (data.type === 'message_read' && data.lastReadAt !== undefined) {
-      if (this.subscribedConversations.has(data.conversationId)) {
-        store.setOtherLastReadAt(data.lastReadAt)
+    if (data.type === 'member_added' && targetId) {
+      // メンバー追加通知 — メンバーリストをリロード
+      if (this.subscribedGroups.has(targetId)) {
+        groupService.getMembers(targetId)
+          .then(({ members }) => store.setActiveMembers(members))
+          .catch(() => { /* 失敗は無視 */ })
+      }
+    }
+
+    if (data.type === 'member_left' && targetId) {
+      // メンバー退出通知 — メンバーリストをリロード
+      if (this.subscribedGroups.has(targetId)) {
+        groupService.getMembers(targetId)
+          .then(({ members }) => store.setActiveMembers(members))
+          .catch(() => { /* 失敗は無視 */ })
       }
     }
   }
@@ -165,12 +179,12 @@ export class WsServiceImpl implements WsServiceType {
   private scheduleReconnect(): void {
     this.reconnectAttempts++
     if (this.reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-      useMultiChatStore.getState().setWsStatus('failed')
+      useGroupChatStore.getState().setWsStatus('failed')
       return
     }
 
     const backoff = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), MAX_BACKOFF_MS)
-    useMultiChatStore.getState().setWsStatus('connecting')
+    useGroupChatStore.getState().setWsStatus('connecting')
 
     this.reconnectTimer = setTimeout(() => {
       // 最新のトークンを取得して再接続
@@ -178,7 +192,7 @@ export class WsServiceImpl implements WsServiceType {
       if (token) {
         this.connect(token)
       } else {
-        useMultiChatStore.getState().setWsStatus('failed')
+        useGroupChatStore.getState().setWsStatus('failed')
       }
     }, backoff)
   }

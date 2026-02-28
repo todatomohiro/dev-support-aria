@@ -10,8 +10,8 @@ export interface FriendServiceType {
   generateCode(): Promise<{ code: string }>
   /** 現在のフレンドコードを取得 */
   getCode(): Promise<{ code: string | null }>
-  /** フレンドコードでリンク */
-  linkByCode(code: string, displayName: string): Promise<{ conversationId: string; friendUserId: string }>
+  /** ユーザーコードでフレンドリンク */
+  linkByCode(code: string, displayName: string): Promise<{ friendUserId: string }>
   /** フレンド一覧を取得 */
   listFriends(): Promise<FriendLink[]>
   /** フレンドを解除 */
@@ -39,13 +39,13 @@ export class FriendServiceImpl implements FriendServiceType {
   }
 
   /**
-   * フレンドコードでリンク
+   * ユーザーコードでフレンドリンク
    */
-  async linkByCode(code: string, displayName: string): Promise<{ conversationId: string; friendUserId: string }> {
+  async linkByCode(code: string, displayName: string): Promise<{ friendUserId: string }> {
     const data = await this.fetchAPI('/friends/link', {
       method: 'POST',
       body: JSON.stringify({ code, displayName }),
-    }) as { conversationId: string; friendUserId: string }
+    }) as { friendUserId: string }
     return data
   }
 

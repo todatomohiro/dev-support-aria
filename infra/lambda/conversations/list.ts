@@ -6,7 +6,7 @@ const client = new DynamoDBClient({})
 const TABLE_NAME = process.env.TABLE_NAME!
 
 /**
- * GET /conversations — 会話一覧を取得（更新順、新しい順）
+ * GET /groups — グループ一覧を取得（更新順、新しい順）
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const userId = event.requestContext.authorizer?.claims?.sub
@@ -29,9 +29,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const conversations = (result.Items ?? []).map((item) => {
       const record = unmarshall(item)
       return {
-        conversationId: record.conversationId,
-        otherUserId: record.otherUserId,
-        otherDisplayName: record.otherDisplayName,
+        groupId: record.conversationId,
+        groupName: record.groupName ?? '',
         lastMessage: record.lastMessage ?? null,
         updatedAt: record.updatedAt,
       }

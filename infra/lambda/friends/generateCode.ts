@@ -11,7 +11,7 @@ const CHARSET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 const CODE_LENGTH = 8
 
 /**
- * ランダムなフレンドコードを生成
+ * ランダムなユーザーコードを生成
  */
 function generateRandomCode(): string {
   const bytes = crypto.randomBytes(CODE_LENGTH)
@@ -21,7 +21,7 @@ function generateRandomCode(): string {
 }
 
 /**
- * フレンドコードの一意性を GSI1 で確認
+ * ユーザーコードの一意性を GSI1 で確認
  */
 async function isCodeUnique(code: string): Promise<boolean> {
   const result = await client.send(new QueryCommand({
@@ -29,8 +29,8 @@ async function isCodeUnique(code: string): Promise<boolean> {
     IndexName: 'GSI1',
     KeyConditionExpression: 'GSI1PK = :pk AND GSI1SK = :sk',
     ExpressionAttributeValues: {
-      ':pk': { S: `FRIEND_CODE#${code}` },
-      ':sk': { S: 'FRIEND_CODE' },
+      ':pk': { S: `USER_CODE#${code}` },
+      ':sk': { S: 'USER_CODE' },
     },
     Limit: 1,
   }))
@@ -38,7 +38,7 @@ async function isCodeUnique(code: string): Promise<boolean> {
 }
 
 /**
- * POST /friends/code — フレンドコードを生成（既存があればそれを返す）
+ * POST /friends/code — ユーザーコードを生成（既存があればそれを返す）
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const userId = event.requestContext.authorizer?.claims?.sub
@@ -50,7 +50,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 既存のコードがあればそれを返す
     const existing = await client.send(new GetItemCommand({
       TableName: TABLE_NAME,
-      Key: marshall({ PK: `USER#${userId}`, SK: 'FRIEND_CODE' }),
+      Key: marshall({ PK: `USER#${userId}`, SK: 'USER_CODE' }),
     }))
 
     if (existing.Item) {
@@ -69,17 +69,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     if (!code) {
-      return response(500, { error: 'フレンドコードの生成に失敗しました' })
+      return response(500, { error: 'ユーザーコードの生成に失敗しました' })
     }
 
-    // 保存
+    // 保存（永続的 — 使い切りでない）
     await client.send(new PutItemCommand({
       TableName: TABLE_NAME,
       Item: marshall({
         PK: `USER#${userId}`,
-        SK: 'FRIEND_CODE',
-        GSI1PK: `FRIEND_CODE#${code}`,
-        GSI1SK: 'FRIEND_CODE',
+        SK: 'USER_CODE',
+        GSI1PK: `USER_CODE#${code}`,
+        GSI1SK: 'USER_CODE',
         code,
         createdAt: Date.now(),
       }),
@@ -88,7 +88,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     return response(200, { code })
   } catch (error) {
-    console.error('フレンドコード生成エラー:', error)
+    console.error('ユーザーコード生成エラー:', error)
     return response(500, { error: 'Internal server error' })
   }
 }

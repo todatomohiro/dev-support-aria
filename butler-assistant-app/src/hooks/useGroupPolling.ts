@@ -1,18 +1,18 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { conversationService } from '@/services/conversationService'
-import { useMultiChatStore } from '@/stores/multiChatStore'
+import { groupService } from '@/services/groupService'
+import { useGroupChatStore } from '@/stores/groupChatStore'
 
 /** ポーリング間隔（ミリ秒） */
 const POLL_INTERVAL = 7000
 
 /**
- * 会話メッセージのポーリングフック
+ * グループメッセージのポーリングフック
  *
- * 指定された会話 ID の新着メッセージを定期的にポーリングする。
+ * 指定されたグループ ID の新着メッセージを定期的にポーリングする。
  * ページがバックグラウンドに移行するとポーリングを一時停止し、
  * フォアグラウンドに復帰すると即座にフェッチしてから再開する。
  */
-export function useConversationPolling(conversationId: string | null): void {
+export function useGroupPolling(groupId: string | null): void {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isMountedRef = useRef(true)
 
@@ -20,24 +20,24 @@ export function useConversationPolling(conversationId: string | null): void {
    * 新着メッセージを取得してストアに追加
    */
   const fetchNewMessages = useCallback(async () => {
-    if (!conversationId || !isMountedRef.current) return
+    if (!groupId || !isMountedRef.current) return
 
-    const lastPollTimestamp = useMultiChatStore.getState().lastPollTimestamp
+    const lastPollTimestamp = useGroupChatStore.getState().lastPollTimestamp
     if (lastPollTimestamp === null) return
 
     try {
-      const newMessages = await conversationService.pollNewMessages(conversationId, lastPollTimestamp)
+      const newMessages = await groupService.pollNewMessages(groupId, lastPollTimestamp)
       if (!isMountedRef.current) return
 
       if (newMessages.length > 0) {
-        useMultiChatStore.getState().appendMessages(newMessages)
+        useGroupChatStore.getState().appendMessages(newMessages)
         const maxTimestamp = Math.max(...newMessages.map((m) => m.timestamp))
-        useMultiChatStore.getState().setLastPollTimestamp(maxTimestamp)
+        useGroupChatStore.getState().setLastPollTimestamp(maxTimestamp)
       }
     } catch (error) {
-      console.error('[useConversationPolling] ポーリングエラー:', error)
+      console.error('[useGroupPolling] ポーリングエラー:', error)
     }
-  }, [conversationId])
+  }, [groupId])
 
   /**
    * ポーリングインターバルを開始
@@ -59,11 +59,11 @@ export function useConversationPolling(conversationId: string | null): void {
     }
   }, [])
 
-  // conversationId が変わったらポーリングを開始/停止
+  // groupId が変わったらポーリングを開始/停止
   useEffect(() => {
     isMountedRef.current = true
 
-    if (!conversationId) {
+    if (!groupId) {
       stopPolling()
       return
     }
@@ -74,11 +74,11 @@ export function useConversationPolling(conversationId: string | null): void {
       isMountedRef.current = false
       stopPolling()
     }
-  }, [conversationId, startPolling, stopPolling])
+  }, [groupId, startPolling, stopPolling])
 
   // visibilitychange でポーリングを一時停止/再開
   useEffect(() => {
-    if (!conversationId) return
+    if (!groupId) return
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -94,5 +94,5 @@ export function useConversationPolling(conversationId: string | null): void {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [conversationId, fetchNewMessages, startPolling, stopPolling])
+  }, [groupId, fetchNewMessages, startPolling, stopPolling])
 }

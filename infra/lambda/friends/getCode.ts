@@ -6,7 +6,7 @@ const client = new DynamoDBClient({})
 const TABLE_NAME = process.env.TABLE_NAME!
 
 /**
- * GET /friends/code — 自分のフレンドコードを取得
+ * GET /friends/code — 自分のユーザーコードを取得
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const userId = event.requestContext.authorizer?.claims?.sub
@@ -17,7 +17,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   try {
     const result = await client.send(new GetItemCommand({
       TableName: TABLE_NAME,
-      Key: marshall({ PK: `USER#${userId}`, SK: 'FRIEND_CODE' }),
+      Key: marshall({ PK: `USER#${userId}`, SK: 'USER_CODE' }),
     }))
 
     if (result.Item) {
@@ -27,7 +27,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     return response(200, { code: null })
   } catch (error) {
-    console.error('フレンドコード取得エラー:', error)
+    console.error('ユーザーコード取得エラー:', error)
     return response(500, { error: 'Internal server error' })
   }
 }

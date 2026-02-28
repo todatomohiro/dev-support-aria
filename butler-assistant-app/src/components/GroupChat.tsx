@@ -1,71 +1,69 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAppStore } from '@/stores'
-import { useMultiChatStore } from '@/stores/multiChatStore'
-import { conversationService } from '@/services/conversationService'
-import { useConversationPolling } from '@/hooks/useConversationPolling'
+import { useGroupChatStore } from '@/stores/groupChatStore'
+import { groupService } from '@/services/groupService'
+import { useGroupPolling } from '@/hooks/useGroupPolling'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAuthStore } from '@/auth/authStore'
 import { wsService } from '@/services/wsService'
 import { formatTime, formatDateSeparator, isSameDay } from '@/utils'
 
-interface ConversationChatProps {
-  conversationId: string
-  otherDisplayName: string
+interface GroupChatProps {
+  groupId: string
+  groupName: string
   onBack: () => void
+  onOpenInfo: () => void
 }
 
 /**
- * 1対1チャットコンポーネント
+ * グループチャットコンポーネント
  *
  * メッセージの表示・送信・ポーリングを行う。
  */
-export function ConversationChat({ conversationId, otherDisplayName, onBack }: ConversationChatProps) {
+export function GroupChat({ groupId, groupName, onBack, onOpenInfo }: GroupChatProps) {
   const [inputText, setInputText] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const activeMessages = useMultiChatStore((s) => s.activeMessages)
-  const isSending = useMultiChatStore((s) => s.isSending)
-  const isLoadingMessages = useMultiChatStore((s) => s.isLoadingMessages)
-  const otherLastReadAt = useMultiChatStore((s) => s.otherLastReadAt)
-  const setActiveMessages = useMultiChatStore((s) => s.setActiveMessages)
-  const setSending = useMultiChatStore((s) => s.setSending)
-  const setLastPollTimestamp = useMultiChatStore((s) => s.setLastPollTimestamp)
-  const appendMessages = useMultiChatStore((s) => s.appendMessages)
-  const setLoadingMessages = useMultiChatStore((s) => s.setLoadingMessages)
-  const setOtherLastReadAt = useMultiChatStore((s) => s.setOtherLastReadAt)
+  const activeMessages = useGroupChatStore((s) => s.activeMessages)
+  const isSending = useGroupChatStore((s) => s.isSending)
+  const isLoadingMessages = useGroupChatStore((s) => s.isLoadingMessages)
+  const setActiveMessages = useGroupChatStore((s) => s.setActiveMessages)
+  const setSending = useGroupChatStore((s) => s.setSending)
+  const setLastPollTimestamp = useGroupChatStore((s) => s.setLastPollTimestamp)
+  const appendMessages = useGroupChatStore((s) => s.appendMessages)
+  const setLoadingMessages = useGroupChatStore((s) => s.setLoadingMessages)
 
   const currentUser = useAuthStore((s) => s.user)
   const nickname = useAppStore((s) => s.config.profile.nickname)
 
-  // WebSocket 接続 + ポーリング（WS 状態に関わらず常時有効）
-  useWebSocket(conversationId)
-  const wsStatus = useMultiChatStore((s) => s.wsStatus)
-  useConversationPolling(conversationId)
+  // WebSocket 接続 + ポーリング
+  useWebSocket(groupId)
+  const wsStatus = useGroupChatStore((s) => s.wsStatus)
+  useGroupPolling(groupId)
 
   /** 初期メッセージを読み込み */
   const loadInitialMessages = useCallback(async () => {
     setLoadError(null)
     setLoadingMessages(true)
     try {
-      const { messages, otherLastReadAt: serverOtherLastReadAt } = await conversationService.getMessages(conversationId)
+      const { messages } = await groupService.getMessages(groupId)
       setActiveMessages(messages)
-      setOtherLastReadAt(serverOtherLastReadAt ?? null)
       if (messages.length > 0) {
         const maxTs = Math.max(...messages.map((m) => m.timestamp))
         setLastPollTimestamp(maxTs)
         // 会話を開いた時点で既読を通知
-        conversationService.markAsRead(conversationId, maxTs).catch(() => { /* 既読通知失敗は無視 */ })
+        groupService.markAsRead(groupId, maxTs).catch(() => { /* 既読通知失敗は無視 */ })
       } else {
         setLastPollTimestamp(Date.now())
       }
     } catch (error) {
-      console.error('[ConversationChat] メッセージの読み込みに失敗:', error)
+      console.error('[GroupChat] メッセージの読み込みに失敗:', error)
       setLoadError('メッセージの読み込みに失敗しました')
     } finally {
       setLoadingMessages(false)
     }
-  }, [conversationId, setActiveMessages, setLastPollTimestamp, setLoadingMessages, setOtherLastReadAt])
+  }, [groupId, setActiveMessages, setLastPollTimestamp, setLoadingMessages])
 
   // マウント時にメッセージを読み込み
   useEffect(() => {
@@ -73,21 +71,19 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
     return () => {
       setActiveMessages([])
       setLastPollTimestamp(null)
-      setOtherLastReadAt(null)
     }
-  }, [loadInitialMessages, setActiveMessages, setLastPollTimestamp, setOtherLastReadAt])
+  }, [loadInitialMessages, setActiveMessages, setLastPollTimestamp])
 
   // メッセージ追加時に自動スクロール + 新着メッセージを既読通知
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    // 他ユーザーからの新着メッセージがあれば既読を通知
     if (activeMessages.length > 0) {
       const lastMsg = activeMessages[activeMessages.length - 1]
       if (lastMsg.senderId !== currentUser?.userId) {
-        conversationService.markAsRead(conversationId, lastMsg.timestamp).catch(() => { /* 既読通知失敗は無視 */ })
+        groupService.markAsRead(groupId, lastMsg.timestamp).catch(() => { /* 既読通知失敗は無視 */ })
       }
     }
-  }, [activeMessages, conversationId, currentUser?.userId])
+  }, [activeMessages, groupId, currentUser?.userId])
 
   /** メッセージを送信 */
   const handleSend = useCallback(async () => {
@@ -99,16 +95,16 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
 
     try {
       const senderName = nickname || (currentUser?.displayName ?? currentUser?.email ?? '')
-      const newMessage = await conversationService.sendMessage(conversationId, text, senderName)
+      const newMessage = await groupService.sendMessage(groupId, text, senderName)
       appendMessages([newMessage])
       setLastPollTimestamp(newMessage.timestamp)
     } catch (error) {
-      console.error('[ConversationChat] メッセージ送信に失敗:', error)
-      setInputText(text) // 失敗時は入力を復元
+      console.error('[GroupChat] メッセージ送信に失敗:', error)
+      setInputText(text)
     } finally {
       setSending(false)
     }
-  }, [inputText, isSending, conversationId, currentUser, setSending, appendMessages, setLastPollTimestamp])
+  }, [inputText, isSending, groupId, currentUser, nickname, setSending, appendMessages, setLastPollTimestamp])
 
   /** Enter で送信、Shift+Enter で改行 */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -120,7 +116,7 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900" data-testid="conversation-chat">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900" data-testid="group-chat">
       {/* ヘッダー */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
         <button
@@ -132,20 +128,20 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        {/* モバイルではアバター + 名前を表示 */}
-        <div className="flex items-center gap-2.5 min-w-0 md:hidden" data-testid="mobile-header-info">
-          <div className="shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
-            <span className="text-xs font-medium text-blue-600 dark:text-blue-300">
-              {otherDisplayName.charAt(0).toUpperCase()}
+        <button
+          onClick={onOpenInfo}
+          className="flex items-center gap-2.5 min-w-0 flex-1"
+          data-testid="group-header-info"
+        >
+          <div className="shrink-0 w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
+            <span className="text-xs font-medium text-purple-600 dark:text-purple-300">
+              {groupName.charAt(0).toUpperCase()}
             </span>
           </div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
-            {otherDisplayName}
+            {groupName}
           </h3>
-        </div>
-        <h3 className="hidden md:block text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
-          {otherDisplayName}
-        </h3>
+        </button>
       </div>
 
       {/* WebSocket ステータスバー */}
@@ -208,7 +204,7 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
           const isOwn = message.senderId === currentUser?.userId
           const isSystem = message.type === 'system'
 
-          // 日付セパレータ: 前のメッセージと日付が異なる場合に表示
+          // 日付セパレータ
           const prevMessage = index > 0 ? activeMessages[index - 1] : null
           const showDateSeparator = !prevMessage || !isSameDay(prevMessage.timestamp, message.timestamp)
 
@@ -244,7 +240,7 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
                   >
                     {!isOwn && (
                       <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-0.5">
-                        {otherDisplayName || message.senderName}
+                        {message.senderName}
                       </p>
                     )}
                     <p className="whitespace-pre-wrap text-sm">{message.content}</p>
@@ -252,9 +248,6 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
                       <span className={`text-[10px] ${isOwn ? 'text-blue-200' : 'text-gray-400 dark:text-gray-500'}`}>
                         {formatTime(message.timestamp)}
                       </span>
-                      {isOwn && otherLastReadAt !== null && message.timestamp <= otherLastReadAt && (
-                        <span className="text-[10px] text-blue-200" data-testid="read-receipt">既読</span>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -276,13 +269,13 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
             className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             rows={2}
             disabled={isSending}
-            data-testid="multi-chat-input"
+            data-testid="group-chat-input"
           />
           <button
             onClick={handleSend}
             disabled={!inputText.trim() || isSending}
             className="shrink-0 px-4 py-2.5 min-w-[56px] min-h-[44px] bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm"
-            data-testid="multi-chat-send-button"
+            data-testid="group-chat-send-button"
           >
             {isSending ? '送信中...' : '送信'}
           </button>

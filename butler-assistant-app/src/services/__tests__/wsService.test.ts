@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { useMultiChatStore } from '@/stores/multiChatStore'
+import { useGroupChatStore } from '@/stores/groupChatStore'
 
-// conversationService をモック
+// groupService をモック
 const mockPollNewMessages = vi.fn().mockResolvedValue([])
-vi.mock('@/services/conversationService', () => ({
-  conversationService: {
+const mockGetMembers = vi.fn().mockResolvedValue({ members: [], groupName: '' })
+vi.mock('@/services/groupService', () => ({
+  groupService: {
     pollNewMessages: (...args: unknown[]) => mockPollNewMessages(...args),
+    getMembers: (...args: unknown[]) => mockGetMembers(...args),
   },
 }))
 
@@ -57,7 +59,7 @@ describe('WsServiceImpl', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
-    useMultiChatStore.getState().reset()
+    useGroupChatStore.getState().reset()
     mockWsInstances = []
 
     // WebSocket をモック（コンストラクタとして動作するように class を使用）
@@ -89,7 +91,7 @@ describe('WsServiceImpl', () => {
       const service = await createService()
       service.connect('test-token')
 
-      expect(useMultiChatStore.getState().wsStatus).toBe('connecting')
+      expect(useGroupChatStore.getState().wsStatus).toBe('connecting')
       expect(mockWsInstances).toHaveLength(1)
       expect(mockWsInstances[0].url).toBe('wss://test.example.com?token=test-token')
     })
@@ -100,7 +102,7 @@ describe('WsServiceImpl', () => {
 
       mockWsInstances[0].simulateOpen()
 
-      expect(useMultiChatStore.getState().wsStatus).toBe('open')
+      expect(useGroupChatStore.getState().wsStatus).toBe('open')
     })
 
     it('VITE_WS_URL が未設定の場合は何もしない', async () => {
@@ -120,46 +122,46 @@ describe('WsServiceImpl', () => {
 
       service.disconnect()
 
-      expect(useMultiChatStore.getState().wsStatus).toBe('disconnected')
+      expect(useGroupChatStore.getState().wsStatus).toBe('disconnected')
       expect(mockWsInstances[0].close).toHaveBeenCalled()
     })
   })
 
   describe('handleMessage', () => {
-    it('購読中の会話に new_message が来たら appendMessages する', async () => {
+    it('購読中のグループに new_message が来たら appendMessages する', async () => {
       const service = await createService()
       service.connect('test-token')
       mockWsInstances[0].simulateOpen()
-      service.subscribe('conv_1')
+      service.subscribe('group_1')
 
       const msg = { id: 'msg-1', senderId: 'user-1', senderName: 'User', content: 'Hello', timestamp: 1700000000000, type: 'text' }
       mockWsInstances[0].simulateMessage({
         type: 'new_message',
-        conversationId: 'conv_1',
+        conversationId: 'group_1',
         message: msg,
       })
 
-      expect(useMultiChatStore.getState().activeMessages).toEqual([msg])
-      expect(useMultiChatStore.getState().lastPollTimestamp).toBe(1700000000000)
+      expect(useGroupChatStore.getState().activeMessages).toEqual([msg])
+      expect(useGroupChatStore.getState().lastPollTimestamp).toBe(1700000000000)
     })
 
-    it('未購読の会話に new_message が来たら incrementUnread する', async () => {
+    it('未購読のグループに new_message が来たら incrementUnread する', async () => {
       const service = await createService()
       service.connect('test-token')
       mockWsInstances[0].simulateOpen()
 
       mockWsInstances[0].simulateMessage({
         type: 'new_message',
-        conversationId: 'conv_2',
+        conversationId: 'group_2',
         message: { id: 'msg-1', senderId: 'user-1', senderName: 'User', content: 'Hello', timestamp: 1700000000000, type: 'text' },
       })
 
-      expect(useMultiChatStore.getState().unreadCounts).toEqual({ conv_2: 1 })
+      expect(useGroupChatStore.getState().unreadCounts).toEqual({ group_2: 1 })
     })
 
-    it('conversation_updated で会話サマリーを更新する', async () => {
-      useMultiChatStore.getState().setConversations([
-        { conversationId: 'conv_1', otherUserId: 'user-1', otherDisplayName: 'Friend', lastMessage: 'Old', updatedAt: 1700000000000 },
+    it('conversation_updated でグループサマリーを更新する', async () => {
+      useGroupChatStore.getState().setGroups([
+        { groupId: 'group_1', groupName: 'テストグループ', lastMessage: 'Old', updatedAt: 1700000000000 },
       ])
 
       const service = await createService()
@@ -168,14 +170,55 @@ describe('WsServiceImpl', () => {
 
       mockWsInstances[0].simulateMessage({
         type: 'conversation_updated',
-        conversationId: 'conv_1',
+        conversationId: 'group_1',
         lastMessage: 'New message',
         updatedAt: 1700000001000,
       })
 
-      const conv = useMultiChatStore.getState().conversations[0]
-      expect(conv.lastMessage).toBe('New message')
-      expect(conv.updatedAt).toBe(1700000001000)
+      const group = useGroupChatStore.getState().groups[0]
+      expect(group.lastMessage).toBe('New message')
+      expect(group.updatedAt).toBe(1700000001000)
+    })
+
+    it('member_added イベントでメンバーリストをリロードする', async () => {
+      mockGetMembers.mockResolvedValue({ members: [{ userId: 'u1', nickname: 'User1' }, { userId: 'u2', nickname: 'User2' }], groupName: 'Test' })
+
+      const service = await createService()
+      service.connect('test-token')
+      mockWsInstances[0].simulateOpen()
+      service.subscribe('group_1')
+
+      mockWsInstances[0].simulateMessage({
+        type: 'member_added',
+        groupId: 'group_1',
+        userId: 'u2',
+        nickname: 'User2',
+      })
+
+      // Promise を待つ
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(mockGetMembers).toHaveBeenCalledWith('group_1')
+    })
+
+    it('member_left イベントでメンバーリストをリロードする', async () => {
+      mockGetMembers.mockResolvedValue({ members: [{ userId: 'u1', nickname: 'User1' }], groupName: 'Test' })
+
+      const service = await createService()
+      service.connect('test-token')
+      mockWsInstances[0].simulateOpen()
+      service.subscribe('group_1')
+
+      mockWsInstances[0].simulateMessage({
+        type: 'member_left',
+        groupId: 'group_1',
+        userId: 'u2',
+        nickname: 'User2',
+      })
+
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(mockGetMembers).toHaveBeenCalledWith('group_1')
     })
   })
 
@@ -185,18 +228,18 @@ describe('WsServiceImpl', () => {
       service.connect('test-token')
       mockWsInstances[0].simulateOpen()
 
-      service.subscribe('conv_1')
-      service.unsubscribe('conv_1')
+      service.subscribe('group_1')
+      service.unsubscribe('group_1')
 
       mockWsInstances[0].simulateMessage({
         type: 'new_message',
-        conversationId: 'conv_1',
+        conversationId: 'group_1',
         message: { id: 'msg-1', senderId: 'user-1', senderName: 'User', content: 'Hello', timestamp: 1700000000000, type: 'text' },
       })
 
       // unsubscribe 済みなので appendMessages ではなく incrementUnread
-      expect(useMultiChatStore.getState().activeMessages).toEqual([])
-      expect(useMultiChatStore.getState().unreadCounts).toEqual({ conv_1: 1 })
+      expect(useGroupChatStore.getState().activeMessages).toEqual([])
+      expect(useGroupChatStore.getState().unreadCounts).toEqual({ group_1: 1 })
     })
   })
 
@@ -218,40 +261,7 @@ describe('WsServiceImpl', () => {
       expect(mockWsInstances.length).toBeGreaterThanOrEqual(4)
       const latest = mockWsInstances[mockWsInstances.length - 1]
       latest.simulateOpen()
-      expect(useMultiChatStore.getState().wsStatus).toBe('open')
-    })
-  })
-
-  describe('message_read イベント', () => {
-    it('購読中の会話に message_read が来たら otherLastReadAt を更新する', async () => {
-      const service = await createService()
-      service.connect('test-token')
-      mockWsInstances[0].simulateOpen()
-      service.subscribe('conv_1')
-
-      mockWsInstances[0].simulateMessage({
-        type: 'message_read',
-        conversationId: 'conv_1',
-        userId: 'other-user',
-        lastReadAt: 1700000005000,
-      })
-
-      expect(useMultiChatStore.getState().otherLastReadAt).toBe(1700000005000)
-    })
-
-    it('未購読の会話に message_read が来ても otherLastReadAt は変わらない', async () => {
-      const service = await createService()
-      service.connect('test-token')
-      mockWsInstances[0].simulateOpen()
-
-      mockWsInstances[0].simulateMessage({
-        type: 'message_read',
-        conversationId: 'conv_2',
-        userId: 'other-user',
-        lastReadAt: 1700000005000,
-      })
-
-      expect(useMultiChatStore.getState().otherLastReadAt).toBeNull()
+      expect(useGroupChatStore.getState().wsStatus).toBe('open')
     })
   })
 
@@ -263,7 +273,7 @@ describe('WsServiceImpl', () => {
 
       // 接続切断
       mockWsInstances[0].simulateClose()
-      expect(useMultiChatStore.getState().wsStatus).toBe('connecting')
+      expect(useGroupChatStore.getState().wsStatus).toBe('connecting')
 
       // 1秒後に再接続
       vi.advanceTimersByTime(1000)
@@ -283,7 +293,7 @@ describe('WsServiceImpl', () => {
         vi.advanceTimersByTime(60000)
       }
 
-      expect(useMultiChatStore.getState().wsStatus).toBe('failed')
+      expect(useGroupChatStore.getState().wsStatus).toBe('failed')
     })
   })
 })

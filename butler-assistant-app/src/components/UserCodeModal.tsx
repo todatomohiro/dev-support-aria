@@ -2,17 +2,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { friendService } from '@/services/friendService'
 import { useAppStore } from '@/stores/appStore'
 
-interface FriendCodeModalProps {
+interface UserCodeModalProps {
   isOpen: boolean
   onClose: () => void
 }
 
 /**
- * フレンドコードモーダル
+ * ユーザーコードモーダル
  *
- * 自分のフレンドコードの共有と、相手のコードを入力してリンクする。
+ * 自分のユーザーコードの共有と、相手のコードを入力してフレンドリンクする。
  */
-export function FriendCodeModal({ isOpen, onClose }: FriendCodeModalProps) {
+export function UserCodeModal({ isOpen, onClose }: UserCodeModalProps) {
   const [myCode, setMyCode] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [otherCode, setOtherCode] = useState('')
@@ -23,7 +23,7 @@ export function FriendCodeModal({ isOpen, onClose }: FriendCodeModalProps) {
 
   const profile = useAppStore((s) => s.config.profile)
 
-  /** フレンドコードを取得または生成 */
+  /** ユーザーコードを取得または生成 */
   const loadOrGenerateCode = useCallback(async () => {
     setIsGenerating(true)
     try {
@@ -37,7 +37,7 @@ export function FriendCodeModal({ isOpen, onClose }: FriendCodeModalProps) {
         setMyCode(newCode)
       }
     } catch (err) {
-      console.error('[FriendCodeModal] コード取得エラー:', err)
+      console.error('[UserCodeModal] コード取得エラー:', err)
       setError('コードの取得に失敗しました')
     } finally {
       setIsGenerating(false)
@@ -63,11 +63,11 @@ export function FriendCodeModal({ isOpen, onClose }: FriendCodeModalProps) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      console.error('[FriendCodeModal] コピーに失敗')
+      console.error('[UserCodeModal] コピーに失敗')
     }
   }, [myCode])
 
-  /** フレンドコードでリンク */
+  /** ユーザーコードでリンク */
   const handleLink = useCallback(async () => {
     const code = otherCode.trim()
     if (!code) return
@@ -83,7 +83,7 @@ export function FriendCodeModal({ isOpen, onClose }: FriendCodeModalProps) {
       // 少し待ってからモーダルを閉じる
       setTimeout(() => onClose(), 1500)
     } catch (err) {
-      console.error('[FriendCodeModal] リンクエラー:', err)
+      console.error('[UserCodeModal] リンクエラー:', err)
       setError('フレンドの追加に失敗しました。コードを確認してください。')
     } finally {
       setIsLinking(false)
@@ -95,14 +95,14 @@ export function FriendCodeModal({ isOpen, onClose }: FriendCodeModalProps) {
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-      data-testid="friend-code-overlay"
+      data-testid="user-code-overlay"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
       <div
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden"
-        data-testid="friend-code-panel"
+        data-testid="user-code-panel"
       >
         {/* ヘッダー */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
@@ -112,7 +112,7 @@ export function FriendCodeModal({ isOpen, onClose }: FriendCodeModalProps) {
           <button
             onClick={onClose}
             className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-            data-testid="friend-code-close-button"
+            data-testid="user-code-close-button"
           >
             <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -139,7 +139,7 @@ export function FriendCodeModal({ isOpen, onClose }: FriendCodeModalProps) {
           {/* 自分のコードを共有 */}
           <div>
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              自分のコードを共有
+              自分のユーザーコードを共有
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
               このコードを相手に伝えてフレンドになりましょう
@@ -154,7 +154,7 @@ export function FriendCodeModal({ isOpen, onClose }: FriendCodeModalProps) {
                 ) : (
                   <span
                     className="text-lg font-mono font-bold tracking-wider text-gray-900 dark:text-gray-100"
-                    data-testid="my-friend-code"
+                    data-testid="my-user-code"
                   >
                     {myCode ?? '---'}
                   </span>
@@ -181,22 +181,22 @@ export function FriendCodeModal({ isOpen, onClose }: FriendCodeModalProps) {
           {/* 相手のコードを入力 */}
           <div>
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              相手のコードを入力
+              相手のユーザーコードを入力
             </h3>
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={otherCode}
                 onChange={(e) => setOtherCode(e.target.value)}
-                placeholder="フレンドコードを入力"
+                placeholder="ユーザーコードを入力"
                 className="flex-1 px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                data-testid="friend-code-input"
+                data-testid="user-code-input"
               />
               <button
                 onClick={handleLink}
                 disabled={!otherCode.trim() || isLinking}
                 className="shrink-0 px-4 py-2.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                data-testid="link-friend-button"
+                data-testid="link-user-button"
               >
                 {isLinking ? '追加中...' : '追加'}
               </button>

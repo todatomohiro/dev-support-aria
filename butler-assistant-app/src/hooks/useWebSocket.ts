@@ -11,9 +11,9 @@ let connectionRefCount = 0
  * WebSocket 接続管理フック
  *
  * マウント時に WebSocket 接続を開始し、全利用コンポーネントがアンマウントされたら切断する。
- * conversationId が指定されている場合は、その会話を購読する。
+ * groupId が指定されている場合は、そのグループを購読する。
  */
-export function useWebSocket(conversationId: string | null): void {
+export function useWebSocket(groupId: string | null): void {
   const accessToken = useAuthStore((s) => s.accessToken)
   const prevTokenRef = useRef<string | null>(null)
 
@@ -33,14 +33,14 @@ export function useWebSocket(conversationId: string | null): void {
     }
   }, [accessToken])
 
-  // 会話の購読管理
+  // グループの購読管理
   useEffect(() => {
-    if (!conversationId) return
+    if (!groupId) return
 
-    wsService.subscribe(conversationId)
+    wsService.subscribe(groupId)
 
     return () => {
-      wsService.unsubscribe(conversationId)
+      wsService.unsubscribe(groupId)
     }
-  }, [conversationId])
+  }, [groupId])
 }

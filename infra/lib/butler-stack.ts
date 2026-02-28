@@ -138,7 +138,32 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-friends-unfriend',
     })
 
-    // ── Conversations Lambda 関数 ──
+    // ── Groups Lambda 関数 ──
+    const groupsCreateFn = new lambdaNode.NodejsFunction(this, 'GroupsCreateFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'groups', 'create.ts'),
+      functionName: 'butler-groups-create',
+    })
+
+    const groupsAddMemberFn = new lambdaNode.NodejsFunction(this, 'GroupsAddMemberFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'groups', 'addMember.ts'),
+      functionName: 'butler-groups-add-member',
+    })
+
+    const groupsLeaveFn = new lambdaNode.NodejsFunction(this, 'GroupsLeaveFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'groups', 'leave.ts'),
+      functionName: 'butler-groups-leave',
+    })
+
+    const groupsMembersFn = new lambdaNode.NodejsFunction(this, 'GroupsMembersFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'groups', 'members.ts'),
+      functionName: 'butler-groups-members',
+    })
+
+    // ── Conversations Lambda 関数（/groups ルートで利用）──
     const conversationsListFn = new lambdaNode.NodejsFunction(this, 'ConversationsListFn', {
       ...lambdaDefaults,
       entry: path.join(__dirname, '..', 'lambda', 'conversations', 'list.ts'),
@@ -234,6 +259,20 @@ export class ButlerStack extends cdk.Stack {
       resources: [wsApi.arnForExecuteApiV2('*', '/*')],
     }))
     conversationsMessagesReadFn.addEnvironment('WEBSOCKET_ENDPOINT', wsStage.callbackUrl)
+
+    // グループメンバー追加 Lambda に WebSocket プッシュ権限を付与
+    groupsAddMemberFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [wsApi.arnForExecuteApiV2('*', '/*')],
+    }))
+    groupsAddMemberFn.addEnvironment('WEBSOCKET_ENDPOINT', wsStage.callbackUrl)
+
+    // グループ退出 Lambda に WebSocket プッシュ権限を付与
+    groupsLeaveFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [wsApi.arnForExecuteApiV2('*', '/*')],
+    }))
+    groupsLeaveFn.addEnvironment('WEBSOCKET_ENDPOINT', wsStage.callbackUrl)
 
     // TTS Lambda（Polly 用 — DynamoDB 不要）
     const ttsSynthesizeFn = new lambdaNode.NodejsFunction(this, 'TtsSynthesizeFn', {
@@ -383,12 +422,20 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadData(skillsConnectionsFn)
     table.grantReadWriteData(skillsDisconnectFn)
 
-    // Friends / Conversations — DynamoDB 権限
+    // Friends — DynamoDB 権限
     table.grantReadWriteData(friendsGenerateCodeFn)
     table.grantReadData(friendsGetCodeFn)
     table.grantReadWriteData(friendsLinkFn)
     table.grantReadData(friendsListFn)
     table.grantReadWriteData(friendsUnfriendFn)
+
+    // Groups — DynamoDB 権限
+    table.grantReadWriteData(groupsCreateFn)
+    table.grantReadWriteData(groupsAddMemberFn)
+    table.grantReadWriteData(groupsLeaveFn)
+    table.grantReadData(groupsMembersFn)
+
+    // Conversations（/groups ルート）— DynamoDB 権限
     table.grantReadData(conversationsListFn)
     table.grantReadData(conversationsMessagesListFn)
     table.grantReadWriteData(conversationsMessagesSendFn)
@@ -472,23 +519,33 @@ export class ButlerStack extends cdk.Stack {
     const friendByIdResource = friendsResource.addResource('{friendUserId}')
     friendByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(friendsUnfriendFn), authMethodOptions)
 
-    // /conversations
-    const conversationsResource = api.root.addResource('conversations')
-    conversationsResource.addMethod('GET', new apigateway.LambdaIntegration(conversationsListFn), authMethodOptions)
+    // /groups
+    const groupsResource = api.root.addResource('groups')
+    groupsResource.addMethod('GET', new apigateway.LambdaIntegration(conversationsListFn), authMethodOptions)
+    groupsResource.addMethod('POST', new apigateway.LambdaIntegration(groupsCreateFn), authMethodOptions)
 
-    // /conversations/{id}/messages
-    const conversationByIdResource = conversationsResource.addResource('{id}')
-    const conversationMessagesResource = conversationByIdResource.addResource('messages')
-    conversationMessagesResource.addMethod('GET', new apigateway.LambdaIntegration(conversationsMessagesListFn), authMethodOptions)
-    conversationMessagesResource.addMethod('POST', new apigateway.LambdaIntegration(conversationsMessagesSendFn), authMethodOptions)
+    // /groups/{id}/messages
+    const groupByIdResource = groupsResource.addResource('{id}')
+    const groupMessagesResource = groupByIdResource.addResource('messages')
+    groupMessagesResource.addMethod('GET', new apigateway.LambdaIntegration(conversationsMessagesListFn), authMethodOptions)
+    groupMessagesResource.addMethod('POST', new apigateway.LambdaIntegration(conversationsMessagesSendFn), authMethodOptions)
 
-    // /conversations/{id}/messages/new
-    const conversationMessagesNewResource = conversationMessagesResource.addResource('new')
-    conversationMessagesNewResource.addMethod('GET', new apigateway.LambdaIntegration(conversationsMessagesPollFn), authMethodOptions)
+    // /groups/{id}/messages/new
+    const groupMessagesNewResource = groupMessagesResource.addResource('new')
+    groupMessagesNewResource.addMethod('GET', new apigateway.LambdaIntegration(conversationsMessagesPollFn), authMethodOptions)
 
-    // /conversations/{id}/messages/read
-    const conversationMessagesReadResource = conversationMessagesResource.addResource('read')
-    conversationMessagesReadResource.addMethod('POST', new apigateway.LambdaIntegration(conversationsMessagesReadFn), authMethodOptions)
+    // /groups/{id}/messages/read
+    const groupMessagesReadResource = groupMessagesResource.addResource('read')
+    groupMessagesReadResource.addMethod('POST', new apigateway.LambdaIntegration(conversationsMessagesReadFn), authMethodOptions)
+
+    // /groups/{id}/members
+    const groupMembersResource = groupByIdResource.addResource('members')
+    groupMembersResource.addMethod('GET', new apigateway.LambdaIntegration(groupsMembersFn), authMethodOptions)
+    groupMembersResource.addMethod('POST', new apigateway.LambdaIntegration(groupsAddMemberFn), authMethodOptions)
+
+    // /groups/{id}/members/me
+    const groupMembersMeResource = groupMembersResource.addResource('me')
+    groupMembersMeResource.addMethod('DELETE', new apigateway.LambdaIntegration(groupsLeaveFn), authMethodOptions)
 
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {

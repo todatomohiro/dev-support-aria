@@ -1,4 +1,4 @@
 export { useAppStore } from './appStore'
 export type { AppState } from './appStore'
-export { useMultiChatStore } from './multiChatStore'
-export type { MultiChatState } from './multiChatStore'
+export { useGroupChatStore } from './groupChatStore'
+export type { GroupChatState } from './groupChatStore'

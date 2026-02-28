@@ -6,7 +6,7 @@ const client = new DynamoDBClient({})
 const TABLE_NAME = process.env.TABLE_NAME!
 
 /**
- * POST /friends/link — フレンドコードでリンク（双方向フレンド + 会話作成）
+ * POST /friends/link — ユーザーコードでフレンドリンク（双方向フレンドのみ）
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const userId = event.requestContext.authorizer?.claims?.sub
@@ -34,15 +34,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       IndexName: 'GSI1',
       KeyConditionExpression: 'GSI1PK = :pk AND GSI1SK = :sk',
       ExpressionAttributeValues: {
-        ':pk': { S: `FRIEND_CODE#${code.toUpperCase()}` },
-        ':sk': { S: 'FRIEND_CODE' },
+        ':pk': { S: `USER_CODE#${code.toUpperCase()}` },
+        ':sk': { S: 'USER_CODE' },
       },
       Limit: 1,
     }))
 
     const codeItems = codeResult.Items ?? []
     if (codeItems.length === 0) {
-      return response(404, { error: '無効なフレンドコードです' })
+      return response(404, { error: '無効なユーザーコードです' })
     }
 
     const codeRecord = unmarshall(codeItems[0])
@@ -52,6 +52,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (friendUserId === userId) {
       return response(400, { error: '自分自身とフレンドになることはできません' })
     }
+
+    // コード所有者の設定からニックネームを取得
+    const friendSettingsResult = await client.send(new GetItemCommand({
+      TableName: TABLE_NAME,
+      Key: marshall({ PK: `USER#${friendUserId}`, SK: 'SETTINGS' }),
+    }))
+    const friendDisplayName = friendSettingsResult.Item
+      ? ((unmarshall(friendSettingsResult.Item).data?.profile?.nickname as string) || 'ユーザー')
+      : 'ユーザー'
 
     // 既にフレンドかチェック
     const existingFriend = await client.send(new GetItemCommand({
@@ -63,15 +72,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response(409, { error: '既にフレンドです' })
     }
 
-    // 会話 ID を生成（ソートして決定的に）
-    const conversationId = [userId, friendUserId].sort().join('_')
     const now = Date.now()
-    const paddedNow = String(now).padStart(15, '0')
 
-    // トランザクションで一括作成
+    // トランザクションで双方向フレンドレコードのみ作成（コードは消費しない）
     await client.send(new TransactWriteItemsCommand({
       TransactItems: [
-        // 自分側のフレンドレコード
+        // 自分側のフレンドレコード（相手のニックネームを表示名に）
         {
           Put: {
             TableName: TABLE_NAME,
@@ -79,7 +85,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
               PK: `USER#${userId}`,
               SK: `FRIEND#${friendUserId}`,
               friendUserId,
-              displayName,
+              displayName: friendDisplayName,
               linkedAt: now,
             }),
           },
@@ -97,62 +103,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             }),
           },
         },
-        // 会話メタデータ
-        {
-          Put: {
-            TableName: TABLE_NAME,
-            Item: marshall({
-              PK: `CONV#${conversationId}`,
-              SK: 'META',
-              participants: [userId, friendUserId],
-              createdAt: now,
-              updatedAt: now,
-            }),
-          },
-        },
-        // 自分側の会話メンバーシップ
-        {
-          Put: {
-            TableName: TABLE_NAME,
-            Item: marshall({
-              PK: `USER#${userId}`,
-              SK: `CONV_MEMBER#${conversationId}`,
-              conversationId,
-              otherUserId: friendUserId,
-              otherDisplayName: displayName,
-              updatedAt: now,
-              GSI2PK: `USER#${userId}`,
-              GSI2SK: `CONV_UPDATED#${paddedNow}`,
-            }),
-          },
-        },
-        // 相手側の会話メンバーシップ
-        {
-          Put: {
-            TableName: TABLE_NAME,
-            Item: marshall({
-              PK: `USER#${friendUserId}`,
-              SK: `CONV_MEMBER#${conversationId}`,
-              conversationId,
-              otherUserId: userId,
-              otherDisplayName: displayName,
-              updatedAt: now,
-              GSI2PK: `USER#${friendUserId}`,
-              GSI2SK: `CONV_UPDATED#${paddedNow}`,
-            }),
-          },
-        },
-        // フレンドコードを消費（削除）
-        {
-          Delete: {
-            TableName: TABLE_NAME,
-            Key: marshall({ PK: `USER#${friendUserId}`, SK: 'FRIEND_CODE' }),
-          },
-        },
       ],
     }))
 
-    return response(200, { conversationId, friendUserId })
+    return response(200, { friendUserId })
   } catch (error) {
     if (error instanceof SyntaxError) {
       return response(400, { error: 'Invalid JSON' })
