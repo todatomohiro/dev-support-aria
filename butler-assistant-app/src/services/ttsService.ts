@@ -104,14 +104,18 @@ class TtsServiceImpl {
       const audio = new Audio(url)
       this.currentAudio = audio
 
-      // 再生完了時にクリーンアップ
-      audio.addEventListener('ended', () => {
-        this.stopVolumeLoop()
-        this.cleanup()
-      })
-
       await audio.play()
       this.startVolumeLoop(audio)
+
+      // 再生完了または停止まで待機
+      await new Promise<void>((resolve) => {
+        audio.addEventListener('ended', () => {
+          this.stopVolumeLoop()
+          this.cleanup()
+          resolve()
+        }, { once: true })
+        audio.addEventListener('pause', () => resolve(), { once: true })
+      })
     } catch (e) {
       console.warn('[TTS] 音声合成/再生に失敗:', e)
       this.stopVolumeLoop()

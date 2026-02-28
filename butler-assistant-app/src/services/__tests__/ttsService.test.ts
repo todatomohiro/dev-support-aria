@@ -13,9 +13,30 @@ vi.mock('@/auth/authStore', () => ({
 const MOCK_API_BASE_URL = 'https://api.example.com/prod'
 vi.stubEnv('VITE_API_BASE_URL', MOCK_API_BASE_URL)
 
+/**
+ * jsdom の Audio は play() で ended/pause を発火しないため
+ * play() 後に ended イベントを自動発火するモックを設定
+ */
+function mockAudioAutoEnd() {
+  const originalAudio = global.Audio
+  const MockAudio = vi.fn().mockImplementation((url?: string) => {
+    const audio = new originalAudio(url)
+    const originalPlay = audio.play.bind(audio)
+    audio.play = vi.fn().mockImplementation(async () => {
+      try { await originalPlay() } catch { /* jsdom の NotImplemented を無視 */ }
+      // play 後に ended イベントを非同期発火
+      setTimeout(() => audio.dispatchEvent(new Event('ended')), 0)
+    })
+    return audio
+  }) as unknown as typeof Audio
+  global.Audio = MockAudio
+  return () => { global.Audio = originalAudio }
+}
+
 describe('TtsServiceImpl', () => {
   let tts: TtsServiceImpl
   const originalFetch = global.fetch
+  let restoreAudio: () => void
 
   beforeEach(() => {
     vi.resetAllMocks()
@@ -23,9 +44,11 @@ describe('TtsServiceImpl', () => {
     vi.mocked(useAuthStore.getState).mockReturnValue({
       accessToken: 'test-access-token',
     } as ReturnType<typeof useAuthStore.getState>)
+    restoreAudio = mockAudioAutoEnd()
   })
 
   afterEach(() => {
+    restoreAudio()
     global.fetch = originalFetch
   })
 

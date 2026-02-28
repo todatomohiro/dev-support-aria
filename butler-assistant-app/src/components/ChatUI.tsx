@@ -318,13 +318,18 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
   const [showRaw, setShowRaw] = useState(false)
 
   const handleSpeak = useCallback(async () => {
+    if (isSpeaking) {
+      ttsService.stop()
+      setIsSpeaking(false)
+      return
+    }
     setIsSpeaking(true)
     try {
       await ttsService.synthesizeAndPlay(message.content)
     } finally {
       setIsSpeaking(false)
     }
-  }, [message.content])
+  }, [message.content, isSpeaking])
 
   return (
     <div
@@ -364,9 +369,8 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
             {!isUser && (
               <button
                 onClick={handleSpeak}
-                disabled={isSpeaking}
-                className="ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity disabled:opacity-30"
-                title="読み上げ"
+                className="ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity"
+                title={isSpeaking ? '停止' : '読み上げ'}
                 data-testid="tts-speak-button"
               >
                 {isSpeaking ? (
