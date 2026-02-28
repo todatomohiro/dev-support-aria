@@ -72,7 +72,7 @@ describe('MapView', () => {
     expect(L.marker).toHaveBeenCalledWith([35.6600, 139.7010])
   })
 
-  it('ポップアップに店名・住所・評価が含まれる', () => {
+  it('ポップアップに店名・住所・評価・Google Maps リンクが含まれる', () => {
     render(<MapView mapData={sampleMapData} />)
 
     expect(mocks.bindPopup).toHaveBeenCalledWith(
@@ -83,6 +83,9 @@ describe('MapView', () => {
     )
     expect(mocks.bindPopup).toHaveBeenCalledWith(
       expect.stringContaining('★ 4.2')
+    )
+    expect(mocks.bindPopup).toHaveBeenCalledWith(
+      expect.stringContaining('Google Maps で開く')
     )
   })
 

@@ -8,7 +8,7 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
-delete (L.Icon.Default.prototype as Record<string, unknown>)._getIconUrl
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
@@ -44,9 +44,11 @@ export function MapView({ mapData }: MapViewProps) {
     }).addTo(map)
 
     for (const marker of mapData.markers) {
+      const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${marker.lat},${marker.lng}`
       const popupLines = [`<strong>${marker.title}</strong>`]
       if (marker.address) popupLines.push(marker.address)
       if (marker.rating != null) popupLines.push(`★ ${marker.rating}`)
+      popupLines.push(`<a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8;font-size:12px;">Google Maps で開く</a>`)
 
       L.marker([marker.lat, marker.lng])
         .addTo(map)
