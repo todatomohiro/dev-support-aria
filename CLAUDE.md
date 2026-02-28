@@ -35,6 +35,7 @@ cd infra
 MEMORY_ID=butler_assistant_memory-qjpAowHx98 \
 GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=xxx \
 GOOGLE_IOS_CLIENT_ID=xxx GOOGLE_PLACES_API_KEY=xxx \
+BRAVE_SEARCH_API_KEY=xxx \
 aws-vault exec cm-toda-mfa -- npx cdk deploy
 ```
 
@@ -186,6 +187,7 @@ test.prop([fc.string()])(
 | `list_events` | `infra/lambda/llm/skills/googleCalendar.ts` | Google カレンダー予定取得 |
 | `create_event` | `infra/lambda/llm/skills/googleCalendar.ts` | Google カレンダー予定作成 |
 | `search_places` | `infra/lambda/llm/skills/places.ts` | Google Places API で場所検索 |
+| `web_search` | `infra/lambda/llm/skills/webSearch.ts` | Brave Search API でWeb検索 |
 
 - ツール定義: `infra/lambda/llm/skills/toolDefinitions.ts`
 - ルーティング: `infra/lambda/llm/skills/index.ts`（`executeSkill()`）
@@ -282,6 +284,7 @@ Zustand + persist。主要ステート：
 | `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット |
 | `GOOGLE_IOS_CLIENT_ID` | Google OAuth iOS クライアント ID |
 | `GOOGLE_PLACES_API_KEY` | Google Places API (New) キー |
+| `BRAVE_SEARCH_API_KEY` | Brave Search API キー |
 
 ## セキュリティ注意事項
 
