@@ -316,8 +316,8 @@ function App() {
               /* 認証済み or ゲストモード: 通常コンテンツ */
               <>
                 {/* Live2Dキャラクター表示エリア */}
-                <div className="h-[40vh] md:h-auto md:w-1/3 md:min-w-[280px] md:max-w-[400px] bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0">
-                  <div className="flex-1 flex items-center justify-center min-h-0">
+                <div className="h-[25vh] md:h-auto md:w-1/3 md:min-w-[280px] md:max-w-[400px] bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0 overflow-hidden">
+                  <div className="flex items-start justify-center min-h-0 h-[40vh] md:h-full md:flex-1 shrink-0">
                     <Live2DCanvas
                       ref={live2dRef}
                       modelPath={config.model.currentModelId}
@@ -325,13 +325,15 @@ function App() {
                       onMotionComplete={handleMotionComplete}
                     />
                   </div>
-                  {/* モーションコントロールパネル */}
-                  <div className="p-1 md:p-2 border-t border-gray-200 dark:border-gray-700 overflow-x-auto">
-                    <MotionPanel
-                      onPlayMotion={handlePlayMotion}
-                      onPlayExpression={handlePlayExpression}
-                    />
-                  </div>
+                  {/* モーションコントロールパネル（開発者モードのみ） */}
+                  {config.ui.developerMode && (
+                    <div className="p-1 md:p-2 border-t border-gray-200 dark:border-gray-700 overflow-x-auto">
+                      <MotionPanel
+                        onPlayMotion={handlePlayMotion}
+                        onPlayExpression={handlePlayExpression}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* チャットエリア */}

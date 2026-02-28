@@ -32,12 +32,11 @@ pnpm tauri:dev        # Tauri デスクトップアプリ開発
 
 ```bash
 cd infra
-MEMORY_ID=butler_assistant_memory-qjpAowHx98 \
-GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=xxx \
-GOOGLE_IOS_CLIENT_ID=xxx GOOGLE_PLACES_API_KEY=xxx \
-BRAVE_SEARCH_API_KEY=xxx \
 aws-vault exec cm-toda-mfa -- npx cdk deploy
 ```
+
+シークレット（API キー等）は SSM Parameter Store (`/butler-assistant/*`) で管理。
+環境変数の指定は不要。初回登録・更新は `infra/scripts/setup-ssm-params.sh` を使用。
 
 **すべての開発コマンドは `butler-assistant-app/` 内で実行すること。**
 
@@ -275,10 +274,12 @@ Zustand + persist。主要ステート：
 | `VITE_COGNITO_CLIENT_ID` | Cognito アプリクライアント ID |
 | `VITE_API_BASE_URL` | API Gateway エンドポイント URL |
 
-### CDK デプロイ時
+### SSM Parameter Store（シークレット管理）
 
-| 変数 | 用途 |
-|------|------|
+SSM パス `/butler-assistant/*` に保存。CDK デプロイ時に自動参照される。
+
+| パラメータ | 用途 |
+|-----------|------|
 | `MEMORY_ID` | AgentCore Memory ID |
 | `GOOGLE_CLIENT_ID` | Google OAuth クライアント ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット |

@@ -5,6 +5,7 @@ import * as apigateway from 'aws-cdk-lib/aws-apigateway'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as iam from 'aws-cdk-lib/aws-iam'
+import * as ssm from 'aws-cdk-lib/aws-ssm'
 import type { Construct } from 'constructs'
 import * as path from 'path'
 
@@ -108,15 +109,25 @@ export class ButlerStack extends cdk.Stack {
       resources: ['*'],
     }))
 
-    // MEMORY_ID（AgentCore Memory — CLI で事前作成）
-    const memoryId = process.env.MEMORY_ID ?? ''
+    // ── シークレット（SSM Parameter Store 優先、環境変数フォールバック）──
+    const ssmPrefix = '/butler-assistant'
+    const getSecret = (name: string, envKey: string): string => {
+      // 環境変数が明示的に設定されていればそちらを使用
+      if (process.env[envKey]) return process.env[envKey]!
+      // SSM Parameter Store から取得（デプロイ時に解決）
+      try {
+        return ssm.StringParameter.valueForStringParameter(this, `${ssmPrefix}/${name}`)
+      } catch {
+        return ''
+      }
+    }
 
-    // Google OAuth 認証情報（環境変数で渡す）
-    const googleClientId = process.env.GOOGLE_CLIENT_ID ?? ''
-    const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET ?? ''
-    const googleIosClientId = process.env.GOOGLE_IOS_CLIENT_ID ?? ''
-    const googlePlacesApiKey = process.env.GOOGLE_PLACES_API_KEY ?? ''
-    const braveSearchApiKey = process.env.BRAVE_SEARCH_API_KEY ?? ''
+    const memoryId = getSecret('MEMORY_ID', 'MEMORY_ID')
+    const googleClientId = getSecret('GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_ID')
+    const googleClientSecret = getSecret('GOOGLE_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET')
+    const googleIosClientId = getSecret('GOOGLE_IOS_CLIENT_ID', 'GOOGLE_IOS_CLIENT_ID')
+    const googlePlacesApiKey = getSecret('GOOGLE_PLACES_API_KEY', 'GOOGLE_PLACES_API_KEY')
+    const braveSearchApiKey = getSecret('BRAVE_SEARCH_API_KEY', 'BRAVE_SEARCH_API_KEY')
 
     // LLM Lambda（Bedrock Converse API + Tool Use + AgentCore Memory 検索）
     const llmChatFn = new lambdaNode.NodejsFunction(this, 'LlmChatFn', {
