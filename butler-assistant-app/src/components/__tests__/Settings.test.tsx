@@ -7,11 +7,7 @@ const mockConfig = {
     theme: 'light' as const,
     fontSize: 14,
     characterSize: 100,
-  },
-  profile: {
-    nickname: '' as string,
-    honorific: '' as '' | 'さん' | 'くん' | '様',
-    gender: '' as '' | 'female' | 'male',
+    developerMode: false,
   },
 }
 
@@ -99,138 +95,6 @@ describe('Settings', () => {
     })
   })
 
-  describe('プロフィール設定', () => {
-    it('プロフィールセクションが表示される', () => {
-      render(
-        <Settings
-          isOpen={true}
-          onClose={mockOnClose}
-          config={mockConfig}
-          onSave={mockOnSave}
-        />
-      )
-
-      expect(screen.getByTestId('profile-section-title')).toHaveTextContent('プロフィール')
-    })
-
-    it('ニックネームを入力できる', () => {
-      render(
-        <Settings
-          isOpen={true}
-          onClose={mockOnClose}
-          config={mockConfig}
-          onSave={mockOnSave}
-        />
-      )
-
-      const input = screen.getByTestId('nickname-input')
-      fireEvent.change(input, { target: { value: '太郎' } })
-      expect(input).toHaveValue('太郎')
-    })
-
-    it('ニックネームは20文字以内に制限される', () => {
-      render(
-        <Settings
-          isOpen={true}
-          onClose={mockOnClose}
-          config={mockConfig}
-          onSave={mockOnSave}
-        />
-      )
-
-      const input = screen.getByTestId('nickname-input')
-      const longName = 'あ'.repeat(25)
-      fireEvent.change(input, { target: { value: longName } })
-      expect((input as HTMLInputElement).value.length).toBeLessThanOrEqual(20)
-    })
-
-    it('敬称を選択できる', () => {
-      render(
-        <Settings
-          isOpen={true}
-          onClose={mockOnClose}
-          config={mockConfig}
-          onSave={mockOnSave}
-        />
-      )
-
-      const select = screen.getByTestId('honorific-select')
-      fireEvent.change(select, { target: { value: 'さん' } })
-      expect(select).toHaveValue('さん')
-    })
-
-    it('性別を選択できる', () => {
-      render(
-        <Settings
-          isOpen={true}
-          onClose={mockOnClose}
-          config={mockConfig}
-          onSave={mockOnSave}
-        />
-      )
-
-      const select = screen.getByTestId('gender-select')
-      fireEvent.change(select, { target: { value: 'female' } })
-      expect(select).toHaveValue('female')
-    })
-
-    it('保存時にプロフィール情報も含まれる', () => {
-      render(
-        <Settings
-          isOpen={true}
-          onClose={mockOnClose}
-          config={mockConfig}
-          onSave={mockOnSave}
-        />
-      )
-
-      // プロフィールを設定
-      fireEvent.change(screen.getByTestId('nickname-input'), { target: { value: '太郎' } })
-      fireEvent.change(screen.getByTestId('honorific-select'), { target: { value: 'さん' } })
-      fireEvent.change(screen.getByTestId('gender-select'), { target: { value: 'male' } })
-
-      // 保存
-      fireEvent.click(screen.getByTestId('save-button'))
-
-      expect(mockOnSave).toHaveBeenCalledWith({
-        ui: {
-          theme: 'light',
-          fontSize: 14,
-          characterSize: 100,
-        },
-        profile: {
-          nickname: '太郎',
-          honorific: 'さん',
-          gender: 'male',
-        },
-      })
-    })
-
-    it('既存のプロフィール値が表示される', () => {
-      const configWithProfile = {
-        ...mockConfig,
-        profile: {
-          nickname: '花子' as string,
-          honorific: 'さん' as const,
-          gender: 'female' as const,
-        },
-      }
-
-      render(
-        <Settings
-          isOpen={true}
-          onClose={mockOnClose}
-          config={configWithProfile}
-          onSave={mockOnSave}
-        />
-      )
-
-      expect(screen.getByTestId('nickname-input')).toHaveValue('花子')
-      expect(screen.getByTestId('honorific-select')).toHaveValue('さん')
-      expect(screen.getByTestId('gender-select')).toHaveValue('female')
-    })
-  })
-
   describe('保存とキャンセル', () => {
     it('保存ボタンで設定を保存する', async () => {
       render(
@@ -253,11 +117,7 @@ describe('Settings', () => {
           theme: 'dark',
           fontSize: 14,
           characterSize: 100,
-        },
-        profile: {
-          nickname: '',
-          honorific: '',
-          gender: '',
+          developerMode: false,
         },
       })
       expect(mockOnClose).toHaveBeenCalled()
@@ -342,6 +202,91 @@ describe('Settings', () => {
       )
 
       expect(screen.getByText('設定')).toBeInTheDocument()
+    })
+  })
+
+  describe('開発者モード', () => {
+    it('開発者モードトグルが表示される', () => {
+      render(
+        <Settings
+          isOpen={true}
+          onClose={mockOnClose}
+          config={mockConfig}
+          onSave={mockOnSave}
+        />
+      )
+
+      expect(screen.getByTestId('developer-mode-toggle')).toBeInTheDocument()
+      expect(screen.getByText('開発者モード')).toBeInTheDocument()
+      expect(screen.getByText('有効にすると PoC ボタンが表示されます')).toBeInTheDocument()
+    })
+
+    it('デフォルトでOFFになっている', () => {
+      render(
+        <Settings
+          isOpen={true}
+          onClose={mockOnClose}
+          config={mockConfig}
+          onSave={mockOnSave}
+        />
+      )
+
+      expect(screen.getByTestId('developer-mode-toggle')).not.toBeChecked()
+    })
+
+    it('トグルをONに切り替えられる', () => {
+      render(
+        <Settings
+          isOpen={true}
+          onClose={mockOnClose}
+          config={mockConfig}
+          onSave={mockOnSave}
+        />
+      )
+
+      const toggle = screen.getByTestId('developer-mode-toggle')
+      fireEvent.click(toggle)
+      expect(toggle).toBeChecked()
+    })
+
+    it('ONの状態が保存に含まれる', () => {
+      render(
+        <Settings
+          isOpen={true}
+          onClose={mockOnClose}
+          config={mockConfig}
+          onSave={mockOnSave}
+        />
+      )
+
+      fireEvent.click(screen.getByTestId('developer-mode-toggle'))
+      fireEvent.click(screen.getByTestId('save-button'))
+
+      expect(mockOnSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ui: expect.objectContaining({
+            developerMode: true,
+          }),
+        })
+      )
+    })
+
+    it('既存の設定値が反映される', () => {
+      const configWithDevMode = {
+        ...mockConfig,
+        ui: { ...mockConfig.ui, developerMode: true },
+      }
+
+      render(
+        <Settings
+          isOpen={true}
+          onClose={mockOnClose}
+          config={configWithDevMode}
+          onSave={mockOnSave}
+        />
+      )
+
+      expect(screen.getByTestId('developer-mode-toggle')).toBeChecked()
     })
   })
 })

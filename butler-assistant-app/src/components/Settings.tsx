@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react'
-import type { UIConfig, UserProfile } from '@/types'
+import type { UIConfig } from '@/types'
 
 interface SettingsProps {
   isOpen: boolean
   onClose: () => void
   config: {
     ui: UIConfig
-    profile: UserProfile
   }
-  onSave: (config: { ui?: Partial<UIConfig>; profile?: Partial<UserProfile> }) => void
+  onSave: (config: { ui?: Partial<UIConfig> }) => void
 }
 
 /**
@@ -19,11 +18,7 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>(config.ui.theme)
   const [fontSize, setFontSize] = useState(config.ui.fontSize)
   const [characterSize, setCharacterSize] = useState(config.ui.characterSize)
-
-  // プロフィールのローカル状態
-  const [nickname, setNickname] = useState(config.profile.nickname)
-  const [honorific, setHonorific] = useState<UserProfile['honorific']>(config.profile.honorific)
-  const [gender, setGender] = useState<UserProfile['gender']>(config.profile.gender)
+  const [developerMode, setDeveloperMode] = useState(config.ui.developerMode)
 
   const [isSaving, setIsSaving] = useState(false)
 
@@ -32,9 +27,7 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
     setTheme(config.ui.theme)
     setFontSize(config.ui.fontSize)
     setCharacterSize(config.ui.characterSize)
-    setNickname(config.profile.nickname)
-    setHonorific(config.profile.honorific)
-    setGender(config.profile.gender)
+    setDeveloperMode(config.ui.developerMode)
   }, [config])
 
   const handleSave = async () => {
@@ -45,11 +38,7 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
           theme,
           fontSize,
           characterSize,
-        },
-        profile: {
-          nickname,
-          honorific,
-          gender,
+          developerMode,
         },
       })
 
@@ -66,9 +55,7 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
     setTheme(config.ui.theme)
     setFontSize(config.ui.fontSize)
     setCharacterSize(config.ui.characterSize)
-    setNickname(config.profile.nickname)
-    setHonorific(config.profile.honorific)
-    setGender(config.profile.gender)
+    setDeveloperMode(config.ui.developerMode)
     onClose()
   }
 
@@ -115,65 +102,6 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
         {/* コンテンツ */}
         <div className="p-6 overflow-y-auto max-h-[60vh]">
           <div className="space-y-8">
-            {/* プロフィール設定セクション */}
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4" data-testid="profile-section-title">
-                プロフィール
-              </h3>
-              <div className="space-y-4">
-                {/* ニックネーム */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    ニックネーム
-                  </label>
-                  <input
-                    type="text"
-                    value={nickname}
-                    onChange={(e) => setNickname(e.target.value.slice(0, 20))}
-                    maxLength={20}
-                    placeholder="名前を入力"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    data-testid="nickname-input"
-                  />
-                </div>
-
-                {/* 敬称 */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    敬称
-                  </label>
-                  <select
-                    value={honorific}
-                    onChange={(e) => setHonorific(e.target.value as UserProfile['honorific'])}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    data-testid="honorific-select"
-                  >
-                    <option value="">なし</option>
-                    <option value="さん">さん</option>
-                    <option value="くん">くん</option>
-                    <option value="様">様</option>
-                  </select>
-                </div>
-
-                {/* 性別 */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    性別
-                  </label>
-                  <select
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value as UserProfile['gender'])}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    data-testid="gender-select"
-                  >
-                    <option value="">未設定</option>
-                    <option value="female">女性</option>
-                    <option value="male">男性</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
             {/* 表示設定セクション */}
             <div>
               <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4" data-testid="display-section-title">
@@ -246,6 +174,32 @@ export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
                     data-testid="character-size-slider"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* その他セクション */}
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4" data-testid="other-section-title">
+                その他
+              </h3>
+              <div className="space-y-4">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      開発者モード
+                    </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      有効にすると PoC ボタンが表示されます
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={developerMode}
+                    onChange={(e) => setDeveloperMode(e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    data-testid="developer-mode-toggle"
+                  />
+                </label>
               </div>
             </div>
           </div>

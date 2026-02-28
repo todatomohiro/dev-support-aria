@@ -2,11 +2,15 @@ import { useCallback, useState, useRef, useEffect } from 'react'
 import { useAuthStore } from './authStore'
 import { logout as authLogout } from './authClient'
 
+interface UserMenuProps {
+  onOpenProfile?: () => void
+}
+
 /**
  * ユーザーメニュー（アバター + ログアウト）
  * 認証済みの場合のみ表示
  */
-export function UserMenu() {
+export function UserMenu({ onOpenProfile }: UserMenuProps = {}) {
   const { status, user } = useAuthStore()
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -75,6 +79,18 @@ export function UserMenu() {
             </p>
           </div>
           <div className="py-1">
+            {onOpenProfile && (
+              <button
+                onClick={() => {
+                  setIsOpen(false)
+                  onOpenProfile()
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                data-testid="profile-menu-button"
+              >
+                プロフィール
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"

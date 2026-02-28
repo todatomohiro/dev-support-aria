@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ErrorNotification, ModelImporter, MotionPanel } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, ModelImporter, MotionPanel } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
@@ -20,6 +20,7 @@ function App() {
   const isPocPage = location.pathname.startsWith('/poc')
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isModelImporterOpen, setIsModelImporterOpen] = useState(false)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
@@ -103,15 +104,20 @@ function App() {
 
   // 設定保存ハンドラー
   const handleSaveSettings = useCallback(
-    (newConfig: { ui?: Partial<UIConfig>; profile?: Partial<UserProfile> }) => {
-      const update: Partial<{ ui: UIConfig; profile: UserProfile }> = {}
+    (newConfig: { ui?: Partial<UIConfig> }) => {
+      const update: Partial<{ ui: UIConfig }> = {}
       if (newConfig.ui) {
         update.ui = { ...config.ui, ...newConfig.ui }
       }
-      if (newConfig.profile) {
-        update.profile = { ...config.profile, ...newConfig.profile }
-      }
       updateConfig(update)
+    },
+    [config, updateConfig]
+  )
+
+  // プロフィール保存ハンドラー
+  const handleSaveProfile = useCallback(
+    (profile: Partial<UserProfile>) => {
+      updateConfig({ profile: { ...config.profile, ...profile } })
     },
     [config, updateConfig]
   )
@@ -210,41 +216,45 @@ function App() {
                 ログイン
               </button>
             )}
-            <UserMenu />
+            <UserMenu onOpenProfile={() => setIsProfileOpen(true)} />
             {!requiresAuth && (
               <>
-                {isPocPage ? (
+                {config.ui.developerMode && (
+                  isPocPage ? (
+                    <button
+                      onClick={() => navigate('/')}
+                      className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                      data-testid="back-button"
+                    >
+                      ← 戻る
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => navigate('/poc/polly')}
+                      className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-orange-700 dark:text-orange-200 bg-orange-50 dark:bg-orange-900/50 border border-orange-300 dark:border-orange-700 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900 transition-colors"
+                      data-testid="poc-button"
+                    >
+                      PoC
+                    </button>
+                  )
+                )}
+                {config.ui.developerMode && (
                   <button
-                    onClick={() => navigate('/')}
-                    className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                    data-testid="back-button"
+                    onClick={() => setIsModelImporterOpen(true)}
+                    className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
+                    title="モデルをインポート"
+                    data-testid="model-import-button"
                   >
-                    ← 戻る
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => navigate('/poc/polly')}
-                    className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-orange-700 dark:text-orange-200 bg-orange-50 dark:bg-orange-900/50 border border-orange-300 dark:border-orange-700 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900 transition-colors"
-                    data-testid="poc-button"
-                  >
-                    PoC
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
                   </button>
                 )}
-                <button
-                  onClick={() => setIsModelImporterOpen(true)}
-                  className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-                  title="モデルをインポート"
-                  data-testid="model-import-button"
-                >
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                    />
-                  </svg>
-                </button>
                 <button
                   onClick={() => setIsSettingsOpen(true)}
                   className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
@@ -330,6 +340,7 @@ function App() {
                     onSendMessage={handleSendMessage}
                     ttsEnabled={config.ui.ttsEnabled}
                     onToggleTts={(enabled) => updateConfig({ ui: { ...config.ui, ttsEnabled: enabled } })}
+                    developerMode={config.ui.developerMode}
                   />
                 </div>
               </>
@@ -342,8 +353,16 @@ function App() {
       <Settings
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        config={{ ui: config.ui, profile: config.profile }}
+        config={{ ui: config.ui }}
         onSave={handleSaveSettings}
+      />
+
+      {/* プロフィールモーダル */}
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        profile={config.profile}
+        onSave={handleSaveProfile}
       />
 
       {/* モデルインポートモーダル */}
