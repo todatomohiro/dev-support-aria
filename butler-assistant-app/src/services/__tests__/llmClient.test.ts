@@ -189,6 +189,36 @@ describe('LLMClient', () => {
       expect(result.motion).toBe('idle')
     })
 
+    it('imageBase64 が指定された場合リクエストボディに含まれる', async () => {
+      const mockResponse = { content: '{"text": "猫だね！", "motion": "smile", "emotion": "happy"}' }
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      await llmClient.sendMessage('これ何？', undefined, 'aW1hZ2VkYXRh')
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      const body = JSON.parse(fetchCall[1].body)
+      expect(body.imageBase64).toBe('aW1hZ2VkYXRh')
+    })
+
+    it('imageBase64 が未指定の場合リクエストボディに含まれない', async () => {
+      const mockResponse = { content: '{"text": "はい！", "motion": "nod", "emotion": "neutral"}' }
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      await llmClient.sendMessage('こんにちは')
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      const body = JSON.parse(fetchCall[1].body)
+      expect(body.imageBase64).toBeUndefined()
+    })
+
     it('401 エラー時は認証エラーメッセージを返す', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,

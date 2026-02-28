@@ -14,6 +14,14 @@ vi.mock('@/services/llmClient', () => ({
   },
 }))
 
+/** ChatUI のデフォルト props（統合テスト用） */
+const chatUIDefaults = {
+  ttsEnabled: false,
+  onToggleTts: () => {},
+  cameraEnabled: false,
+  onToggleCamera: () => {},
+}
+
 describe('チャットフロー統合テスト', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -43,6 +51,7 @@ describe('チャットフロー統合テスト', () => {
       const store = useAppStore.getState()
       render(
         <ChatUI
+          {...chatUIDefaults}
           messages={store.messages}
           isLoading={store.isLoading}
           onSendMessage={async (text) => {
@@ -68,7 +77,8 @@ describe('チャットフロー統合テスト', () => {
           expect.objectContaining({
             messages: expect.any(Array),
             maxLength: expect.any(Number),
-          })
+          }),
+          undefined
         )
       })
     })
@@ -87,6 +97,7 @@ describe('チャットフロー統合テスト', () => {
       const store = useAppStore.getState()
       const { rerender } = render(
         <ChatUI
+          {...chatUIDefaults}
           messages={store.messages}
           isLoading={false}
           onSendMessage={async (text) => {
@@ -107,6 +118,7 @@ describe('チャットフロー統合テスト', () => {
       // ローディング状態で再レンダリング
       rerender(
         <ChatUI
+          {...chatUIDefaults}
           messages={store.messages}
           isLoading={true}
           onSendMessage={async () => {}}
@@ -121,6 +133,7 @@ describe('チャットフロー統合テスト', () => {
       const store = useAppStore.getState()
       render(
         <ChatUI
+          {...chatUIDefaults}
           messages={store.messages}
           isLoading={false}
           onSendMessage={async (text) => {
@@ -148,6 +161,7 @@ describe('チャットフロー統合テスト', () => {
 
       render(
         <ChatUI
+          {...chatUIDefaults}
           messages={messages}
           isLoading={false}
           onSendMessage={async () => {}}
@@ -171,6 +185,7 @@ describe('チャットフロー統合テスト', () => {
 
       render(
         <ChatUI
+          {...chatUIDefaults}
           messages={messages}
           isLoading={false}
           onSendMessage={async () => {}}
@@ -193,6 +208,7 @@ describe('チャットフロー統合テスト', () => {
       const store = useAppStore.getState()
       render(
         <ChatUI
+          {...chatUIDefaults}
           messages={store.messages}
           isLoading={false}
           onSendMessage={async (text) => {

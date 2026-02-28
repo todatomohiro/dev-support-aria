@@ -84,8 +84,8 @@ function App() {
   }, [])
 
   // メッセージ送信ハンドラー
-  const handleSendMessage = useCallback(async (text: string) => {
-    await chatController.sendMessage(text)
+  const handleSendMessage = useCallback(async (text: string, imageBase64?: string) => {
+    await chatController.sendMessage(text, imageBase64)
   }, [])
 
   // モーション完了ハンドラー
@@ -342,6 +342,8 @@ function App() {
                     onSendMessage={handleSendMessage}
                     ttsEnabled={config.ui.ttsEnabled}
                     onToggleTts={(enabled) => updateConfig({ ui: { ...config.ui, ttsEnabled: enabled } })}
+                    cameraEnabled={config.ui.cameraEnabled}
+                    onToggleCamera={(enabled) => updateConfig({ ui: { ...config.ui, cameraEnabled: enabled } })}
                     developerMode={config.ui.developerMode}
                   />
                 </div>

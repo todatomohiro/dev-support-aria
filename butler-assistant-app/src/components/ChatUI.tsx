@@ -2,22 +2,26 @@ import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import type { Message } from '@/types'
 import { ttsService } from '@/services/ttsService'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+import { CameraPreview } from './CameraPreview'
+import type { CameraPreviewHandle } from './CameraPreview'
 
 const MapView = lazy(() => import('./MapView').then(m => ({ default: m.MapView })))
 
 interface ChatUIProps {
   messages: Message[]
   isLoading: boolean
-  onSendMessage: (text: string) => void
+  onSendMessage: (text: string, imageBase64?: string) => void
   ttsEnabled: boolean
   onToggleTts: (enabled: boolean) => void
+  cameraEnabled: boolean
+  onToggleCamera: (enabled: boolean) => void
   developerMode?: boolean
 }
 
 /**
  * チャットUI コンポーネント
  */
-export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, developerMode = false }: ChatUIProps) {
+export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
   const [autoSendEnabled, setAutoSendEnabled] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -25,6 +29,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   const inputTextRef = useRef('')
   const autoSendEnabledRef = useRef(false)
   const isLoadingRef = useRef(false)
+  const cameraCaptureRef = useRef<CameraPreviewHandle>(null)
 
   const { status: sttStatus, interimText, error: sttError, toggleListening, isSupported: sttSupported } =
     useSpeechRecognition({
@@ -52,7 +57,8 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
     autoSendTimerRef.current = setTimeout(() => {
       const text = inputTextRef.current.trim()
       if (text) {
-        onSendMessage(text)
+        const image = cameraCaptureRef.current?.captureFrame() ?? undefined
+        onSendMessage(text, image)
         setInputText('')
       }
       autoSendTimerRef.current = null
@@ -109,7 +115,8 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
         clearTimeout(autoSendTimerRef.current)
         autoSendTimerRef.current = null
       }
-      onSendMessage(inputText.trim())
+      const image = cameraCaptureRef.current?.captureFrame() ?? undefined
+      onSendMessage(inputText.trim(), image)
       setInputText('')
     }
   }
@@ -141,6 +148,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 
       {/* 入力エリア */}
       <div className="border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4">
+        <CameraPreview ref={cameraCaptureRef} enabled={cameraEnabled} />
         <textarea
           value={inputText}
           onChange={handleInputChange}
@@ -220,6 +228,24 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
                 </button>
               </label>
             )}
+            <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="camera-toggle">
+              <span className="text-xs text-gray-500">📷 カメラ</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={cameraEnabled}
+                onClick={() => onToggleCamera(!cameraEnabled)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                  cameraEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                    cameraEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                  }`}
+                />
+              </button>
+            </label>
             <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="tts-toggle">
               <span className="text-xs text-gray-500">🔊 自動読み上げ</span>
               <button

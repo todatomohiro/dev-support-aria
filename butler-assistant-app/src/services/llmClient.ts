@@ -69,7 +69,8 @@ export function buildSkillSystemPrompt(): string {
 - mapData は場所検索時のみ含め、通常の会話では省略してください
 - web_search ツールが利用可能です。ユーザーが「〜について調べて」「〜の最新情報」「〜って何？」など、最新の情報や知識の調査を求めた場合に使用してください
 - web_search の結果を受け取ったら、検索結果をもとにわかりやすく要約して回答してください
-- 重要な情報には出典URLを含めてください（例: 「詳しくはこちら: URL」）`
+- 重要な情報には出典URLを含めてください（例: 「詳しくはこちら: URL」）
+- 画像が添付されている場合は、画像の内容を分析して回答してください。「これ何？」「何が見える？」などの質問には画像の内容を説明してください`
 }
 
 /**
@@ -111,7 +112,7 @@ class LLMClientImpl implements LLMClientService {
   /**
    * Lambda /llm/chat を経由して Bedrock Claude にメッセージを送信
    */
-  async sendMessage(message: string, history?: ConversationHistory): Promise<StructuredResponse> {
+  async sendMessage(message: string, history?: ConversationHistory, imageBase64?: string): Promise<StructuredResponse> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     const accessToken = useAuthStore.getState().accessToken
 
@@ -136,7 +137,7 @@ class LLMClientImpl implements LLMClientService {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ message, history: historyMessages, systemPrompt }),
+        body: JSON.stringify({ message, history: historyMessages, systemPrompt, ...(imageBase64 ? { imageBase64 } : {}) }),
       })
 
       if (!res.ok) {

@@ -24,6 +24,21 @@ const createMessage = (
   ...(rawResponse ? { rawResponse } : {}),
 })
 
+/** ChatUI のデフォルト props */
+const defaultProps = {
+  messages: [] as Message[],
+  isLoading: false,
+  onSendMessage: vi.fn(),
+  ttsEnabled: false,
+  onToggleTts: vi.fn(),
+  cameraEnabled: false,
+  onToggleCamera: vi.fn(),
+}
+
+/** ChatUI をデフォルト props 付きでレンダリング */
+const renderChatUI = (overrides: Partial<typeof defaultProps> = {}) =>
+  render(<ChatUI {...defaultProps} {...overrides} />)
+
 describe('ChatUI', () => {
   describe('メッセージ表示', () => {
     it('メッセージが正しく表示される', () => {
@@ -32,16 +47,14 @@ describe('ChatUI', () => {
         createMessage('2', 'ご主人様、ようこそ', 'assistant', Date.now()),
       ]
 
-      render(
-        <ChatUI messages={messages} isLoading={false} onSendMessage={() => {}} />
-      )
+      renderChatUI({ messages })
 
       expect(screen.getByText('こんにちは')).toBeInTheDocument()
       expect(screen.getByText('ご主人様、ようこそ')).toBeInTheDocument()
     })
 
     it('空のメッセージリストでも正常に表示される', () => {
-      render(<ChatUI messages={[]} isLoading={false} onSendMessage={() => {}} />)
+      renderChatUI()
 
       expect(screen.queryByTestId('message-bubble')).not.toBeInTheDocument()
     })
@@ -49,19 +62,19 @@ describe('ChatUI', () => {
 
   describe('ローディング状態', () => {
     it('ローディング中はインジケーターが表示される', () => {
-      render(<ChatUI messages={[]} isLoading={true} onSendMessage={() => {}} />)
+      renderChatUI({ isLoading: true })
 
       expect(screen.getByTestId('loading-indicator')).toBeInTheDocument()
     })
 
     it('ローディング中でないときはインジケーターが非表示', () => {
-      render(<ChatUI messages={[]} isLoading={false} onSendMessage={() => {}} />)
+      renderChatUI()
 
       expect(screen.queryByTestId('loading-indicator')).not.toBeInTheDocument()
     })
 
     it('ローディング中は入力が無効化される', () => {
-      render(<ChatUI messages={[]} isLoading={true} onSendMessage={() => {}} />)
+      renderChatUI({ isLoading: true })
 
       const input = screen.getByTestId('chat-input')
       expect(input).toBeDisabled()
@@ -71,9 +84,7 @@ describe('ChatUI', () => {
   describe('メッセージ送信', () => {
     it('送信ボタンクリックでonSendMessageが呼ばれる', () => {
       const onSendMessage = vi.fn()
-      render(
-        <ChatUI messages={[]} isLoading={false} onSendMessage={onSendMessage} />
-      )
+      renderChatUI({ onSendMessage })
 
       const input = screen.getByTestId('chat-input')
       const sendButton = screen.getByTestId('send-button')
@@ -81,28 +92,24 @@ describe('ChatUI', () => {
       fireEvent.change(input, { target: { value: 'テストメッセージ' } })
       fireEvent.click(sendButton)
 
-      expect(onSendMessage).toHaveBeenCalledWith('テストメッセージ')
+      expect(onSendMessage).toHaveBeenCalledWith('テストメッセージ', undefined)
     })
 
     it('Enterキーでメッセージを送信できる', () => {
       const onSendMessage = vi.fn()
-      render(
-        <ChatUI messages={[]} isLoading={false} onSendMessage={onSendMessage} />
-      )
+      renderChatUI({ onSendMessage })
 
       const input = screen.getByTestId('chat-input')
 
       fireEvent.change(input, { target: { value: 'テストメッセージ' } })
       fireEvent.keyDown(input, { key: 'Enter' })
 
-      expect(onSendMessage).toHaveBeenCalledWith('テストメッセージ')
+      expect(onSendMessage).toHaveBeenCalledWith('テストメッセージ', undefined)
     })
 
     it('Shift+Enterでは送信されない', () => {
       const onSendMessage = vi.fn()
-      render(
-        <ChatUI messages={[]} isLoading={false} onSendMessage={onSendMessage} />
-      )
+      renderChatUI({ onSendMessage })
 
       const input = screen.getByTestId('chat-input')
 
@@ -114,9 +121,7 @@ describe('ChatUI', () => {
 
     it('空のメッセージは送信できない', () => {
       const onSendMessage = vi.fn()
-      render(
-        <ChatUI messages={[]} isLoading={false} onSendMessage={onSendMessage} />
-      )
+      renderChatUI({ onSendMessage })
 
       const sendButton = screen.getByTestId('send-button')
 
@@ -126,9 +131,7 @@ describe('ChatUI', () => {
     })
 
     it('送信後に入力フィールドがクリアされる', () => {
-      render(
-        <ChatUI messages={[]} isLoading={false} onSendMessage={() => {}} />
-      )
+      renderChatUI()
 
       const input = screen.getByTestId('chat-input') as HTMLTextAreaElement
 
@@ -147,9 +150,7 @@ describe('ChatUI', () => {
         createMessage('1', 'こんにちは', 'assistant', Date.now(), rawJson),
       ]
 
-      render(
-        <ChatUI messages={messages} isLoading={false} onSendMessage={() => {}} developerMode={false} />
-      )
+      renderChatUI({ messages, developerMode: false })
 
       expect(screen.queryByTestId('raw-json-toggle')).not.toBeInTheDocument()
     })
@@ -159,9 +160,7 @@ describe('ChatUI', () => {
         createMessage('1', 'こんにちは', 'assistant', Date.now(), rawJson),
       ]
 
-      render(
-        <ChatUI messages={messages} isLoading={false} onSendMessage={() => {}} developerMode={true} />
-      )
+      renderChatUI({ messages, developerMode: true })
 
       expect(screen.getByTestId('raw-json-toggle')).toBeInTheDocument()
     })
@@ -171,9 +170,7 @@ describe('ChatUI', () => {
         createMessage('1', 'こんにちは', 'assistant', Date.now(), rawJson),
       ]
 
-      render(
-        <ChatUI messages={messages} isLoading={false} onSendMessage={() => {}} developerMode={true} />
-      )
+      renderChatUI({ messages, developerMode: true })
 
       // 初期状態では raw JSON が表示されていない
       expect(screen.queryByTestId('raw-json-content')).not.toBeInTheDocument()
@@ -193,9 +190,7 @@ describe('ChatUI', () => {
         createMessage('1', 'テスト', 'user', Date.now(), rawJson),
       ]
 
-      render(
-        <ChatUI messages={messages} isLoading={false} onSendMessage={() => {}} developerMode={true} />
-      )
+      renderChatUI({ messages, developerMode: true })
 
       expect(screen.queryByTestId('raw-json-toggle')).not.toBeInTheDocument()
     })
@@ -222,9 +217,8 @@ describe('ChatUI', () => {
 
             const { container, unmount } = render(
               <ChatUI
+                {...defaultProps}
                 messages={sortedMessages}
-                isLoading={false}
-                onSendMessage={() => {}}
               />
             )
 
@@ -256,8 +250,7 @@ describe('ChatUI', () => {
 
             const { unmount } = render(
               <ChatUI
-                messages={[]}
-                isLoading={false}
+                {...defaultProps}
                 onSendMessage={onSendMessage}
               />
             )
@@ -268,7 +261,7 @@ describe('ChatUI', () => {
             fireEvent.change(input, { target: { value: text } })
             fireEvent.click(sendButton)
 
-            expect(onSendMessage).toHaveBeenCalledWith(text.trim())
+            expect(onSendMessage).toHaveBeenCalledWith(text.trim(), undefined)
 
             // 各イテレーション後にクリーンアップ
             unmount()

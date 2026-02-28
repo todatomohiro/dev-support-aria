@@ -20,6 +20,8 @@ const agentCore = new BedrockAgentCoreClient({})
 
 const MEMORY_ID = process.env.MEMORY_ID ?? ''
 const MAX_TOOL_USE_ITERATIONS = 5
+/** imageBase64 の最大サイズ（5MB = 約 6.67MB の base64 文字列） */
+const MAX_IMAGE_BASE64_LENGTH = Math.ceil(5 * 1024 * 1024 * 4 / 3)
 
 /**
  * AgentCore Memory からユーザーに関する記憶を検索
@@ -68,16 +70,25 @@ async function retrieveMemories(userId: string, query: string): Promise<string> 
  */
 function toConverseMessages(
   history: Array<{ role: string; content: string }>,
-  message: string
+  message: string,
+  imageBase64?: string
 ): BedrockMessage[] {
   const messages: BedrockMessage[] = history.map((m) => ({
     role: m.role as 'user' | 'assistant',
     content: [{ text: m.content }],
   }))
-  messages.push({
-    role: 'user',
-    content: [{ text: message }],
-  })
+
+  const userContent: ContentBlock[] = [{ text: message }]
+  if (imageBase64) {
+    userContent.push({
+      image: {
+        format: 'jpeg',
+        source: { bytes: Buffer.from(imageBase64, 'base64') },
+      },
+    })
+  }
+
+  messages.push({ role: 'user', content: userContent })
   return messages
 }
 
@@ -108,15 +119,21 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let message: string
   let history: Array<{ role: string; content: string }>
   let systemPrompt: string
+  let imageBase64: string | undefined
 
   try {
     const body = JSON.parse(event.body)
     message = body.message
     history = body.history ?? []
     systemPrompt = body.systemPrompt ?? ''
+    imageBase64 = typeof body.imageBase64 === 'string' ? body.imageBase64 : undefined
 
     if (!message || typeof message !== 'string') {
       return response(400, { error: 'message is required' })
+    }
+
+    if (imageBase64 && imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
+      return response(400, { error: '画像サイズが上限（5MB）を超えています' })
     }
   } catch {
     return response(400, { error: 'Invalid JSON' })
@@ -126,7 +143,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const memoryContext = await retrieveMemories(userId, message)
   const enhancedSystemPrompt = systemPrompt + memoryContext
 
-  const messages = toConverseMessages(history, message)
+  const messages = toConverseMessages(history, message, imageBase64)
 
   const system: SystemContentBlock[] = enhancedSystemPrompt
     ? [{ text: enhancedSystemPrompt }]
@@ -145,7 +162,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         messages: currentMessages,
         system,
         inferenceConfig: {
-          maxTokens: 1024,
+          maxTokens: imageBase64 ? 2048 : 1024,
           temperature: 0.7,
         },
         toolConfig,

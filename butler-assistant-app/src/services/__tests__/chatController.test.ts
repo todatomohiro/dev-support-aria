@@ -111,6 +111,25 @@ describe('ChatController', () => {
       expect(state.messages[1].mapData).toEqual(mapData)
     })
 
+    it('画像付きメッセージが llmClient に imageBase64 を渡す', async () => {
+      mockLLMClient.sendMessage.mockResolvedValue({
+        text: '猫の写真だね！',
+        motion: 'smile',
+      })
+
+      await chatController.sendMessage('これ何？', 'aW1hZ2VkYXRh')
+
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledWith(
+        'これ何？',
+        expect.anything(),
+        'aW1hZ2VkYXRh'
+      )
+
+      const state = useAppStore.getState()
+      expect(state.messages).toHaveLength(2)
+      expect(state.messages[1].content).toBe('猫の写真だね！')
+    })
+
     it('mapData がない通常レスポンスでは Message.mapData が undefined', async () => {
       mockLLMClient.sendMessage.mockResolvedValue({
         text: 'こんにちは！',

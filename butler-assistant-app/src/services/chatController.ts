@@ -28,7 +28,7 @@ class ChatControllerImpl {
   /**
    * メッセージを送信し、レスポンスを処理
    */
-  async sendMessage(content: string): Promise<void> {
+  async sendMessage(content: string, imageBase64?: string): Promise<void> {
     const store = useAppStore.getState()
 
     // 空メッセージはスキップ
@@ -58,7 +58,7 @@ class ChatControllerImpl {
       // LLMにメッセージを送信
       const structuredResponse = await measurePerformanceAsync(
         'LLM送信→レスポンス受信',
-        () => llmClient.sendMessage(content.trim(), history)
+        () => llmClient.sendMessage(content.trim(), history, imageBase64)
       )
 
       // アシスタントメッセージを作成

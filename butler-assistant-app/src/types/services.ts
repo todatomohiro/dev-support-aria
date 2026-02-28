@@ -10,7 +10,7 @@ export interface LLMClientService {
   /**
    * LLMにメッセージを送信し、構造化された回答を取得
    */
-  sendMessage(message: string, history?: ConversationHistory): Promise<StructuredResponse>
+  sendMessage(message: string, history?: ConversationHistory, imageBase64?: string): Promise<StructuredResponse>
 
   /**
    * ユーザープロフィールを設定
