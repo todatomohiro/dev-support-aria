@@ -83,18 +83,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }))
 
     // 全参加者の CONV_MEMBER を更新（updatedAt, lastMessage, GSI2SK）
-    const updatePromises = participants.map((participantId) =>
-      client.send(new UpdateItemCommand({
+    // 送信者のみ lastReadAt も更新（自分のメッセージは既読扱い）
+    const updatePromises = participants.map((participantId) => {
+      const isSender = participantId === userId
+      return client.send(new UpdateItemCommand({
         TableName: TABLE_NAME,
         Key: marshall({ PK: `USER#${participantId}`, SK: `CONV_MEMBER#${conversationId}` }),
-        UpdateExpression: 'SET updatedAt = :now, lastMessage = :msg, GSI2SK = :gsi2sk',
+        UpdateExpression: isSender
+          ? 'SET updatedAt = :now, lastMessage = :msg, GSI2SK = :gsi2sk, lastReadAt = :now'
+          : 'SET updatedAt = :now, lastMessage = :msg, GSI2SK = :gsi2sk',
         ExpressionAttributeValues: marshall({
           ':now': now,
           ':msg': content.substring(0, 100),
           ':gsi2sk': `CONV_UPDATED#${paddedNow}`,
         }),
       }))
-    )
+    })
 
     await Promise.all(updatePromises)
 

@@ -200,6 +200,61 @@ describe('WsServiceImpl', () => {
     })
   })
 
+  describe('reconnect', () => {
+    it('再接続カウンタをリセットして再接続する', async () => {
+      const service = await createService()
+      service.connect('test-token')
+      mockWsInstances[0].simulateOpen()
+
+      // 接続切断を複数回行ってカウンタを増やす
+      mockWsInstances[0].simulateClose()
+      vi.advanceTimersByTime(1000)
+      mockWsInstances[1].simulateClose()
+      vi.advanceTimersByTime(2000)
+
+      // reconnect() で再接続カウンタをリセット
+      service.reconnect()
+
+      expect(mockWsInstances.length).toBeGreaterThanOrEqual(4)
+      const latest = mockWsInstances[mockWsInstances.length - 1]
+      latest.simulateOpen()
+      expect(useMultiChatStore.getState().wsStatus).toBe('open')
+    })
+  })
+
+  describe('message_read イベント', () => {
+    it('購読中の会話に message_read が来たら otherLastReadAt を更新する', async () => {
+      const service = await createService()
+      service.connect('test-token')
+      mockWsInstances[0].simulateOpen()
+      service.subscribe('conv_1')
+
+      mockWsInstances[0].simulateMessage({
+        type: 'message_read',
+        conversationId: 'conv_1',
+        userId: 'other-user',
+        lastReadAt: 1700000005000,
+      })
+
+      expect(useMultiChatStore.getState().otherLastReadAt).toBe(1700000005000)
+    })
+
+    it('未購読の会話に message_read が来ても otherLastReadAt は変わらない', async () => {
+      const service = await createService()
+      service.connect('test-token')
+      mockWsInstances[0].simulateOpen()
+
+      mockWsInstances[0].simulateMessage({
+        type: 'message_read',
+        conversationId: 'conv_2',
+        userId: 'other-user',
+        lastReadAt: 1700000005000,
+      })
+
+      expect(useMultiChatStore.getState().otherLastReadAt).toBeNull()
+    })
+  })
+
   describe('再接続', () => {
     it('接続が切れたら指数バックオフで再接続する', async () => {
       const service = await createService()

@@ -157,6 +157,12 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-conversations-messages-poll',
     })
 
+    const conversationsMessagesReadFn = new lambdaNode.NodejsFunction(this, 'ConversationsMessagesReadFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'conversations', 'messagesRead.ts'),
+      functionName: 'butler-conversations-messages-read',
+    })
+
     // ── WebSocket Lambda 関数 ──
     const wsAuthorizerFn = new lambdaNode.NodejsFunction(this, 'WsAuthorizerFn', {
       ...lambdaDefaults,
@@ -210,11 +216,18 @@ export class ButlerStack extends cdk.Stack {
     // メッセージ送信 Lambda に WebSocket プッシュ権限を付与
     conversationsMessagesSendFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['execute-api:ManageConnections'],
-      resources: [wsApi.arnForExecuteApi('*', '/*')],
+      resources: [wsApi.arnForExecuteApiV2('*', '/*')],
     }))
 
     // メッセージ送信 Lambda に WebSocket エンドポイントを設定
     conversationsMessagesSendFn.addEnvironment('WEBSOCKET_ENDPOINT', wsStage.callbackUrl)
+
+    // 既読更新 Lambda に WebSocket プッシュ権限を付与
+    conversationsMessagesReadFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [wsApi.arnForExecuteApiV2('*', '/*')],
+    }))
+    conversationsMessagesReadFn.addEnvironment('WEBSOCKET_ENDPOINT', wsStage.callbackUrl)
 
     // TTS Lambda（Polly 用 — DynamoDB 不要）
     const ttsSynthesizeFn = new lambdaNode.NodejsFunction(this, 'TtsSynthesizeFn', {
@@ -373,6 +386,7 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadData(conversationsMessagesListFn)
     table.grantReadWriteData(conversationsMessagesSendFn)
     table.grantReadData(conversationsMessagesPollFn)
+    table.grantReadWriteData(conversationsMessagesReadFn)
 
     // ── API Gateway ──
     const api = new apigateway.RestApi(this, 'ButlerApi', {
@@ -460,6 +474,10 @@ export class ButlerStack extends cdk.Stack {
     // /conversations/{id}/messages/new
     const conversationMessagesNewResource = conversationMessagesResource.addResource('new')
     conversationMessagesNewResource.addMethod('GET', new apigateway.LambdaIntegration(conversationsMessagesPollFn), authMethodOptions)
+
+    // /conversations/{id}/messages/read
+    const conversationMessagesReadResource = conversationMessagesResource.addResource('read')
+    conversationMessagesReadResource.addMethod('POST', new apigateway.LambdaIntegration(conversationsMessagesReadFn), authMethodOptions)
 
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {

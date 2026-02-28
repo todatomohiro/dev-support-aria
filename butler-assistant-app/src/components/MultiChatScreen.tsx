@@ -140,6 +140,7 @@ export function MultiChatScreen() {
         isLoading={isLoadingConversations}
         error={error}
         unreadCounts={unreadCounts}
+        wsStatus={wsStatus}
       />
     )
   }

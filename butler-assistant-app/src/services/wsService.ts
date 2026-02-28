@@ -15,6 +15,7 @@ const MAX_BACKOFF_MS = 30000
 export interface WsServiceType {
   connect(token: string): void
   disconnect(): void
+  reconnect(): void
   subscribe(conversationId: string): void
   unsubscribe(conversationId: string): void
 }
@@ -99,6 +100,17 @@ export class WsServiceImpl implements WsServiceType {
   }
 
   /**
+   * 手動で再接続を試行（再接続カウンタをリセット）
+   */
+  reconnect(): void {
+    this.reconnectAttempts = 0
+    const token = this.currentToken ?? useAuthStore.getState().accessToken
+    if (token) {
+      this.connect(token)
+    }
+  }
+
+  /**
    * 会話を購読（メッセージ受信対象に追加）
    */
   subscribe(conversationId: string): void {
@@ -115,7 +127,7 @@ export class WsServiceImpl implements WsServiceType {
   /**
    * 受信メッセージを処理
    */
-  private handleMessage(data: { type: string; conversationId: string; message?: unknown; lastMessage?: string; updatedAt?: number }): void {
+  private handleMessage(data: { type: string; conversationId: string; message?: unknown; lastMessage?: string; updatedAt?: number; lastReadAt?: number; userId?: string }): void {
     const store = useMultiChatStore.getState()
 
     if (data.type === 'new_message' && data.message) {
@@ -130,6 +142,12 @@ export class WsServiceImpl implements WsServiceType {
 
     if (data.type === 'conversation_updated' && data.lastMessage !== undefined && data.updatedAt !== undefined) {
       store.updateConversationSummary(data.conversationId, data.lastMessage, data.updatedAt)
+    }
+
+    if (data.type === 'message_read' && data.lastReadAt !== undefined) {
+      if (this.subscribedConversations.has(data.conversationId)) {
+        store.setOtherLastReadAt(data.lastReadAt)
+      }
     }
   }
 

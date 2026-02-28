@@ -148,6 +148,36 @@ describe('ConversationService', () => {
     })
   })
 
+  describe('markAsRead', () => {
+    it('POST /conversations/{id}/messages/read で既読位置を更新する', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ updated: true }),
+      })
+
+      await conversationService.markAsRead('conv_1', 1700000002000)
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      expect(fetchCall[0]).toBe(`${MOCK_API_BASE_URL}/conversations/conv_1/messages/read`)
+      expect(fetchCall[1].method).toBe('POST')
+      const body = JSON.parse(fetchCall[1].body)
+      expect(body.lastReadAt).toBe(1700000002000)
+    })
+  })
+
+  describe('getMessages with otherLastReadAt', () => {
+    it('レスポンスに otherLastReadAt が含まれる', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ messages: [], otherLastReadAt: 1700000001000 }),
+      })
+
+      const result = await conversationService.getMessages('conv_1')
+
+      expect(result.otherLastReadAt).toBe(1700000001000)
+    })
+  })
+
   describe('pollNewMessages', () => {
     it('GET /conversations/{id}/messages/new?after={ts} で新着メッセージを取得する', async () => {
       const mockMessages = [

@@ -20,7 +20,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   try {
-    // 参加者であることを確認
+    // 参加者であることを確認し、相手の userId を取得
     const membership = await client.send(new GetItemCommand({
       TableName: TABLE_NAME,
       Key: marshall({ PK: `USER#${userId}`, SK: `CONV_MEMBER#${conversationId}` }),
@@ -29,6 +29,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (!membership.Item) {
       return response(403, { error: 'この会話へのアクセス権がありません' })
     }
+
+    const memberRecord = unmarshall(membership.Item)
+    const otherUserId = memberRecord.otherUserId as string | undefined
 
     const limit = Math.min(
       parseInt(event.queryStringParameters?.limit ?? '50', 10) || 50,
@@ -73,6 +76,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (result.LastEvaluatedKey) {
       const lastKey = unmarshall(result.LastEvaluatedKey)
       responseBody.nextCursor = lastKey.SK
+    }
+
+    // 相手の既読位置を取得
+    if (otherUserId) {
+      const otherMember = await client.send(new GetItemCommand({
+        TableName: TABLE_NAME,
+        Key: marshall({ PK: `USER#${otherUserId}`, SK: `CONV_MEMBER#${conversationId}` }),
+        ProjectionExpression: 'lastReadAt',
+      }))
+      if (otherMember.Item) {
+        const otherRecord = unmarshall(otherMember.Item)
+        responseBody.otherLastReadAt = otherRecord.lastReadAt ?? null
+      }
     }
 
     return response(200, responseBody)

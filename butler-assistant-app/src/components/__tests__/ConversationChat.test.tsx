@@ -7,13 +7,27 @@ import type { ConversationMessage } from '@/types'
 // conversationService をモック
 const mockGetMessages = vi.fn().mockResolvedValue({ messages: [] })
 const mockSendMessage = vi.fn()
+const mockMarkAsRead = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('@/services/conversationService', () => ({
   conversationService: {
     getMessages: (...args: unknown[]) => mockGetMessages(...args),
     sendMessage: (...args: unknown[]) => mockSendMessage(...args),
+    markAsRead: (...args: unknown[]) => mockMarkAsRead(...args),
     listConversations: vi.fn().mockResolvedValue([]),
     pollNewMessages: vi.fn().mockResolvedValue([]),
+  },
+}))
+
+// wsService をモック
+const mockReconnect = vi.fn()
+vi.mock('@/services/wsService', () => ({
+  wsService: {
+    reconnect: () => mockReconnect(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    subscribe: vi.fn(),
+    unsubscribe: vi.fn(),
   },
 }))
 
@@ -218,6 +232,91 @@ describe('ConversationChat', () => {
       expect(mobileHeader).toBeInTheDocument()
       expect(mobileHeader).toHaveTextContent('F') // イニシャル
       expect(mobileHeader).toHaveTextContent('Friend')
+    })
+  })
+
+  describe('WebSocket ステータスバー', () => {
+    it('wsStatus=connecting のとき黄色のステータスバーが表示される', () => {
+      useMultiChatStore.getState().setWsStatus('connecting')
+      render(<ConversationChat conversationId="conv_1" otherDisplayName="Friend" onBack={mockOnBack} />)
+      const bar = screen.getByTestId('ws-status-bar')
+      expect(bar).toBeInTheDocument()
+      expect(bar).toHaveTextContent('接続中...')
+    })
+
+    it('wsStatus=failed のとき赤いステータスバーと再接続ボタンが表示される', () => {
+      useMultiChatStore.getState().setWsStatus('failed')
+      render(<ConversationChat conversationId="conv_1" otherDisplayName="Friend" onBack={mockOnBack} />)
+      const bar = screen.getByTestId('ws-status-bar')
+      expect(bar).toBeInTheDocument()
+      expect(bar).toHaveTextContent('ポーリングモードで動作中')
+
+      const reconnectBtn = screen.getByTestId('ws-reconnect-button')
+      expect(reconnectBtn).toBeInTheDocument()
+      fireEvent.click(reconnectBtn)
+      expect(mockReconnect).toHaveBeenCalled()
+    })
+
+    it('wsStatus=open のときステータスバーが表示されない', () => {
+      useMultiChatStore.getState().setWsStatus('open')
+      render(<ConversationChat conversationId="conv_1" otherDisplayName="Friend" onBack={mockOnBack} />)
+      expect(screen.queryByTestId('ws-status-bar')).not.toBeInTheDocument()
+    })
+
+    it('wsStatus=disconnected のときステータスバーが表示されない', () => {
+      useMultiChatStore.getState().setWsStatus('disconnected')
+      render(<ConversationChat conversationId="conv_1" otherDisplayName="Friend" onBack={mockOnBack} />)
+      expect(screen.queryByTestId('ws-status-bar')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('既読表示', () => {
+    it('自分のメッセージで otherLastReadAt >= timestamp のとき「既読」が表示される', async () => {
+      mockGetMessages.mockResolvedValueOnce({
+        messages: mockMessages,
+        otherLastReadAt: 1700000001000,
+      })
+
+      render(<ConversationChat conversationId="conv_1" otherDisplayName="Friend" onBack={mockOnBack} />)
+
+      await waitFor(() => {
+        const receipts = screen.getAllByTestId('read-receipt')
+        expect(receipts.length).toBeGreaterThanOrEqual(1)
+        expect(receipts[0]).toHaveTextContent('既読')
+      })
+    })
+
+    it('otherLastReadAt が null のとき「既読」が表示されない', async () => {
+      mockGetMessages.mockResolvedValueOnce({
+        messages: mockMessages,
+        otherLastReadAt: null,
+      })
+
+      render(<ConversationChat conversationId="conv_1" otherDisplayName="Friend" onBack={mockOnBack} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('やあ！')).toBeInTheDocument()
+      })
+      expect(screen.queryByTestId('read-receipt')).not.toBeInTheDocument()
+    })
+
+    it('相手のメッセージには「既読」が表示されない', async () => {
+      // otherLastReadAt をすべてのメッセージより大きくしても、相手のメッセージには表示されない
+      mockGetMessages.mockResolvedValueOnce({
+        messages: mockMessages,
+        otherLastReadAt: 9999999999999,
+      })
+
+      render(<ConversationChat conversationId="conv_1" otherDisplayName="Friend" onBack={mockOnBack} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('こんにちは')).toBeInTheDocument()
+      })
+
+      // 自分のメッセージ（msg-2）にのみ既読が付く（相手のメッセージ msg-1 には付かない）
+      const receipts = screen.getAllByTestId('read-receipt')
+      // msg-2 は自分のメッセージ (senderId=my-user-id) なので1つ
+      expect(receipts).toHaveLength(1)
     })
   })
 

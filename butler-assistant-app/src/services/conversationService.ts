@@ -9,11 +9,13 @@ export interface ConversationServiceType {
   /** 会話一覧を取得 */
   listConversations(): Promise<ConversationSummary[]>
   /** 会話のメッセージを取得 */
-  getMessages(conversationId: string, limit?: number, before?: string): Promise<{ messages: ConversationMessage[]; nextCursor?: string }>
+  getMessages(conversationId: string, limit?: number, before?: string): Promise<{ messages: ConversationMessage[]; nextCursor?: string; otherLastReadAt?: number | null }>
   /** メッセージを送信 */
   sendMessage(conversationId: string, content: string, senderName: string): Promise<ConversationMessage>
   /** 新着メッセージをポーリング */
   pollNewMessages(conversationId: string, afterTimestamp: number): Promise<ConversationMessage[]>
+  /** 既読位置を更新 */
+  markAsRead(conversationId: string, lastReadAt: number): Promise<void>
 }
 
 /**
@@ -31,13 +33,13 @@ export class ConversationServiceImpl implements ConversationServiceType {
   /**
    * 会話のメッセージを取得
    */
-  async getMessages(conversationId: string, limit?: number, before?: string): Promise<{ messages: ConversationMessage[]; nextCursor?: string }> {
+  async getMessages(conversationId: string, limit?: number, before?: string): Promise<{ messages: ConversationMessage[]; nextCursor?: string; otherLastReadAt?: number | null }> {
     const params = new URLSearchParams()
     if (limit) params.set('limit', String(limit))
     if (before) params.set('before', before)
     const query = params.toString()
     const path = `/conversations/${conversationId}/messages${query ? `?${query}` : ''}`
-    const data = await this.fetchAPI(path) as { messages: ConversationMessage[]; nextCursor?: string }
+    const data = await this.fetchAPI(path) as { messages: ConversationMessage[]; nextCursor?: string; otherLastReadAt?: number | null }
     return data
   }
 
@@ -59,6 +61,16 @@ export class ConversationServiceImpl implements ConversationServiceType {
     const params = new URLSearchParams({ after: String(afterTimestamp) })
     const data = await this.fetchAPI(`/conversations/${conversationId}/messages/new?${params.toString()}`) as { messages: ConversationMessage[] }
     return data.messages
+  }
+
+  /**
+   * 既読位置を更新
+   */
+  async markAsRead(conversationId: string, lastReadAt: number): Promise<void> {
+    await this.fetchAPI(`/conversations/${conversationId}/messages/read`, {
+      method: 'POST',
+      body: JSON.stringify({ lastReadAt }),
+    })
   }
 
   /**

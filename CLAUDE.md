@@ -7,7 +7,7 @@
 ```bash
 cd butler-assistant-app
 
-pnpm test             # 全テスト実行（561テスト / 36ファイル）
+pnpm test             # 全テスト実行（581テスト / 36ファイル）
 pnpm dev              # 開発サーバー（http://localhost:5173）
 pnpm typecheck        # 型チェック
 pnpm lint             # ESLint
@@ -121,7 +121,7 @@ export const responseParser = new ResponseParserImpl()
 
 ## テスト
 
-- **Vitest** + **jsdom** 環境（561テスト / 36ファイル）
+- **Vitest** + **jsdom** 環境（581テスト / 36ファイル）
 - セットアップ: `src/__tests__/setup.ts`（Live2D SDK・PixiJS のモック定義済み）
 - プロパティベーステスト: `fast-check`（`@fast-check/vitest`）、最低100回実行
 
@@ -163,7 +163,7 @@ test.prop([fc.string()])(
 | `ttsService` | `TtsServiceImpl` | Amazon Polly 音声合成・再生（Kazuha/neural） |
 | `skillClient` | — | スキル連携管理（OAuth コールバック・接続状態） |
 | `friendService` | `FriendServiceImpl` | フレンドコード生成・リンク・一覧管理 |
-| `conversationService` | `ConversationServiceImpl` | マルチチャット会話管理（メッセージ送受信・ポーリング） |
+| `conversationService` | `ConversationServiceImpl` | マルチチャット会話管理（メッセージ送受信・ポーリング・既読管理） |
 | `wsService` | `WsServiceImpl` | WebSocket リアルタイム通信（接続管理・再接続・メッセージ配信） |
 
 ### LLM 通信アーキテクチャ
@@ -261,7 +261,7 @@ test.prop([fc.string()])(
 | Cognito | ユーザープール + SPA クライアント（SRP 認証） |
 | API Gateway (REST) | REST API（CORS 設定済み、Cognito 認可） |
 | API Gateway (WebSocket) | WebSocket API（JWT 認証、リアルタイムメッセージ配信） |
-| Lambda × 21 | Node.js 22.x / ARM_64 |
+| Lambda × 22 | Node.js 22.x / ARM_64 |
 | AgentCore Memory | 長期記憶（SEMANTIC + USER_PREFERENCE ストラテジー） |
 
 **Lambda 関数一覧:**
@@ -286,6 +286,7 @@ test.prop([fc.string()])(
 | `butler-conversations-messages-list` | `GET /conversations/{id}/messages` | 会話メッセージ取得 |
 | `butler-conversations-messages-send` | `POST /conversations/{id}/messages` | メッセージ送信 |
 | `butler-conversations-messages-poll` | `GET /conversations/{id}/messages/new` | 新着メッセージポーリング |
+| `butler-conversations-messages-read` | `POST /conversations/{id}/messages/read` | 既読位置更新 |
 | `butler-ws-authorizer` | WebSocket `$connect` | Cognito JWT 認証（クエリパラメータ） |
 | `butler-ws-connect` | WebSocket `$connect` | 接続レコード保存（DynamoDB TTL 2時間） |
 | `butler-ws-disconnect` | WebSocket `$disconnect` | 接続レコード削除 |

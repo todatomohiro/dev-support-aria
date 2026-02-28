@@ -235,6 +235,29 @@ describe('multiChatStore', () => {
     })
   })
 
+  describe('otherLastReadAt', () => {
+    it('初期値が null である', () => {
+      expect(useMultiChatStore.getState().otherLastReadAt).toBeNull()
+    })
+
+    it('タイムスタンプを設定できる', () => {
+      useMultiChatStore.getState().setOtherLastReadAt(1700000005000)
+      expect(useMultiChatStore.getState().otherLastReadAt).toBe(1700000005000)
+    })
+
+    it('null でクリアできる', () => {
+      useMultiChatStore.getState().setOtherLastReadAt(1700000005000)
+      useMultiChatStore.getState().setOtherLastReadAt(null)
+      expect(useMultiChatStore.getState().otherLastReadAt).toBeNull()
+    })
+
+    it('reset で null にリセットされる', () => {
+      useMultiChatStore.getState().setOtherLastReadAt(1700000005000)
+      useMultiChatStore.getState().reset()
+      expect(useMultiChatStore.getState().otherLastReadAt).toBeNull()
+    })
+  })
+
   describe('setWsStatus', () => {
     it('WebSocket ステータスを設定する', () => {
       useMultiChatStore.getState().setWsStatus('open')

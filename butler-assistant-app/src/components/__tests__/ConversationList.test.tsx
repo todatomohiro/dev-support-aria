@@ -194,6 +194,66 @@ describe('ConversationList', () => {
     })
   })
 
+  describe('WebSocket ステータスインジケーター', () => {
+    it('wsStatus=open で緑のドットが表示される', () => {
+      render(
+        <ConversationList
+          conversations={mockConversations}
+          onSelectConversation={mockOnSelectConversation}
+          onRefresh={mockOnRefresh}
+          wsStatus="open"
+        />
+      )
+
+      const indicator = screen.getByTestId('ws-status-indicator')
+      expect(indicator).toBeInTheDocument()
+      expect(indicator.className).toContain('bg-green-500')
+    })
+
+    it('wsStatus=connecting で黄色のドットが表示される', () => {
+      render(
+        <ConversationList
+          conversations={mockConversations}
+          onSelectConversation={mockOnSelectConversation}
+          onRefresh={mockOnRefresh}
+          wsStatus="connecting"
+        />
+      )
+
+      const indicator = screen.getByTestId('ws-status-indicator')
+      expect(indicator.className).toContain('bg-yellow-500')
+    })
+
+    it('wsStatus=failed で赤のドットと「接続エラー」が表示される', () => {
+      render(
+        <ConversationList
+          conversations={mockConversations}
+          onSelectConversation={mockOnSelectConversation}
+          onRefresh={mockOnRefresh}
+          wsStatus="failed"
+        />
+      )
+
+      const indicator = screen.getByTestId('ws-status-indicator')
+      expect(indicator.className).toContain('bg-red-500')
+      expect(screen.getByText('接続エラー')).toBeInTheDocument()
+    })
+
+    it('wsStatus=disconnected でグレーのドットが表示される', () => {
+      render(
+        <ConversationList
+          conversations={mockConversations}
+          onSelectConversation={mockOnSelectConversation}
+          onRefresh={mockOnRefresh}
+          wsStatus="disconnected"
+        />
+      )
+
+      const indicator = screen.getByTestId('ws-status-indicator')
+      expect(indicator.className).toContain('bg-gray-400')
+    })
+  })
+
   describe('未読バッジ', () => {
     it('未読がある会話にバッジが表示される', () => {
       render(

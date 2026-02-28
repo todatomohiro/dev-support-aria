@@ -4,6 +4,7 @@ import { conversationService } from '@/services/conversationService'
 import { useConversationPolling } from '@/hooks/useConversationPolling'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAuthStore } from '@/auth/authStore'
+import { wsService } from '@/services/wsService'
 import { formatTime, formatDateSeparator, isSameDay } from '@/utils'
 
 interface ConversationChatProps {
@@ -25,11 +26,13 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
   const activeMessages = useMultiChatStore((s) => s.activeMessages)
   const isSending = useMultiChatStore((s) => s.isSending)
   const isLoadingMessages = useMultiChatStore((s) => s.isLoadingMessages)
+  const otherLastReadAt = useMultiChatStore((s) => s.otherLastReadAt)
   const setActiveMessages = useMultiChatStore((s) => s.setActiveMessages)
   const setSending = useMultiChatStore((s) => s.setSending)
   const setLastPollTimestamp = useMultiChatStore((s) => s.setLastPollTimestamp)
   const appendMessages = useMultiChatStore((s) => s.appendMessages)
   const setLoadingMessages = useMultiChatStore((s) => s.setLoadingMessages)
+  const setOtherLastReadAt = useMultiChatStore((s) => s.setOtherLastReadAt)
 
   const currentUser = useAuthStore((s) => s.user)
 
@@ -43,11 +46,14 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
     setLoadError(null)
     setLoadingMessages(true)
     try {
-      const { messages } = await conversationService.getMessages(conversationId)
+      const { messages, otherLastReadAt: serverOtherLastReadAt } = await conversationService.getMessages(conversationId)
       setActiveMessages(messages)
+      setOtherLastReadAt(serverOtherLastReadAt ?? null)
       if (messages.length > 0) {
         const maxTs = Math.max(...messages.map((m) => m.timestamp))
         setLastPollTimestamp(maxTs)
+        // 会話を開いた時点で既読を通知
+        conversationService.markAsRead(conversationId, maxTs).catch(() => { /* 既読通知失敗は無視 */ })
       } else {
         setLastPollTimestamp(Date.now())
       }
@@ -57,7 +63,7 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
     } finally {
       setLoadingMessages(false)
     }
-  }, [conversationId, setActiveMessages, setLastPollTimestamp, setLoadingMessages])
+  }, [conversationId, setActiveMessages, setLastPollTimestamp, setLoadingMessages, setOtherLastReadAt])
 
   // マウント時にメッセージを読み込み
   useEffect(() => {
@@ -65,13 +71,21 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
     return () => {
       setActiveMessages([])
       setLastPollTimestamp(null)
+      setOtherLastReadAt(null)
     }
-  }, [loadInitialMessages, setActiveMessages, setLastPollTimestamp])
+  }, [loadInitialMessages, setActiveMessages, setLastPollTimestamp, setOtherLastReadAt])
 
-  // メッセージ追加時に自動スクロール
+  // メッセージ追加時に自動スクロール + 新着メッセージを既読通知
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [activeMessages])
+    // 他ユーザーからの新着メッセージがあれば既読を通知
+    if (activeMessages.length > 0) {
+      const lastMsg = activeMessages[activeMessages.length - 1]
+      if (lastMsg.senderId !== currentUser?.userId) {
+        conversationService.markAsRead(conversationId, lastMsg.timestamp).catch(() => { /* 既読通知失敗は無視 */ })
+      }
+    }
+  }, [activeMessages, conversationId, currentUser?.userId])
 
   /** メッセージを送信 */
   const handleSend = useCallback(async () => {
@@ -131,6 +145,29 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
           {otherDisplayName}
         </h3>
       </div>
+
+      {/* WebSocket ステータスバー */}
+      {wsStatus === 'connecting' && (
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-yellow-50 dark:bg-yellow-900/30 border-b border-yellow-200 dark:border-yellow-800 shrink-0" data-testid="ws-status-bar">
+          <svg className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span className="text-xs text-yellow-700 dark:text-yellow-300">接続中...</span>
+        </div>
+      )}
+      {wsStatus === 'failed' && (
+        <div className="flex items-center justify-between px-4 py-1.5 bg-red-50 dark:bg-red-900/30 border-b border-red-200 dark:border-red-800 shrink-0" data-testid="ws-status-bar">
+          <span className="text-xs text-red-700 dark:text-red-300">リアルタイム接続に失敗しました。ポーリングモードで動作中</span>
+          <button
+            onClick={() => wsService.reconnect()}
+            className="shrink-0 ml-2 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
+            data-testid="ws-reconnect-button"
+          >
+            再接続
+          </button>
+        </div>
+      )}
 
       {/* メッセージエリア */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
@@ -209,9 +246,14 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
                       </p>
                     )}
                     <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-                    <p className={`text-[10px] mt-1 ${isOwn ? 'text-blue-200' : 'text-gray-400 dark:text-gray-500'}`}>
-                      {formatTime(message.timestamp)}
-                    </p>
+                    <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : ''}`}>
+                      <span className={`text-[10px] ${isOwn ? 'text-blue-200' : 'text-gray-400 dark:text-gray-500'}`}>
+                        {formatTime(message.timestamp)}
+                      </span>
+                      {isOwn && otherLastReadAt !== null && message.timestamp <= otherLastReadAt && (
+                        <span className="text-[10px] text-blue-200" data-testid="read-receipt">既読</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

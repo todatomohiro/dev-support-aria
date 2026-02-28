@@ -18,6 +18,7 @@ export interface MultiChatState {
   isLoadingMessages: boolean
   unreadCounts: Record<string, number>
   wsStatus: WsStatus
+  otherLastReadAt: number | null
 
   // アクション
   /** フレンド一覧を設定 */
@@ -48,6 +49,8 @@ export interface MultiChatState {
   clearUnread: (conversationId: string) => void
   /** WebSocket 接続ステータスを設定 */
   setWsStatus: (status: WsStatus) => void
+  /** 相手の既読位置を設定 */
+  setOtherLastReadAt: (timestamp: number | null) => void
   /** 会話サマリーを更新（WebSocket 経由） */
   updateConversationSummary: (conversationId: string, lastMessage: string, updatedAt: number) => void
   /** 状態をリセット */
@@ -68,6 +71,7 @@ const initialState = {
   isLoadingMessages: false,
   unreadCounts: {} as Record<string, number>,
   wsStatus: 'disconnected' as WsStatus,
+  otherLastReadAt: null as number | null,
 }
 
 /**
@@ -121,6 +125,8 @@ export const useMultiChatStore = create<MultiChatState>()((set) => ({
     }),
 
   setWsStatus: (status: WsStatus) => set({ wsStatus: status }),
+
+  setOtherLastReadAt: (timestamp: number | null) => set({ otherLastReadAt: timestamp }),
 
   updateConversationSummary: (conversationId: string, lastMessage: string, updatedAt: number) =>
     set((state) => ({

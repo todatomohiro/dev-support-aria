@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { ConversationSummary } from '@/types'
+import type { ConversationSummary, WsStatus } from '@/types'
 import { formatRelativeTimestamp } from '@/utils'
 import { FriendCodeModal } from './FriendCodeModal'
 
@@ -10,6 +10,7 @@ interface ConversationListProps {
   isLoading?: boolean
   error?: string | null
   unreadCounts?: Record<string, number>
+  wsStatus?: WsStatus
 }
 
 /**
@@ -24,6 +25,7 @@ export function ConversationList({
   isLoading = false,
   error = null,
   unreadCounts = {},
+  wsStatus,
 }: ConversationListProps) {
   const [isFriendModalOpen, setIsFriendModalOpen] = useState(false)
 
@@ -45,9 +47,37 @@ export function ConversationList({
     <div className="flex flex-col flex-1 bg-white dark:bg-gray-900" data-testid="conversation-list">
       {/* ヘッダー */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          チャット
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            チャット
+          </h2>
+          {wsStatus && (
+            <span
+              data-testid="ws-status-indicator"
+              className={`inline-block w-2.5 h-2.5 rounded-full ${
+                wsStatus === 'open'
+                  ? 'bg-green-500 animate-pulse'
+                  : wsStatus === 'connecting'
+                    ? 'bg-yellow-500'
+                    : wsStatus === 'failed'
+                      ? 'bg-red-500'
+                      : 'bg-gray-400'
+              }`}
+              title={
+                wsStatus === 'open'
+                  ? '接続中'
+                  : wsStatus === 'connecting'
+                    ? '接続中...'
+                    : wsStatus === 'failed'
+                      ? '接続エラー'
+                      : '未接続'
+              }
+            />
+          )}
+          {wsStatus === 'failed' && (
+            <span className="text-xs text-red-500">接続エラー</span>
+          )}
+        </div>
         <button
           onClick={() => setIsFriendModalOpen(true)}
           className="px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
