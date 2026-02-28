@@ -37,14 +37,13 @@ export const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>
     if (!enabled) return null
 
     return (
-      <div className="relative w-full max-w-[200px] mx-auto mb-2" data-testid="camera-preview">
+      <div className="relative w-[160px] aspect-square mx-auto mb-2 overflow-hidden rounded-lg" data-testid="camera-preview">
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted
-          className="w-full rounded-lg bg-black"
-          style={{ transform: 'scaleX(-1)' }}
+          className="absolute inset-0 w-full h-full object-cover bg-black"
         />
         {status === 'starting' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">

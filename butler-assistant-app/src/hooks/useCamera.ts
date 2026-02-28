@@ -59,6 +59,12 @@ export function useCamera(): UseCameraResult {
     setStatus('starting')
     setError(null)
 
+    // 既存ストリームがあれば停止（Strict Mode 二重マウント対策）
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop())
+      streamRef.current = null
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
@@ -69,7 +75,17 @@ export function useCamera(): UseCameraResult {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        await videoRef.current.play()
+        // iOS WKWebView では autoPlay だけでは再生されないため明示的に play()
+        try {
+          await videoRef.current.play()
+        } catch (playErr) {
+          // AbortError は Strict Mode 二重マウント等で発生する無害なエラー
+          if (playErr instanceof DOMException && playErr.name === 'AbortError') {
+            console.debug('[Camera] play() interrupted (ignored)')
+          } else {
+            throw playErr
+          }
+        }
       }
 
       setStatus('active')
