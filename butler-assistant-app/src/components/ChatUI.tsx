@@ -7,6 +7,41 @@ import type { CameraPreviewHandle } from './CameraPreview'
 
 const MapView = lazy(() => import('./MapView').then(m => ({ default: m.MapView })))
 
+/** URL 検出用の正規表現 */
+const URL_REGEX = /https?:\/\/\S+/g
+
+/**
+ * テキスト中の URL をクリック可能なリンクに変換
+ * @param text - メッセージテキスト
+ * @param isUser - ユーザーメッセージかどうか（スタイル切り替え用）
+ */
+function linkifyContent(text: string, isUser: boolean): React.ReactNode[] {
+  const result: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  const regex = new RegExp(URL_REGEX)
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      result.push(text.slice(lastIndex, match.index))
+    }
+    const url = match[0]
+    const linkClass = isUser
+      ? 'text-white underline'
+      : 'text-blue-600 dark:text-blue-400 underline'
+    result.push(
+      <a key={match.index} href={url} target="_blank" rel="noopener noreferrer" className={linkClass}>
+        {url}
+      </a>
+    )
+    lastIndex = regex.lastIndex
+  }
+  if (lastIndex < text.length) {
+    result.push(text.slice(lastIndex))
+  }
+  return result
+}
+
 interface ChatUIProps {
   messages: Message[]
   isLoading: boolean
@@ -305,7 +340,7 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
             : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
         }`}
       >
-        <p className="whitespace-pre-wrap text-sm sm:text-base">{message.content}</p>
+        <p className="whitespace-pre-wrap text-sm sm:text-base">{linkifyContent(message.content, isUser)}</p>
         {message.mapData && (
           <Suspense fallback={<div className="w-full h-48 rounded-md bg-gray-200 dark:bg-gray-700 animate-pulse mt-2" />}>
             <MapView mapData={message.mapData} />

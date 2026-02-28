@@ -196,6 +196,57 @@ describe('ChatUI', () => {
     })
   })
 
+  describe('URL リンク化', () => {
+    it('URL を含むアシスタントメッセージに <a> タグがレンダリングされる', () => {
+      const messages: Message[] = [
+        createMessage('1', 'こちらを参照: https://example.com/path', 'assistant', Date.now()),
+      ]
+
+      renderChatUI({ messages })
+
+      const link = screen.getByRole('link')
+      expect(link).toBeInTheDocument()
+      expect(link).toHaveAttribute('href', 'https://example.com/path')
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+      expect(link).toHaveTextContent('https://example.com/path')
+    })
+
+    it('URL を含むユーザーメッセージでもリンク化される', () => {
+      const messages: Message[] = [
+        createMessage('1', 'http://test.org を見て', 'user', Date.now()),
+      ]
+
+      renderChatUI({ messages })
+
+      const link = screen.getByRole('link')
+      expect(link).toHaveAttribute('href', 'http://test.org')
+    })
+
+    it('URL を含まないメッセージには <a> タグがない', () => {
+      const messages: Message[] = [
+        createMessage('1', 'URLのないメッセージです', 'assistant', Date.now()),
+      ]
+
+      renderChatUI({ messages })
+
+      expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    })
+
+    it('複数の URL が含まれる場合、すべてリンク化される', () => {
+      const messages: Message[] = [
+        createMessage('1', 'リンク1: https://a.com リンク2: https://b.com', 'assistant', Date.now()),
+      ]
+
+      renderChatUI({ messages })
+
+      const links = screen.getAllByRole('link')
+      expect(links).toHaveLength(2)
+      expect(links[0]).toHaveAttribute('href', 'https://a.com')
+      expect(links[1]).toHaveAttribute('href', 'https://b.com')
+    })
+  })
+
   // Property-based tests
   describe('Property Tests', () => {
     // Property 1: メッセージ表示の時系列順序保持

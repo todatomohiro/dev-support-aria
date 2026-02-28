@@ -31,6 +31,14 @@ class TtsServiceImpl {
   }
 
   /**
+   * テキストから URL を除去する（TTS 読み上げ用）
+   * 連続スペースも1つに圧縮する
+   */
+  private stripUrls(text: string): string {
+    return text.replace(/https?:\/\/\S+/g, '').replace(/ {2,}/g, ' ').trim()
+  }
+
+  /**
    * テキストを音声合成して再生
    * 再生中に新しいリクエストが来たら前の再生を停止して新しい方を再生
    */
@@ -47,6 +55,13 @@ class TtsServiceImpl {
       return
     }
 
+    // URL を除去して読み上げテキストを準備
+    const ttsText = this.stripUrls(text)
+    if (!ttsText) {
+      console.warn('[TTS] URL 除去後にテキストが空になりました')
+      return
+    }
+
     // 前の再生を停止
     this.stop()
 
@@ -58,7 +73,7 @@ class TtsServiceImpl {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          text,
+          text: ttsText,
           voiceId: 'Tomoko',
           engine: 'neural',
         }),
