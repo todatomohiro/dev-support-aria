@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import type { GroupSummary, WsStatus } from '@/types'
+import type { GroupSummary } from '@/types'
 import { formatRelativeTimestamp } from '@/utils'
-import { UserCodeModal } from './UserCodeModal'
 import { CreateGroupModal } from './CreateGroupModal'
 
 interface GroupListProps {
@@ -11,14 +10,12 @@ interface GroupListProps {
   isLoading?: boolean
   error?: string | null
   unreadCounts?: Record<string, number>
-  wsStatus?: WsStatus
-  nickname?: string
 }
 
 /**
  * グループ一覧コンポーネント
  *
- * グループリストを表示し、グループの選択やフレンド追加を行う。
+ * グループリストを表示し、グループの選択を行う。
  */
 export function GroupList({
   groups,
@@ -27,17 +24,8 @@ export function GroupList({
   isLoading = false,
   error = null,
   unreadCounts = {},
-  wsStatus,
-  nickname,
 }: GroupListProps) {
-  const [isUserCodeModalOpen, setIsUserCodeModalOpen] = useState(false)
   const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false)
-
-  /** ユーザーコードモーダルを閉じた後にリフレッシュ */
-  const handleUserCodeModalClose = () => {
-    setIsUserCodeModalOpen(false)
-    onRefresh()
-  }
 
   /** グループ作成モーダルを閉じた後にリフレッシュ */
   const handleCreateGroupClose = (created?: boolean) => {
@@ -54,61 +42,19 @@ export function GroupList({
   const sorted = [...groups].sort((a, b) => b.updatedAt - a.updatedAt)
 
   return (
-    <div className="flex flex-col flex-1 bg-white dark:bg-gray-900" data-testid="group-list">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900" data-testid="group-list">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-2">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              グループ
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400" data-testid="group-chat-nickname">
-              {nickname || 'ゲスト'}
-            </p>
-          </div>
-          {wsStatus && (
-            <span
-              data-testid="ws-status-indicator"
-              className={`inline-block w-2.5 h-2.5 rounded-full ${
-                wsStatus === 'open'
-                  ? 'bg-green-500 animate-pulse'
-                  : wsStatus === 'connecting'
-                    ? 'bg-yellow-500'
-                    : wsStatus === 'failed'
-                      ? 'bg-red-500'
-                      : 'bg-gray-400'
-              }`}
-              title={
-                wsStatus === 'open'
-                  ? '接続中'
-                  : wsStatus === 'connecting'
-                    ? '接続中...'
-                    : wsStatus === 'failed'
-                      ? '接続エラー'
-                      : '未接続'
-              }
-            />
-          )}
-          {wsStatus === 'failed' && (
-            <span className="text-xs text-red-500">接続エラー</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsUserCodeModalOpen(true)}
-            className="px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
-            data-testid="add-friend-button"
-          >
-            フレンド追加
-          </button>
-          <button
-            onClick={() => setIsCreateGroupModalOpen(true)}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-            data-testid="create-group-button"
-          >
-            グループを作成
-          </button>
-        </div>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          グループ ({groups.length})
+        </h2>
+        <button
+          onClick={() => setIsCreateGroupModalOpen(true)}
+          className="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+          data-testid="create-group-button"
+        >
+          作成
+        </button>
       </div>
 
       {/* グループリスト */}
@@ -202,12 +148,6 @@ export function GroupList({
           </ul>
         )}
       </div>
-
-      {/* ユーザーコードモーダル */}
-      <UserCodeModal
-        isOpen={isUserCodeModalOpen}
-        onClose={handleUserCodeModalClose}
-      />
 
       {/* グループ作成モーダル */}
       <CreateGroupModal

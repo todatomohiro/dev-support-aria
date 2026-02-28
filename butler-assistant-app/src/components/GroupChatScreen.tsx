@@ -3,7 +3,9 @@ import { useParams, useNavigate } from 'react-router'
 import { useAppStore } from '@/stores'
 import { useGroupChatStore } from '@/stores/groupChatStore'
 import { groupService } from '@/services/groupService'
+import { friendService } from '@/services/friendService'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { FriendList } from './FriendList'
 import { GroupList } from './GroupList'
 import { GroupChat } from './GroupChat'
 import { GroupInfoPanel } from './GroupInfoPanel'
@@ -14,7 +16,8 @@ const BACKGROUND_POLL_INTERVAL = 30000
 /**
  * グループチャット画面
  *
- * アクティブなグループが無い場合はグループ一覧、ある場合はチャット画面を表示する。
+ * アクティブなグループが無い場合はフレンド一覧（左）+ グループ一覧（右）を表示し、
+ * グループ選択後はチャット画面を表示する。
  */
 export function GroupChatScreen() {
   const { groupId: paramGroupId } = useParams<{ groupId?: string }>()
@@ -32,15 +35,19 @@ export function GroupChatScreen() {
 
   const activeGroupId = useGroupChatStore((s) => s.activeGroupId)
   const groups = useGroupChatStore((s) => s.groups)
+  const friends = useGroupChatStore((s) => s.friends)
   const isLoadingGroups = useGroupChatStore((s) => s.isLoadingGroups)
   const error = useGroupChatStore((s) => s.error)
   const unreadCounts = useGroupChatStore((s) => s.unreadCounts)
   const setGroups = useGroupChatStore((s) => s.setGroups)
+  const setFriends = useGroupChatStore((s) => s.setFriends)
   const setActiveGroup = useGroupChatStore((s) => s.setActiveGroup)
   const setLoadingGroups = useGroupChatStore((s) => s.setLoadingGroups)
   const setError = useGroupChatStore((s) => s.setError)
   const incrementUnread = useGroupChatStore((s) => s.incrementUnread)
   const clearUnread = useGroupChatStore((s) => s.clearUnread)
+
+  const [isLoadingFriends, setIsLoadingFriends] = useState(false)
 
   /** グループ一覧を取得 */
   const loadGroups = useCallback(async () => {
@@ -56,6 +63,19 @@ export function GroupChatScreen() {
       setLoadingGroups(false)
     }
   }, [setGroups, setLoadingGroups, setError])
+
+  /** フレンド一覧を取得 */
+  const loadFriends = useCallback(async () => {
+    setIsLoadingFriends(true)
+    try {
+      const result = await friendService.listFriends()
+      setFriends(result)
+    } catch (err) {
+      console.error('[GroupChatScreen] フレンド一覧の取得に失敗:', err)
+    } finally {
+      setIsLoadingFriends(false)
+    }
+  }, [setFriends])
 
   /** バックグラウンドでグループ一覧をポーリングし、未読を検知 */
   const pollGroups = useCallback(async () => {
@@ -83,7 +103,7 @@ export function GroupChatScreen() {
     }
   }, [setGroups, incrementUnread])
 
-  // マウント時にグループ一覧を取得 + updatedAt を初期化
+  // マウント時にグループ + フレンド一覧を取得
   useEffect(() => {
     loadGroups().then(() => {
       const gs = useGroupChatStore.getState().groups
@@ -93,7 +113,8 @@ export function GroupChatScreen() {
       }
       prevUpdatedAtRef.current = map
     })
-  }, [loadGroups])
+    loadFriends()
+  }, [loadGroups, loadFriends])
 
   // バックグラウンドポーリング（WS 失敗時のフォールバック）
   useEffect(() => {
@@ -133,26 +154,82 @@ export function GroupChatScreen() {
     setShowInfoPanel(false)
     navigate('/groups')
     loadGroups()
-  }, [setActiveGroup, navigate, loadGroups])
+    loadFriends()
+  }, [setActiveGroup, navigate, loadGroups, loadFriends])
 
   // アクティブなグループ情報を取得
   const activeGroup = groups.find((g) => g.groupId === activeGroupId)
 
+  // 一覧表示（フレンド左 + グループ右）
   if (!activeGroupId) {
     return (
-      <GroupList
-        groups={groups}
-        onSelectGroup={handleSelectGroup}
-        onRefresh={loadGroups}
-        isLoading={isLoadingGroups}
-        error={error}
-        unreadCounts={unreadCounts}
-        wsStatus={wsStatus}
-        nickname={nickname}
-      />
+      <div className="flex flex-col flex-1 bg-white dark:bg-gray-900" data-testid="multichat-screen">
+        {/* 共通ヘッダー */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              マルチチャット
+            </h2>
+            {wsStatus && (
+              <span
+                data-testid="ws-status-indicator"
+                className={`inline-block w-2.5 h-2.5 rounded-full ${
+                  wsStatus === 'open'
+                    ? 'bg-green-500 animate-pulse'
+                    : wsStatus === 'connecting'
+                      ? 'bg-yellow-500'
+                      : wsStatus === 'failed'
+                        ? 'bg-red-500'
+                        : 'bg-gray-400'
+                }`}
+                title={
+                  wsStatus === 'open'
+                    ? '接続中'
+                    : wsStatus === 'connecting'
+                      ? '接続中...'
+                      : wsStatus === 'failed'
+                        ? '接続エラー'
+                        : '未接続'
+                }
+              />
+            )}
+            {wsStatus === 'failed' && (
+              <span className="text-xs text-red-500">接続エラー</span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400" data-testid="group-chat-nickname">
+            {nickname || 'ゲスト'}
+          </p>
+        </div>
+
+        {/* 左右分割: フレンド | グループ */}
+        <div className="flex flex-1 min-h-0">
+          {/* フレンド一覧（左） */}
+          <div className="w-1/3 min-w-[200px] max-w-[320px] border-r border-gray-200 dark:border-gray-700 flex flex-col min-h-0">
+            <FriendList
+              friends={friends}
+              onRefresh={loadFriends}
+              isLoading={isLoadingFriends}
+            />
+          </div>
+
+          {/* グループ一覧（右） */}
+          <div className="flex-1 flex flex-col min-h-0">
+            <GroupList
+              groups={groups}
+              onSelectGroup={handleSelectGroup}
+              onRefresh={loadGroups}
+              isLoading={isLoadingGroups}
+              error={error}
+              unreadCounts={unreadCounts}
+            />
+          </div>
+        </div>
+      </div>
     )
   }
 
+  // チャット表示
   return (
     <div className="flex flex-1 min-h-0">
       {showInfoPanel && (

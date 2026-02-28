@@ -3,11 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { GroupList } from '../GroupList'
 import type { GroupSummary } from '@/types'
 
-// UserCodeModal と CreateGroupModal をモック
-vi.mock('../UserCodeModal', () => ({
-  UserCodeModal: ({ isOpen }: { isOpen: boolean }) =>
-    isOpen ? <div data-testid="user-code-modal">UserCodeModal</div> : null,
-}))
+// CreateGroupModal をモック
 vi.mock('../CreateGroupModal', () => ({
   CreateGroupModal: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? <div data-testid="create-group-modal">CreateGroupModal</div> : null,
@@ -41,6 +37,12 @@ describe('GroupList', () => {
     expect(screen.getByText('テストグループ1')).toBeInTheDocument()
     expect(screen.getByText('テストグループ2')).toBeInTheDocument()
     expect(screen.getByText('テストグループ3')).toBeInTheDocument()
+  })
+
+  it('グループ数をヘッダーに表示する', () => {
+    render(<GroupList {...defaultProps} />)
+
+    expect(screen.getByText('グループ (3)')).toBeInTheDocument()
   })
 
   it('updatedAt 降順でソートして表示する', () => {
@@ -112,45 +114,8 @@ describe('GroupList', () => {
     })
   })
 
-  describe('WS ステータスインジケーター', () => {
-    it('wsStatus が指定された場合にインジケーターを表示する', () => {
-      render(<GroupList {...defaultProps} wsStatus="open" />)
-
-      expect(screen.getByTestId('ws-status-indicator')).toBeInTheDocument()
-    })
-
-    it('failed 時にエラーテキストを表示する', () => {
-      render(<GroupList {...defaultProps} wsStatus="failed" />)
-
-      expect(screen.getByText('接続エラー')).toBeInTheDocument()
-    })
-  })
-
-  describe('ニックネーム表示', () => {
-    it('ニックネームを表示する', () => {
-      render(<GroupList {...defaultProps} nickname="テストユーザー" />)
-
-      expect(screen.getByTestId('group-chat-nickname')).toHaveTextContent('テストユーザー')
-    })
-
-    it('ニックネーム未設定時は「ゲスト」を表示する', () => {
-      render(<GroupList {...defaultProps} />)
-
-      expect(screen.getByTestId('group-chat-nickname')).toHaveTextContent('ゲスト')
-    })
-  })
-
-  describe('モーダル', () => {
-    it('「フレンド追加」ボタンでユーザーコードモーダルを開く', () => {
-      render(<GroupList {...defaultProps} />)
-
-      expect(screen.queryByTestId('user-code-modal')).not.toBeInTheDocument()
-
-      fireEvent.click(screen.getByTestId('add-friend-button'))
-      expect(screen.getByTestId('user-code-modal')).toBeInTheDocument()
-    })
-
-    it('「グループを作成」ボタンでグループ作成モーダルを開く', () => {
+  describe('グループ作成モーダル', () => {
+    it('「作成」ボタンでグループ作成モーダルを開く', () => {
       render(<GroupList {...defaultProps} />)
 
       expect(screen.queryByTestId('create-group-modal')).not.toBeInTheDocument()
