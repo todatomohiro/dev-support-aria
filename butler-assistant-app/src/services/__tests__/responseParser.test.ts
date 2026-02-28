@@ -56,6 +56,57 @@ describe('ResponseParser', () => {
       expect(result.motion).toBe('nod')
       expect(result.isValid).toBe(true)
     })
+
+    it('mapData を含むレスポンスを正しく解析できる', () => {
+      const json = JSON.stringify({
+        text: '渋谷のカフェを紹介するね！',
+        motion: 'smile',
+        mapData: {
+          center: { lat: 35.6595, lng: 139.7004 },
+          zoom: 15,
+          markers: [
+            { lat: 35.6595, lng: 139.7004, title: 'カフェA', address: '渋谷区1-1', rating: 4.5 },
+          ],
+        },
+      })
+      const result = responseParser.parse(json)
+
+      expect(result.isValid).toBe(true)
+      expect(result.mapData).toBeDefined()
+      expect(result.mapData!.center.lat).toBe(35.6595)
+      expect(result.mapData!.markers).toHaveLength(1)
+      expect(result.mapData!.markers[0].title).toBe('カフェA')
+    })
+
+    it('mapData がない通常のレスポンスでは mapData が undefined', () => {
+      const json = '{"text": "こんにちは！", "motion": "smile"}'
+      const result = responseParser.parse(json)
+
+      expect(result.isValid).toBe(true)
+      expect(result.mapData).toBeUndefined()
+    })
+
+    it('不正な mapData は無視される', () => {
+      const json = JSON.stringify({
+        text: 'テスト',
+        motion: 'idle',
+        mapData: { invalid: true },
+      })
+      const result = responseParser.parse(json)
+
+      expect(result.mapData).toBeUndefined()
+    })
+
+    it('mapData のマーカーが空配列の場合は無視される', () => {
+      const json = JSON.stringify({
+        text: 'テスト',
+        motion: 'idle',
+        mapData: { center: { lat: 35, lng: 139 }, zoom: 15, markers: [] },
+      })
+      const result = responseParser.parse(json)
+
+      expect(result.mapData).toBeUndefined()
+    })
   })
 
   describe('serialize', () => {
@@ -70,6 +121,24 @@ describe('ResponseParser', () => {
 
       expect(parsed.text).toBe('テスト回答')
       expect(parsed.motion).toBe('smile')
+    })
+
+    it('mapData を含むレスポンスをシリアライズできる', () => {
+      const response = {
+        text: 'カフェ情報',
+        motion: 'smile',
+        isValid: true,
+        mapData: {
+          center: { lat: 35.6595, lng: 139.7004 },
+          zoom: 15,
+          markers: [{ lat: 35.6595, lng: 139.7004, title: 'テスト' }],
+        },
+      }
+      const json = responseParser.serialize(response)
+      const parsed = JSON.parse(json)
+
+      expect(parsed.mapData).toBeDefined()
+      expect(parsed.mapData.markers[0].title).toBe('テスト')
     })
   })
 

@@ -1,6 +1,7 @@
 import type {
   ParsedResponse,
   StructuredResponse,
+  MapData,
   ValidationResult,
   FieldValidationError,
   ResponseParserService,
@@ -51,6 +52,7 @@ class ResponseParserImpl implements ResponseParserService {
         text: response.text,
         motion: this.normalizeMotion(response.motion),
         emotion: response.emotion,
+        mapData: this.extractMapData(response.mapData),
         isValid: true,
       }
     } catch {
@@ -74,6 +76,9 @@ class ResponseParserImpl implements ResponseParserService {
     const output: StructuredResponse = {
       text: response.text,
       motion: response.motion,
+    }
+    if (response.mapData) {
+      output.mapData = response.mapData
     }
     return JSON.stringify(output)
   }
@@ -151,6 +156,17 @@ class ResponseParserImpl implements ResponseParserService {
   }
 
   /**
+   * mapData を抽出・検証（不正なデータは無視して undefined を返す）
+   */
+  private extractMapData(mapData: MapData | undefined): MapData | undefined {
+    if (!mapData || typeof mapData !== 'object') return undefined
+    if (!mapData.center || typeof mapData.center.lat !== 'number' || typeof mapData.center.lng !== 'number') return undefined
+    if (typeof mapData.zoom !== 'number') return undefined
+    if (!Array.isArray(mapData.markers) || mapData.markers.length === 0) return undefined
+    return mapData
+  }
+
+  /**
    * デフォルト値で補完したレスポンスを作成
    */
   private createResponseWithDefaults(
@@ -173,11 +189,13 @@ class ResponseParserImpl implements ResponseParserService {
         : DEFAULT_RESPONSE.motion
 
     const emotion = typeof obj.emotion === 'string' ? (obj.emotion as ParsedResponse['emotion']) : undefined
+    const mapData = this.extractMapData(obj.mapData as MapData | undefined)
 
     return {
       text,
       motion,
       emotion,
+      mapData,
       isValid: false,
       errors: validationErrors.map((e) => `${e.field}: ${e.message}`),
     }

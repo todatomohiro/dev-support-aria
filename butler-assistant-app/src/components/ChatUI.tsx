@@ -1,7 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import type { Message } from '@/types'
 import { ttsService } from '@/services/ttsService'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+
+const MapView = lazy(() => import('./MapView').then(m => ({ default: m.MapView })))
 
 interface ChatUIProps {
   messages: Message[]
@@ -278,6 +280,11 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
         }`}
       >
         <p className="whitespace-pre-wrap text-sm sm:text-base">{message.content}</p>
+        {message.mapData && (
+          <Suspense fallback={<div className="w-full h-48 rounded-md bg-gray-200 dark:bg-gray-700 animate-pulse mt-2" />}>
+            <MapView mapData={message.mapData} />
+          </Suspense>
+        )}
         <div className="flex items-center justify-between mt-1">
           <span className="text-[10px] sm:text-xs opacity-70">
             {formatTime(message.timestamp)}

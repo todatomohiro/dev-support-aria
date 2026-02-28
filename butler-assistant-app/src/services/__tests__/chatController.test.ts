@@ -92,6 +92,37 @@ describe('ChatController', () => {
       expect(useAppStore.getState().isLoading).toBe(false)
     })
 
+    it('mapData がレスポンスに含まれる場合 Message に保存される', async () => {
+      const mapData = {
+        center: { lat: 35.6595, lng: 139.7004 },
+        zoom: 15,
+        markers: [{ lat: 35.6595, lng: 139.7004, title: 'カフェA', address: '渋谷区1-1', rating: 4.5 }],
+      }
+      mockLLMClient.sendMessage.mockResolvedValue({
+        text: '渋谷のカフェを紹介するね！',
+        motion: 'smile',
+        mapData,
+      })
+
+      await chatController.sendMessage('渋谷のカフェを教えて')
+
+      const state = useAppStore.getState()
+      expect(state.messages).toHaveLength(2)
+      expect(state.messages[1].mapData).toEqual(mapData)
+    })
+
+    it('mapData がない通常レスポンスでは Message.mapData が undefined', async () => {
+      mockLLMClient.sendMessage.mockResolvedValue({
+        text: 'こんにちは！',
+        motion: 'smile',
+      })
+
+      await chatController.sendMessage('こんにちは')
+
+      const state = useAppStore.getState()
+      expect(state.messages[1].mapData).toBeUndefined()
+    })
+
     it('モーションが再生される', async () => {
       mockLLMClient.sendMessage.mockResolvedValue({
         text: 'test',

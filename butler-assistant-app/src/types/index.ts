@@ -7,6 +7,8 @@ export type {
   ParsedResponse,
   ValidationResult,
   FieldValidationError,
+  MapMarker,
+  MapData,
 } from './response'
 
 // Model types

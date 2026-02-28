@@ -1,5 +1,6 @@
 import type { ToolResultContentBlock } from '@aws-sdk/client-bedrock-runtime'
 import { listEvents, createEvent } from './googleCalendar'
+import { searchPlaces } from './places'
 
 /**
  * ツール名に基づいてスキルを実行し、toolResult を返す
@@ -19,6 +20,9 @@ export async function executeSkill(
         break
       case 'create_event':
         resultText = await createEvent(userId, input)
+        break
+      case 'search_places':
+        resultText = await searchPlaces(input)
         break
       default:
         return {

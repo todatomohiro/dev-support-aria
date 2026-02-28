@@ -1,3 +1,5 @@
+import type { MapData } from './response'
+
 /**
  * チャットメッセージ
  */
@@ -9,6 +11,8 @@ export interface Message {
   motion?: string
   /** LLM が返した StructuredResponse の JSON 文字列（開発者モード表示用） */
   rawResponse?: string
+  /** 場所検索結果の地図データ */
+  mapData?: MapData
 }
 
 /**

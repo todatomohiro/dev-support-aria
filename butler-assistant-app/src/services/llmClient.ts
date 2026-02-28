@@ -62,7 +62,11 @@ export function buildSkillSystemPrompt(): string {
 - ユーザーが予定の作成を頼んだら、まずタイトル・日時・時間を確認してから create_event を使ってください。確認なしに勝手に作成しないでください
 - ツールがエラーを返した場合（Google カレンダー未連携など）は、エラーメッセージをそのままユーザーに伝えてください
 - 日時は日本時間（+09:00）で処理してください
-- 「明日」「来週」などの相対日時は、上記の現在日時を基準に正しい日付に変換してください`
+- 「明日」「来週」などの相対日時は、上記の現在日時を基準に正しい日付に変換してください
+- search_places ツールが利用可能です。ユーザーが「近くのカフェ」「渋谷のレストラン」など場所に関する質問をしたら search_places を使ってください
+- search_places の結果を受け取ったら、回答の JSON に mapData フィールドを含めてください。形式: {"center": {"lat": 数値, "lng": 数値}, "zoom": 15, "markers": [{"lat": 数値, "lng": 数値, "title": "店名", "address": "住所", "rating": 数値}]}
+- mapData の center は検索結果の中心座標にしてください
+- mapData は場所検索時のみ含め、通常の会話では省略してください`
 }
 
 /**
@@ -114,7 +118,7 @@ class LLMClientImpl implements LLMClientService {
 
     // システムプロンプト構築（JSON 形式指示含む）
     const systemPrompt = buildSystemPrompt(this.userProfile) +
-      '\n\n必ず以下のJSON形式で回答してください：\n{"text": "回答テキスト", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)"}'
+      '\n\n必ず以下のJSON形式で回答してください：\n{"text": "回答テキスト", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。'
 
     // 会話履歴を {role, content} 形式に変換
     const historyMessages = (history?.messages ?? []).map((m) => ({

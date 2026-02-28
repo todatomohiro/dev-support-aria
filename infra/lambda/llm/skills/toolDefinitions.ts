@@ -64,4 +64,30 @@ export const TOOL_DEFINITIONS: Tool[] = [
       },
     },
   },
+  {
+    toolSpec: {
+      name: 'search_places',
+      description: '場所やお店を検索します。ユーザーが「近くのカフェ」「渋谷のレストラン」などと聞いた場合に使用してください。',
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: '検索クエリ（例: 渋谷 カフェ）',
+            },
+            locationBias: {
+              type: 'object',
+              description: '検索の中心座標（任意）',
+              properties: {
+                lat: { type: 'number' },
+                lng: { type: 'number' },
+              },
+            },
+          },
+          required: ['query'],
+        },
+      },
+    },
+  },
 ]

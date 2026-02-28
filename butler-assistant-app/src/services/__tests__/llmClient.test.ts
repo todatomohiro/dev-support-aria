@@ -108,6 +108,32 @@ describe('LLMClient', () => {
       await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(APIError)
     })
 
+    it('mapData を含む JSON レスポンスを正しくパースする', async () => {
+      const mapData = {
+        center: { lat: 35.6595, lng: 139.7004 },
+        zoom: 15,
+        markers: [{ lat: 35.6595, lng: 139.7004, title: 'カフェA', address: '渋谷区1-1', rating: 4.5 }],
+      }
+      const mockResponse = {
+        content: JSON.stringify({
+          text: '渋谷のカフェだよ！',
+          motion: 'smile',
+          emotion: 'happy',
+          mapData,
+        }),
+      }
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const result = await llmClient.sendMessage('渋谷のカフェを教えて')
+
+      expect(result.text).toBe('渋谷のカフェだよ！')
+      expect(result.mapData).toEqual(mapData)
+    })
+
     it('JSON 形式でない応答はフォールバックで idle モーションになる', async () => {
       const mockResponse = { content: 'これはJSONではありません' }
 
