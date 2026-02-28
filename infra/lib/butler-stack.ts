@@ -114,6 +114,7 @@ export class ButlerStack extends cdk.Stack {
     // Google OAuth 認証情報（環境変数で渡す）
     const googleClientId = process.env.GOOGLE_CLIENT_ID ?? ''
     const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET ?? ''
+    const googleIosClientId = process.env.GOOGLE_IOS_CLIENT_ID ?? ''
 
     // LLM Lambda（Bedrock Converse API + Tool Use + AgentCore Memory 検索）
     const llmChatFn = new lambdaNode.NodejsFunction(this, 'LlmChatFn', {
@@ -128,6 +129,7 @@ export class ButlerStack extends cdk.Stack {
         TABLE_NAME: table.tableName,
         GOOGLE_CLIENT_ID: googleClientId,
         GOOGLE_CLIENT_SECRET: googleClientSecret,
+        GOOGLE_IOS_CLIENT_ID: googleIosClientId,
       },
       bundling: {
         minify: true,
@@ -189,6 +191,7 @@ export class ButlerStack extends cdk.Stack {
         TABLE_NAME: table.tableName,
         GOOGLE_CLIENT_ID: googleClientId,
         GOOGLE_CLIENT_SECRET: googleClientSecret,
+        GOOGLE_IOS_CLIENT_ID: googleIosClientId,
       },
     })
 

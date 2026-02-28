@@ -9,6 +9,11 @@ vi.mock('@/auth/authStore', () => ({
   },
 }))
 
+// currentPlatform をモック（デフォルトは 'web'）
+vi.mock('@/platform', () => ({
+  currentPlatform: 'web',
+}))
+
 // VITE_API_BASE_URL をモック
 const MOCK_API_BASE_URL = 'https://api.example.com/prod'
 vi.stubEnv('VITE_API_BASE_URL', MOCK_API_BASE_URL)
@@ -153,6 +158,55 @@ describe('SkillClient', () => {
       expect(features).toContain('width=500')
 
       window.open = originalOpen
+    })
+  })
+
+  describe('handleOAuthRedirect', () => {
+    it('URL から code を正しく抽出して exchangeCode を呼び出す', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true }),
+      })
+
+      const result = await skillClient.handleOAuthRedirect(
+        'com.googleusercontent.apps.133320073795-c66cpjpjbe0svqcivsoh6g86rbvdjtl5:/oauth/callback?code=auth-code-456'
+      )
+
+      expect(result).toBe(true)
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      const body = JSON.parse(fetchCall[1].body)
+      expect(body.code).toBe('auth-code-456')
+      expect(body.redirectUri).toBe('com.googleusercontent.apps.133320073795-c66cpjpjbe0svqcivsoh6g86rbvdjtl5:/oauth/callback')
+    })
+
+    it('error パラメータがある場合は false を返す', async () => {
+      const result = await skillClient.handleOAuthRedirect(
+        'com.googleusercontent.apps.133320073795-c66cpjpjbe0svqcivsoh6g86rbvdjtl5:/oauth/callback?error=access_denied'
+      )
+
+      expect(result).toBe(false)
+    })
+
+    it('code がない場合は false を返す', async () => {
+      const result = await skillClient.handleOAuthRedirect(
+        'com.googleusercontent.apps.133320073795-c66cpjpjbe0svqcivsoh6g86rbvdjtl5:/oauth/callback'
+      )
+
+      expect(result).toBe(false)
+    })
+
+    it('exchangeCode が失敗した場合は false を返す', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: async () => 'Invalid code',
+      })
+
+      const result = await skillClient.handleOAuthRedirect(
+        'com.googleusercontent.apps.133320073795-c66cpjpjbe0svqcivsoh6g86rbvdjtl5:/oauth/callback?code=bad-code'
+      )
+
+      expect(result).toBe(false)
     })
   })
 })

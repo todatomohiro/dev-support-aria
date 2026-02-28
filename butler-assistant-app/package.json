@@ -21,6 +21,7 @@
     "cap:ios": "cap open ios"
   },
   "dependencies": {
+    "@capacitor/app": "^8.0.1",
     "@capacitor/browser": "^8.0.1",
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.1.0",

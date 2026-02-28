@@ -5,11 +5,51 @@ const TABLE_NAME = process.env.TABLE_NAME ?? 'butler-assistant'
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? ''
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? ''
+const GOOGLE_IOS_CLIENT_ID = process.env.GOOGLE_IOS_CLIENT_ID ?? ''
+
+type OAuthPlatform = 'web' | 'ios'
 
 interface GoogleTokens {
   accessToken: string
   refreshToken: string
   expiresAt: number
+  platform?: OAuthPlatform
+}
+
+/**
+ * リダイレクト URI からプラットフォームを判定
+ */
+function detectPlatform(redirectUri: string): OAuthPlatform {
+  return redirectUri.startsWith('com.googleusercontent.apps.') ? 'ios' : 'web'
+}
+
+/**
+ * プラットフォームに応じた Google クライアント認証情報を取得
+ *
+ * iOS クライアントはパブリッククライアントのため client_secret なし。
+ */
+function getClientCredentials(platform: OAuthPlatform): { clientId: string; clientSecret?: string } {
+  if (platform === 'ios') {
+    return { clientId: GOOGLE_IOS_CLIENT_ID }
+  }
+  return { clientId: GOOGLE_CLIENT_ID, clientSecret: GOOGLE_CLIENT_SECRET }
+}
+
+/**
+ * Google OAuth トークンリクエストのパラメータを構築
+ */
+function buildTokenParams(
+  credentials: { clientId: string; clientSecret?: string },
+  params: Record<string, string>
+): URLSearchParams {
+  const allParams: Record<string, string> = {
+    client_id: credentials.clientId,
+    ...params,
+  }
+  if (credentials.clientSecret) {
+    allParams.client_secret = credentials.clientSecret
+  }
+  return new URLSearchParams(allParams)
 }
 
 /**
@@ -28,10 +68,12 @@ export async function getGoogleTokens(userId: string): Promise<GoogleTokens | nu
     return null
   }
 
+  const platform = (result.Item.platform?.S as OAuthPlatform) ?? 'web'
   const tokens: GoogleTokens = {
     accessToken: result.Item.accessToken?.S ?? '',
     refreshToken: result.Item.refreshToken?.S ?? '',
     expiresAt: Number(result.Item.expiresAt?.N ?? '0'),
+    platform,
   }
 
   // トークンが期限切れの場合はリフレッシュ
@@ -41,7 +83,7 @@ export async function getGoogleTokens(userId: string): Promise<GoogleTokens | nu
       return null
     }
 
-    const refreshed = await refreshGoogleTokens(tokens.refreshToken)
+    const refreshed = await refreshGoogleTokens(tokens.refreshToken, platform)
     if (!refreshed) {
       return null
     }
@@ -50,6 +92,7 @@ export async function getGoogleTokens(userId: string): Promise<GoogleTokens | nu
       accessToken: refreshed.access_token,
       refreshToken: tokens.refreshToken,
       expiresAt: now + refreshed.expires_in * 1000,
+      platform,
     }
 
     await saveGoogleTokens(userId, updatedTokens)
@@ -71,6 +114,7 @@ export async function saveGoogleTokens(userId: string, tokens: GoogleTokens): Pr
       accessToken: { S: tokens.accessToken },
       refreshToken: { S: tokens.refreshToken },
       expiresAt: { N: String(tokens.expiresAt) },
+      platform: { S: tokens.platform ?? 'web' },
       connectedAt: { N: String(Date.now()) },
     },
   }))
@@ -92,14 +136,13 @@ export async function deleteGoogleTokens(userId: string): Promise<void> {
 /**
  * Google OAuth リフレッシュトークンで新しいアクセストークンを取得
  */
-async function refreshGoogleTokens(refreshToken: string): Promise<{ access_token: string; expires_in: number } | null> {
+async function refreshGoogleTokens(refreshToken: string, platform: OAuthPlatform = 'web'): Promise<{ access_token: string; expires_in: number } | null> {
+  const credentials = getClientCredentials(platform)
   try {
     const res = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
+      body: buildTokenParams(credentials, {
         refresh_token: refreshToken,
         grant_type: 'refresh_token',
       }),
@@ -123,13 +166,13 @@ async function refreshGoogleTokens(refreshToken: string): Promise<{ access_token
 export async function exchangeCodeForTokens(
   code: string,
   redirectUri: string
-): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+): Promise<{ access_token: string; refresh_token: string; expires_in: number; platform: OAuthPlatform }> {
+  const platform = detectPlatform(redirectUri)
+  const credentials = getClientCredentials(platform)
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
+    body: buildTokenParams(credentials, {
       code,
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
@@ -141,5 +184,6 @@ export async function exchangeCodeForTokens(
     throw new Error(`トークン交換に失敗しました: ${errorBody}`)
   }
 
-  return await res.json() as { access_token: string; refresh_token: string; expires_in: number }
+  const tokens = await res.json() as { access_token: string; refresh_token: string; expires_in: number }
+  return { ...tokens, platform }
 }

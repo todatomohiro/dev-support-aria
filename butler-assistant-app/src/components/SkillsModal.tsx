@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { SkillConnection } from '@/types'
 import { AVAILABLE_SKILLS } from '@/types'
 import { skillClient } from '@/services/skillClient'
+import { currentPlatform } from '@/platform'
 
 interface SkillsModalProps {
   isOpen: boolean
@@ -52,6 +53,42 @@ export function SkillsModal({ isOpen, onClose }: SkillsModalProps) {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
+  }, [loadConnections])
+
+  // Capacitor: appUrlOpen イベントで OAuth コールバックを受信
+  useEffect(() => {
+    if (currentPlatform !== 'capacitor') return
+
+    let removed = false
+
+    import('@capacitor/app').then(({ App }) => {
+      if (removed) return
+
+      App.addListener('appUrlOpen', async ({ url }) => {
+        if (!url.includes('oauth/callback')) return
+
+        const success = await skillClient.handleOAuthRedirect(url)
+        if (success) {
+          setIsConnecting(false)
+          loadConnections()
+        } else {
+          setIsConnecting(false)
+        }
+
+        import('@capacitor/browser').then(({ Browser }) => {
+          Browser.close()
+        })
+      }).then((handle) => {
+        // クリーンアップ用にハンドルを保持
+        cleanupRef = handle
+      })
+    })
+
+    let cleanupRef: { remove: () => void } | undefined
+    return () => {
+      removed = true
+      cleanupRef?.remove()
+    }
   }, [loadConnections])
 
   /**
