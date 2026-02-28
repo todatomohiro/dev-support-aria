@@ -4,13 +4,14 @@ import { logout as authLogout } from './authClient'
 
 interface UserMenuProps {
   onOpenProfile?: () => void
+  onOpenSkills?: () => void
 }
 
 /**
  * ユーザーメニュー（アバター + ログアウト）
  * 認証済みの場合のみ表示
  */
-export function UserMenu({ onOpenProfile }: UserMenuProps = {}) {
+export function UserMenu({ onOpenProfile, onOpenSkills }: UserMenuProps = {}) {
   const { status, user } = useAuthStore()
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -89,6 +90,18 @@ export function UserMenu({ onOpenProfile }: UserMenuProps = {}) {
                 data-testid="profile-menu-button"
               >
                 プロフィール
+              </button>
+            )}
+            {onOpenSkills && (
+              <button
+                onClick={() => {
+                  setIsOpen(false)
+                  onOpenSkills()
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                data-testid="skills-menu-button"
+              >
+                スキル
               </button>
             )}
             <button

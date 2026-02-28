@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { llmClient, retryWithBackoff, buildSystemPrompt, BUTLER_SYSTEM_PROMPT } from '../llmClient'
+import { llmClient, retryWithBackoff, buildSystemPrompt, BUTLER_SYSTEM_PROMPT, buildSkillSystemPrompt } from '../llmClient'
 import { APIError, NetworkError, RateLimitError, ParseError } from '@/types'
 import type { UserProfile } from '@/types'
 import { useAuthStore } from '@/auth/authStore'
@@ -179,18 +179,18 @@ describe('LLMClient', () => {
 describe('buildSystemPrompt', () => {
   it('プロフィール未設定の場合はベースプロンプトのみ返す', () => {
     const result = buildSystemPrompt()
-    expect(result).toBe(BUTLER_SYSTEM_PROMPT)
+    expect(result).toBe(BUTLER_SYSTEM_PROMPT + buildSkillSystemPrompt())
   })
 
   it('プロフィールがundefinedの場合はベースプロンプトのみ返す', () => {
     const result = buildSystemPrompt(undefined)
-    expect(result).toBe(BUTLER_SYSTEM_PROMPT)
+    expect(result).toBe(BUTLER_SYSTEM_PROMPT + buildSkillSystemPrompt())
   })
 
   it('ニックネームが空の場合はベースプロンプトのみ返す', () => {
     const profile: UserProfile = { nickname: '', honorific: '', gender: '' }
     const result = buildSystemPrompt(profile)
-    expect(result).toBe(BUTLER_SYSTEM_PROMPT)
+    expect(result).toBe(BUTLER_SYSTEM_PROMPT + buildSkillSystemPrompt())
   })
 
   it('ニックネームのみ設定された場合、呼び捨てで呼ぶ指示が追加される', () => {

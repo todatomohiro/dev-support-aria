@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, ModelImporter, MotionPanel } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
@@ -21,6 +21,7 @@ function App() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
+  const [isSkillsOpen, setIsSkillsOpen] = useState(false)
   const [isModelImporterOpen, setIsModelImporterOpen] = useState(false)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
@@ -216,7 +217,7 @@ function App() {
                 ログイン
               </button>
             )}
-            <UserMenu onOpenProfile={() => setIsProfileOpen(true)} />
+            <UserMenu onOpenProfile={() => setIsProfileOpen(true)} onOpenSkills={() => setIsSkillsOpen(true)} />
             {!requiresAuth && (
               <>
                 {config.ui.developerMode && (
@@ -285,6 +286,7 @@ function App() {
       {/* メインコンテンツ */}
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
         <Routes>
+          <Route path="/oauth/callback" element={<OAuthCallback />} />
           <Route path="/poc/polly" element={<PollyPoc />} />
           <Route path="/poc/stt" element={<SttPoc />} />
           <Route path="*" element={
@@ -355,6 +357,12 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         config={{ ui: config.ui }}
         onSave={handleSaveSettings}
+      />
+
+      {/* スキル連携モーダル */}
+      <SkillsModal
+        isOpen={isSkillsOpen}
+        onClose={() => setIsSkillsOpen(false)}
       />
 
       {/* プロフィールモーダル */}

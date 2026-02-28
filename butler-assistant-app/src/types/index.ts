@@ -45,3 +45,7 @@ export type {
   PlatformAdapter,
   FileSelectOptions,
 } from './services'
+
+// Skill types
+export { AVAILABLE_SKILLS } from './skill'
+export type { SkillConnection, SkillDefinition } from './skill'

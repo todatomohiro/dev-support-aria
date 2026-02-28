@@ -1,14 +1,25 @@
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime'
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+  type Message as BedrockMessage,
+  type ContentBlock,
+  type SystemContentBlock,
+  type ToolConfiguration,
+  type ToolResultContentBlock,
+} from '@aws-sdk/client-bedrock-runtime'
 import {
   BedrockAgentCoreClient,
   RetrieveMemoryRecordsCommand,
 } from '@aws-sdk/client-bedrock-agentcore'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
+import { executeSkill } from './skills'
+import { TOOL_DEFINITIONS } from './skills/toolDefinitions'
 
 const bedrock = new BedrockRuntimeClient({})
 const agentCore = new BedrockAgentCoreClient({})
 
 const MEMORY_ID = process.env.MEMORY_ID ?? ''
+const MAX_TOOL_USE_ITERATIONS = 5
 
 /**
  * AgentCore Memory からユーザーに関する記憶を検索
@@ -53,7 +64,36 @@ async function retrieveMemories(userId: string, query: string): Promise<string> 
 }
 
 /**
- * POST /llm/chat — Bedrock Claude でチャット応答を生成
+ * フロントエンドの会話履歴を Converse API 形式に変換
+ */
+function toConverseMessages(
+  history: Array<{ role: string; content: string }>,
+  message: string
+): BedrockMessage[] {
+  const messages: BedrockMessage[] = history.map((m) => ({
+    role: m.role as 'user' | 'assistant',
+    content: [{ text: m.content }],
+  }))
+  messages.push({
+    role: 'user',
+    content: [{ text: message }],
+  })
+  return messages
+}
+
+/**
+ * Converse API レスポンスからテキストを抽出
+ */
+function extractTextFromOutput(output: { message?: BedrockMessage }): string {
+  const contentBlocks = output.message?.content ?? []
+  const textBlocks = contentBlocks
+    .filter((block): block is ContentBlock & { text: string } => 'text' in block && typeof block.text === 'string')
+    .map((block) => block.text)
+  return textBlocks.join('')
+}
+
+/**
+ * POST /llm/chat — Bedrock Claude でチャット応答を生成（Converse API + Tool Use）
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const userId = event.requestContext.authorizer?.claims?.sub
@@ -86,29 +126,76 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const memoryContext = await retrieveMemories(userId, message)
   const enhancedSystemPrompt = systemPrompt + memoryContext
 
-  const messages = [
-    ...history.map((m) => ({ role: m.role, content: m.content })),
-    { role: 'user', content: message },
-  ]
+  const messages = toConverseMessages(history, message)
+
+  const system: SystemContentBlock[] = enhancedSystemPrompt
+    ? [{ text: enhancedSystemPrompt }]
+    : []
+
+  const toolConfig: ToolConfiguration = {
+    tools: TOOL_DEFINITIONS,
+  }
 
   try {
-    const result = await bedrock.send(new InvokeModelCommand({
-      modelId: 'jp.anthropic.claude-sonnet-4-6',
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify({
-        anthropic_version: 'bedrock-2023-05-31',
-        max_tokens: 1024,
-        temperature: 0.7,
-        system: enhancedSystemPrompt,
-        messages,
-      }),
-    }))
+    let currentMessages = [...messages]
 
-    const responseBody = JSON.parse(new TextDecoder().decode(result.body))
-    const content = responseBody.content[0].text
+    for (let iteration = 0; iteration < MAX_TOOL_USE_ITERATIONS; iteration++) {
+      const result = await bedrock.send(new ConverseCommand({
+        modelId: 'jp.anthropic.claude-sonnet-4-6',
+        messages: currentMessages,
+        system,
+        inferenceConfig: {
+          maxTokens: 1024,
+          temperature: 0.7,
+        },
+        toolConfig,
+      }))
 
-    return response(200, { content })
+      const stopReason = result.stopReason
+      console.log(`[LLM] Iteration ${iteration}, stopReason: ${stopReason}`)
+
+      if (stopReason === 'tool_use') {
+        // ツール使用リクエストを処理
+        const assistantMessage = result.output?.message
+        if (!assistantMessage) {
+          return response(500, { error: 'No assistant message in tool_use response' })
+        }
+
+        // アシスタントメッセージを会話に追加
+        currentMessages.push(assistantMessage)
+
+        // ツール呼び出しを抽出・実行
+        const toolUseBlocks = (assistantMessage.content ?? [])
+          .filter((block): block is ContentBlock & { toolUse: { toolUseId: string; name: string; input: Record<string, unknown> } } =>
+            'toolUse' in block && block.toolUse !== undefined
+          )
+
+        const toolResults: ToolResultContentBlock[] = []
+        for (const block of toolUseBlocks) {
+          const { toolUseId, name, input } = block.toolUse
+          console.log(`[LLM] Tool use: ${name}`, JSON.stringify(input))
+          const toolResult = await executeSkill(name, input, toolUseId, userId)
+          console.log(`[LLM] Tool result:`, JSON.stringify(toolResult))
+          toolResults.push(toolResult)
+        }
+
+        // ツール結果を user ロールで追加
+        currentMessages.push({
+          role: 'user',
+          content: toolResults.map((tr) => ({ toolResult: tr })),
+        })
+
+        continue
+      }
+
+      // ツール使用でない場合（end_turn 等）→ テキスト応答を返却
+      const content = extractTextFromOutput(result.output ?? {})
+      console.log(`[LLM] Final response (${content.length} chars):`, content.slice(0, 200))
+      return response(200, { content })
+    }
+
+    // 最大ループ回数に到達
+    return response(200, { content: 'ツール実行の上限に達しました。もう一度お試しください。' })
   } catch (error) {
     console.error('Bedrock 呼び出しエラー:', error)
     return response(500, { error: 'LLM invocation failed' })

@@ -111,16 +111,23 @@ export class ButlerStack extends cdk.Stack {
     // MEMORY_ID（AgentCore Memory — CLI で事前作成）
     const memoryId = process.env.MEMORY_ID ?? ''
 
-    // LLM Lambda（Bedrock + AgentCore Memory 検索）
+    // Google OAuth 認証情報（環境変数で渡す）
+    const googleClientId = process.env.GOOGLE_CLIENT_ID ?? ''
+    const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET ?? ''
+
+    // LLM Lambda（Bedrock Converse API + Tool Use + AgentCore Memory 検索）
     const llmChatFn = new lambdaNode.NodejsFunction(this, 'LlmChatFn', {
       runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
-      timeout: cdk.Duration.seconds(45),
+      timeout: cdk.Duration.seconds(90),
       memorySize: 256,
       entry: path.join(__dirname, '..', 'lambda', 'llm', 'chat.ts'),
       functionName: 'butler-llm-chat',
       environment: {
         MEMORY_ID: memoryId,
+        TABLE_NAME: table.tableName,
+        GOOGLE_CLIENT_ID: googleClientId,
+        GOOGLE_CLIENT_SECRET: googleClientSecret,
       },
       bundling: {
         minify: true,
@@ -129,14 +136,17 @@ export class ButlerStack extends cdk.Stack {
       },
     })
 
-    // Bedrock InvokeModel 権限（inference profile + foundation model）
+    // Bedrock Converse 権限（inference profile + foundation model）
     llmChatFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['bedrock:InvokeModel'],
+      actions: ['bedrock:InvokeModel', 'bedrock:Converse'],
       resources: [
         'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
         `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
       ],
     }))
+
+    // LLM Lambda から DynamoDB への読み書き権限（トークン管理）
+    table.grantReadWriteData(llmChatFn)
 
     // AgentCore Memory 検索権限
     llmChatFn.addToRolePolicy(new iam.PolicyStatement({
@@ -168,11 +178,45 @@ export class ButlerStack extends cdk.Stack {
       resources: ['*'],
     }))
 
+    // ── Skills Lambda 関数（OAuth 管理）──
+
+    const skillsCallbackFn = new lambdaNode.NodejsFunction(this, 'SkillsCallbackFn', {
+      ...lambdaDefaults,
+      timeout: cdk.Duration.seconds(15),
+      entry: path.join(__dirname, '..', 'lambda', 'skills', 'callback.ts'),
+      functionName: 'butler-skills-callback',
+      environment: {
+        TABLE_NAME: table.tableName,
+        GOOGLE_CLIENT_ID: googleClientId,
+        GOOGLE_CLIENT_SECRET: googleClientSecret,
+      },
+    })
+
+    const skillsConnectionsFn = new lambdaNode.NodejsFunction(this, 'SkillsConnectionsFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'skills', 'connections.ts'),
+      functionName: 'butler-skills-connections',
+    })
+
+    const skillsDisconnectFn = new lambdaNode.NodejsFunction(this, 'SkillsDisconnectFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'skills', 'disconnect.ts'),
+      functionName: 'butler-skills-disconnect',
+      environment: {
+        TABLE_NAME: table.tableName,
+        GOOGLE_CLIENT_ID: googleClientId,
+        GOOGLE_CLIENT_SECRET: googleClientSecret,
+      },
+    })
+
     // DynamoDB への読み書き権限
     table.grantReadData(settingsGetFn)
     table.grantReadWriteData(settingsPutFn)
     table.grantReadData(messagesListFn)
     table.grantReadWriteData(messagesPutFn)
+    table.grantReadWriteData(skillsCallbackFn)
+    table.grantReadData(skillsConnectionsFn)
+    table.grantReadWriteData(skillsDisconnectFn)
 
     // ── API Gateway ──
     const api = new apigateway.RestApi(this, 'ButlerApi', {
@@ -221,6 +265,18 @@ export class ButlerStack extends cdk.Stack {
     const memoryResource = api.root.addResource('memory')
     const memoryEventsResource = memoryResource.addResource('events')
     memoryEventsResource.addMethod('POST', new apigateway.LambdaIntegration(memoryEventsFn), authMethodOptions)
+
+    // /skills/connections (GET)
+    const skillsResource = api.root.addResource('skills')
+    const skillsConnectionsResource = skillsResource.addResource('connections')
+    skillsConnectionsResource.addMethod('GET', new apigateway.LambdaIntegration(skillsConnectionsFn), authMethodOptions)
+
+    // /skills/google/callback (POST), /skills/google/disconnect (DELETE)
+    const skillsGoogleResource = skillsResource.addResource('google')
+    const skillsGoogleCallbackResource = skillsGoogleResource.addResource('callback')
+    skillsGoogleCallbackResource.addMethod('POST', new apigateway.LambdaIntegration(skillsCallbackFn), authMethodOptions)
+    const skillsGoogleDisconnectResource = skillsGoogleResource.addResource('disconnect')
+    skillsGoogleDisconnectResource.addMethod('DELETE', new apigateway.LambdaIntegration(skillsDisconnectFn), authMethodOptions)
 
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {
