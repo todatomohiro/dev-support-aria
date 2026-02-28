@@ -66,7 +66,10 @@ export function buildSkillSystemPrompt(): string {
 - search_places ツールが利用可能です。ユーザーが「近くのカフェ」「渋谷のレストラン」など場所に関する質問をしたら search_places を使ってください
 - search_places の結果を受け取ったら、回答の JSON に mapData フィールドを含めてください。形式: {"center": {"lat": 数値, "lng": 数値}, "zoom": 15, "markers": [{"lat": 数値, "lng": 数値, "title": "店名", "address": "住所", "rating": 数値}]}
 - mapData の center は検索結果の中心座標にしてください
-- mapData は場所検索時のみ含め、通常の会話では省略してください`
+- mapData は場所検索時のみ含め、通常の会話では省略してください
+- web_search ツールが利用可能です。ユーザーが「〜について調べて」「〜の最新情報」「〜って何？」など、最新の情報や知識の調査を求めた場合に使用してください
+- web_search の結果を受け取ったら、検索結果をもとにわかりやすく要約して回答してください
+- 重要な情報には出典URLを含めてください（例: 「詳しくはこちら: URL」）`
 }
 
 /**

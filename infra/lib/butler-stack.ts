@@ -116,6 +116,7 @@ export class ButlerStack extends cdk.Stack {
     const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET ?? ''
     const googleIosClientId = process.env.GOOGLE_IOS_CLIENT_ID ?? ''
     const googlePlacesApiKey = process.env.GOOGLE_PLACES_API_KEY ?? ''
+    const braveSearchApiKey = process.env.BRAVE_SEARCH_API_KEY ?? ''
 
     // LLM Lambda（Bedrock Converse API + Tool Use + AgentCore Memory 検索）
     const llmChatFn = new lambdaNode.NodejsFunction(this, 'LlmChatFn', {
@@ -132,6 +133,7 @@ export class ButlerStack extends cdk.Stack {
         GOOGLE_CLIENT_SECRET: googleClientSecret,
         GOOGLE_IOS_CLIENT_ID: googleIosClientId,
         GOOGLE_PLACES_API_KEY: googlePlacesApiKey,
+        BRAVE_SEARCH_API_KEY: braveSearchApiKey,
       },
       bundling: {
         minify: true,

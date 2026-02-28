@@ -90,4 +90,22 @@ export const TOOL_DEFINITIONS: Tool[] = [
       },
     },
   },
+  {
+    toolSpec: {
+      name: 'web_search',
+      description: 'インターネットで情報を検索します。ユーザーが「〜について調べて」「〜の最新情報」などと聞いた場合に使用してください。',
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: '検索クエリ',
+            },
+          },
+          required: ['query'],
+        },
+      },
+    },
+  },
 ]
