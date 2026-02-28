@@ -51,3 +51,6 @@ export type {
 // Skill types
 export { AVAILABLE_SKILLS } from './skill'
 export type { SkillConnection, SkillDefinition } from './skill'
+
+// Conversation types
+export type { FriendCode, FriendLink, ConversationSummary, ConversationMessage, WsStatus } from './conversation'

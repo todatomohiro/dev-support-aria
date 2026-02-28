@@ -2,6 +2,9 @@ import * as cdk from 'aws-cdk-lib'
 import * as cognito from 'aws-cdk-lib/aws-cognito'
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb'
 import * as apigateway from 'aws-cdk-lib/aws-apigateway'
+import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2'
+import * as apigatewayv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations'
+import * as apigatewayv2Authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as iam from 'aws-cdk-lib/aws-iam'
@@ -21,6 +24,22 @@ export class ButlerStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+      timeToLiveAttribute: 'ttlExpiry',
+    })
+
+    // ── GSI（フレンドコード逆引き、会話一覧ソート）──
+    table.addGlobalSecondaryIndex({
+      indexName: 'GSI1',
+      partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'GSI1SK', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    })
+
+    table.addGlobalSecondaryIndex({
+      indexName: 'GSI2',
+      partitionKey: { name: 'GSI2PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'GSI2SK', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
     })
 
     // ── Cognito User Pool ──
@@ -87,6 +106,115 @@ export class ButlerStack extends cdk.Stack {
       entry: path.join(__dirname, '..', 'lambda', 'messages', 'put.ts'),
       functionName: 'butler-messages-put',
     })
+
+    // ── Friends Lambda 関数 ──
+    const friendsGenerateCodeFn = new lambdaNode.NodejsFunction(this, 'FriendsGenerateCodeFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'friends', 'generateCode.ts'),
+      functionName: 'butler-friends-generate-code',
+    })
+
+    const friendsGetCodeFn = new lambdaNode.NodejsFunction(this, 'FriendsGetCodeFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'friends', 'getCode.ts'),
+      functionName: 'butler-friends-get-code',
+    })
+
+    const friendsLinkFn = new lambdaNode.NodejsFunction(this, 'FriendsLinkFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'friends', 'link.ts'),
+      functionName: 'butler-friends-link',
+    })
+
+    const friendsListFn = new lambdaNode.NodejsFunction(this, 'FriendsListFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'friends', 'list.ts'),
+      functionName: 'butler-friends-list',
+    })
+
+    // ── Conversations Lambda 関数 ──
+    const conversationsListFn = new lambdaNode.NodejsFunction(this, 'ConversationsListFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'conversations', 'list.ts'),
+      functionName: 'butler-conversations-list',
+    })
+
+    const conversationsMessagesListFn = new lambdaNode.NodejsFunction(this, 'ConversationsMessagesListFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'conversations', 'messagesList.ts'),
+      functionName: 'butler-conversations-messages-list',
+    })
+
+    const conversationsMessagesSendFn = new lambdaNode.NodejsFunction(this, 'ConversationsMessagesSendFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'conversations', 'messagesSend.ts'),
+      functionName: 'butler-conversations-messages-send',
+    })
+
+    const conversationsMessagesPollFn = new lambdaNode.NodejsFunction(this, 'ConversationsMessagesPollFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'conversations', 'messagesPoll.ts'),
+      functionName: 'butler-conversations-messages-poll',
+    })
+
+    // ── WebSocket Lambda 関数 ──
+    const wsAuthorizerFn = new lambdaNode.NodejsFunction(this, 'WsAuthorizerFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'ws', 'authorizer.ts'),
+      functionName: 'butler-ws-authorizer',
+      environment: {
+        TABLE_NAME: table.tableName,
+        COGNITO_USER_POOL_ID: userPool.userPoolId,
+        COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+      },
+    })
+
+    const wsConnectFn = new lambdaNode.NodejsFunction(this, 'WsConnectFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'ws', 'connect.ts'),
+      functionName: 'butler-ws-connect',
+    })
+
+    const wsDisconnectFn = new lambdaNode.NodejsFunction(this, 'WsDisconnectFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'ws', 'disconnect.ts'),
+      functionName: 'butler-ws-disconnect',
+    })
+
+    table.grantReadWriteData(wsConnectFn)
+    table.grantReadWriteData(wsDisconnectFn)
+
+    // ── WebSocket API ──
+    const wsApi = new apigatewayv2.WebSocketApi(this, 'ButlerWsApi', {
+      apiName: 'butler-assistant-ws',
+      connectRouteOptions: {
+        integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('WsConnectIntegration', wsConnectFn),
+        authorizer: new apigatewayv2Authorizers.WebSocketLambdaAuthorizer('WsLambdaAuthorizer', wsAuthorizerFn, {
+          identitySource: ['route.request.querystring.token'],
+        }),
+      },
+      disconnectRouteOptions: {
+        integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('WsDisconnectIntegration', wsDisconnectFn),
+      },
+      defaultRouteOptions: {
+        integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('WsDefaultIntegration', wsConnectFn),
+      },
+    })
+
+    const wsStage = new apigatewayv2.WebSocketStage(this, 'WsProdStage', {
+      webSocketApi: wsApi,
+      stageName: 'prod',
+      autoDeploy: true,
+    })
+
+    // メッセージ送信 Lambda に WebSocket プッシュ権限を付与
+    conversationsMessagesSendFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [wsApi.arnForExecuteApi('*', '/*')],
+    }))
+
+    // メッセージ送信 Lambda に WebSocket エンドポイントを設定
+    conversationsMessagesSendFn.addEnvironment('WEBSOCKET_ENDPOINT', wsStage.callbackUrl)
 
     // TTS Lambda（Polly 用 — DynamoDB 不要）
     const ttsSynthesizeFn = new lambdaNode.NodejsFunction(this, 'TtsSynthesizeFn', {
@@ -236,6 +364,16 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadData(skillsConnectionsFn)
     table.grantReadWriteData(skillsDisconnectFn)
 
+    // Friends / Conversations — DynamoDB 権限
+    table.grantReadWriteData(friendsGenerateCodeFn)
+    table.grantReadData(friendsGetCodeFn)
+    table.grantReadWriteData(friendsLinkFn)
+    table.grantReadData(friendsListFn)
+    table.grantReadData(conversationsListFn)
+    table.grantReadData(conversationsMessagesListFn)
+    table.grantReadWriteData(conversationsMessagesSendFn)
+    table.grantReadData(conversationsMessagesPollFn)
+
     // ── API Gateway ──
     const api = new apigateway.RestApi(this, 'ButlerApi', {
       restApiName: 'Butler Assistant API',
@@ -296,6 +434,33 @@ export class ButlerStack extends cdk.Stack {
     const skillsGoogleDisconnectResource = skillsGoogleResource.addResource('disconnect')
     skillsGoogleDisconnectResource.addMethod('DELETE', new apigateway.LambdaIntegration(skillsDisconnectFn), authMethodOptions)
 
+    // /friends
+    const friendsResource = api.root.addResource('friends')
+    friendsResource.addMethod('GET', new apigateway.LambdaIntegration(friendsListFn), authMethodOptions)
+
+    // /friends/code
+    const friendsCodeResource = friendsResource.addResource('code')
+    friendsCodeResource.addMethod('GET', new apigateway.LambdaIntegration(friendsGetCodeFn), authMethodOptions)
+    friendsCodeResource.addMethod('POST', new apigateway.LambdaIntegration(friendsGenerateCodeFn), authMethodOptions)
+
+    // /friends/link
+    const friendsLinkResource = friendsResource.addResource('link')
+    friendsLinkResource.addMethod('POST', new apigateway.LambdaIntegration(friendsLinkFn), authMethodOptions)
+
+    // /conversations
+    const conversationsResource = api.root.addResource('conversations')
+    conversationsResource.addMethod('GET', new apigateway.LambdaIntegration(conversationsListFn), authMethodOptions)
+
+    // /conversations/{id}/messages
+    const conversationByIdResource = conversationsResource.addResource('{id}')
+    const conversationMessagesResource = conversationByIdResource.addResource('messages')
+    conversationMessagesResource.addMethod('GET', new apigateway.LambdaIntegration(conversationsMessagesListFn), authMethodOptions)
+    conversationMessagesResource.addMethod('POST', new apigateway.LambdaIntegration(conversationsMessagesSendFn), authMethodOptions)
+
+    // /conversations/{id}/messages/new
+    const conversationMessagesNewResource = conversationMessagesResource.addResource('new')
+    conversationMessagesNewResource.addMethod('GET', new apigateway.LambdaIntegration(conversationsMessagesPollFn), authMethodOptions)
+
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {
       value: userPool.userPoolId,
@@ -315,6 +480,11 @@ export class ButlerStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'TableName', {
       value: table.tableName,
       description: 'DynamoDB table name',
+    })
+
+    new cdk.CfnOutput(this, 'WsApiUrl', {
+      value: wsStage.url,
+      description: 'WebSocket API URL',
     })
   }
 }

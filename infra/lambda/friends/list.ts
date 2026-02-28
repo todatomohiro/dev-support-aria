@@ -1,0 +1,52 @@
+import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb'
+import { unmarshall } from '@aws-sdk/util-dynamodb'
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
+
+const client = new DynamoDBClient({})
+const TABLE_NAME = process.env.TABLE_NAME!
+
+/**
+ * GET /friends — フレンド一覧を取得
+ */
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const userId = event.requestContext.authorizer?.claims?.sub
+  if (!userId) {
+    return response(401, { error: 'Unauthorized' })
+  }
+
+  try {
+    const result = await client.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
+      ExpressionAttributeValues: {
+        ':pk': { S: `USER#${userId}` },
+        ':prefix': { S: 'FRIEND#' },
+      },
+    }))
+
+    const friends = (result.Items ?? []).map((item) => {
+      const record = unmarshall(item)
+      return {
+        friendUserId: record.friendUserId,
+        displayName: record.displayName,
+        linkedAt: record.linkedAt,
+      }
+    })
+
+    return response(200, { friends })
+  } catch (error) {
+    console.error('フレンド一覧取得エラー:', error)
+    return response(500, { error: 'Internal server error' })
+  }
+}
+
+function response(statusCode: number, body: unknown): APIGatewayProxyResult {
+  return {
+    statusCode,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    },
+    body: JSON.stringify(body),
+  }
+}

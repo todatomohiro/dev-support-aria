@@ -7,7 +7,7 @@
 ```bash
 cd butler-assistant-app
 
-pnpm test             # 全テスト実行（400テスト / 24ファイル）
+pnpm test             # 全テスト実行（561テスト / 36ファイル）
 pnpm dev              # 開発サーバー（http://localhost:5173）
 pnpm typecheck        # 型チェック
 pnpm lint             # ESLint
@@ -69,6 +69,9 @@ infra/
     ├── tts/                # 音声合成 synthesize
     ├── llm/                # LLM チャット（Bedrock Claude + Tool Use + メモリ検索）
     │   └── skills/         #   スキル実装（Google Calendar, Google Places）
+    ├── friends/            # フレンド管理（generateCode, getCode, link, list）
+    ├── conversations/      # マルチチャット会話（list, messagesList, messagesSend, messagesPoll）
+    ├── ws/                 # WebSocket（authorizer, connect, disconnect）
     ├── skills/             # OAuth 管理（callback, connections, disconnect）
     └── memory/             # 長期記憶イベント保存（AgentCore Memory）
 ```
@@ -118,7 +121,7 @@ export const responseParser = new ResponseParserImpl()
 
 ## テスト
 
-- **Vitest** + **jsdom** 環境（400テスト / 24ファイル）
+- **Vitest** + **jsdom** 環境（561テスト / 36ファイル）
 - セットアップ: `src/__tests__/setup.ts`（Live2D SDK・PixiJS のモック定義済み）
 - プロパティベーステスト: `fast-check`（`@fast-check/vitest`）、最低100回実行
 
@@ -146,7 +149,7 @@ test.prop([fc.string()])(
 
 ## 主要モジュール
 
-### サービス層（src/services/ — 9サービス）
+### サービス層（src/services/ — 12サービス）
 
 | シングルトン | クラス | 責務 |
 |-------------|--------|------|
@@ -159,6 +162,9 @@ test.prop([fc.string()])(
 | `syncService` | `SyncServiceImpl` | データ同期（ローカル↔サーバー） |
 | `ttsService` | `TtsServiceImpl` | Amazon Polly 音声合成・再生（Kazuha/neural） |
 | `skillClient` | — | スキル連携管理（OAuth コールバック・接続状態） |
+| `friendService` | `FriendServiceImpl` | フレンドコード生成・リンク・一覧管理 |
+| `conversationService` | `ConversationServiceImpl` | マルチチャット会話管理（メッセージ送受信・ポーリング） |
+| `wsService` | `WsServiceImpl` | WebSocket リアルタイム通信（接続管理・再接続・メッセージ配信） |
 
 ### LLM 通信アーキテクチャ
 
@@ -200,7 +206,7 @@ test.prop([fc.string()])(
 - **ストラテジー**: `facts`（SEMANTIC）+ `preferences`（USER_PREFERENCE）
 - **フォールバック**: メモリ検索失敗時は通常のチャットとして動作
 
-### コンポーネント層（src/components/ — 10コンポーネント）
+### コンポーネント層（src/components/ — 15コンポーネント）
 
 | コンポーネント | 説明 |
 |---------------|------|
@@ -214,6 +220,11 @@ test.prop([fc.string()])(
 | `MotionPanel` | モーション・表情ボタンパネル |
 | `OAuthCallback` | Google OAuth コールバック処理 |
 | `SkillsModal` | スキル連携管理モーダル（Google カレンダー接続/切断） |
+| `MultiChatScreen` | `/multi-chat` のトップレベル画面（会話一覧 or チャット表示） |
+| `ConversationList` | マルチチャット会話一覧（相手名・最新メッセージ・時刻） |
+| `ConversationChat` | 1対1テキストチャット（自分右寄せ・相手左寄せ・WebSocket + ポーリングフォールバック） |
+| `FriendCodeModal` | フレンドコード共有・入力モーダル |
+| `ParticipantPanel` | チャット相手情報パネル（アバタープレースホルダー） |
 
 ### 認証（src/auth/）
 
@@ -227,10 +238,13 @@ test.prop([fc.string()])(
 
 認証ガード: `isAuthConfigured() && authStatus !== 'authenticated'` → ログイン促進画面。Cognito 未設定時はゲストモード。
 
-### 状態管理（src/stores/appStore.ts）
+### 状態管理（src/stores/）
 
-Zustand + persist。主要ステート：
+**appStore.ts** — Zustand + persist。主要ステート：
 `messages`, `isLoading`, `currentMotion`, `currentExpression`, `motionQueue`, `config`, `lastError`
+
+**multiChatStore.ts** — Zustand（永続化なし、サーバーが信頼元）。主要ステート：
+`friends`, `myFriendCode`, `conversations`, `activeConversationId`, `activeMessages`, `lastPollTimestamp`, `isSending`, `error`, `wsStatus`, `unreadCounts`
 
 ### プラットフォーム（src/platform/）
 
@@ -243,10 +257,11 @@ Zustand + persist。主要ステート：
 
 | リソース | 説明 |
 |---------|------|
-| DynamoDB | `butler-assistant` テーブル（PK/SK、ポイントインタイム復旧） |
+| DynamoDB | `butler-assistant` テーブル（PK/SK + GSI1/GSI2、ポイントインタイム復旧、TTL） |
 | Cognito | ユーザープール + SPA クライアント（SRP 認証） |
-| API Gateway | REST API（CORS 設定済み、Cognito 認可） |
-| Lambda × 10 | Node.js 22.x / ARM_64 |
+| API Gateway (REST) | REST API（CORS 設定済み、Cognito 認可） |
+| API Gateway (WebSocket) | WebSocket API（JWT 認証、リアルタイムメッセージ配信） |
+| Lambda × 21 | Node.js 22.x / ARM_64 |
 | AgentCore Memory | 長期記憶（SEMANTIC + USER_PREFERENCE ストラテジー） |
 
 **Lambda 関数一覧:**
@@ -263,6 +278,17 @@ Zustand + persist。主要ステート：
 | `butler-skills-callback` | `POST /skills/google/callback` | Google OAuth コールバック |
 | `butler-skills-connections` | `GET /skills/connections` | スキル接続状態取得 |
 | `butler-skills-disconnect` | `DELETE /skills/google/disconnect` | Google 連携解除 |
+| `butler-friends-generate-code` | `POST /friends/code` | フレンドコード生成 |
+| `butler-friends-get-code` | `GET /friends/code` | フレンドコード取得 |
+| `butler-friends-link` | `POST /friends/link` | フレンドコードでリンク（双方向） |
+| `butler-friends-list` | `GET /friends` | フレンド一覧取得 |
+| `butler-conversations-list` | `GET /conversations` | 会話一覧取得（GSI2 updatedAt 降順） |
+| `butler-conversations-messages-list` | `GET /conversations/{id}/messages` | 会話メッセージ取得 |
+| `butler-conversations-messages-send` | `POST /conversations/{id}/messages` | メッセージ送信 |
+| `butler-conversations-messages-poll` | `GET /conversations/{id}/messages/new` | 新着メッセージポーリング |
+| `butler-ws-authorizer` | WebSocket `$connect` | Cognito JWT 認証（クエリパラメータ） |
+| `butler-ws-connect` | WebSocket `$connect` | 接続レコード保存（DynamoDB TTL 2時間） |
+| `butler-ws-disconnect` | WebSocket `$disconnect` | 接続レコード削除 |
 
 ## 環境変数
 
@@ -273,6 +299,7 @@ Zustand + persist。主要ステート：
 | `VITE_COGNITO_USER_POOL_ID` | Cognito ユーザープール ID |
 | `VITE_COGNITO_CLIENT_ID` | Cognito アプリクライアント ID |
 | `VITE_API_BASE_URL` | API Gateway エンドポイント URL |
+| `VITE_WS_URL` | WebSocket API エンドポイント URL |
 
 ### SSM Parameter Store（シークレット管理）
 

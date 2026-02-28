@@ -42,3 +42,9 @@ butler-assistant-app/ios/App/Pods
 butler-assistant-app/android/.gradle
 butler-assistant-app/android/app/build
 butler-assistant-app/android/build
+
+# CDK
+infra/cdk.out
+
+# Claude Code
+.claude/

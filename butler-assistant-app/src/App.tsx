@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, MultiChatScreen } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
@@ -18,6 +18,7 @@ function App() {
   const navigate = useNavigate()
   const location = useLocation()
   const isPocPage = location.pathname.startsWith('/poc')
+  const isMultiChatPage = location.pathname.startsWith('/multi-chat')
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
@@ -220,6 +221,26 @@ function App() {
             <UserMenu onOpenProfile={() => setIsProfileOpen(true)} onOpenSkills={() => setIsSkillsOpen(true)} />
             {!requiresAuth && (
               <>
+                {isMultiChatPage ? (
+                  <button
+                    onClick={() => navigate('/')}
+                    className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                    data-testid="multi-chat-back-button"
+                  >
+                    ← 戻る
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => navigate('/multi-chat')}
+                    className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-purple-700 dark:text-purple-200 bg-purple-50 dark:bg-purple-900/50 border border-purple-300 dark:border-purple-700 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900 transition-colors"
+                    data-testid="multi-chat-button"
+                  >
+                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
+                    </svg>
+                    <span className="hidden sm:inline">マルチチャット</span>
+                  </button>
+                )}
                 {config.ui.developerMode && (
                   isPocPage ? (
                     <button
@@ -289,6 +310,8 @@ function App() {
           <Route path="/oauth/callback" element={<OAuthCallback />} />
           <Route path="/poc/polly" element={<PollyPoc />} />
           <Route path="/poc/stt" element={<SttPoc />} />
+          <Route path="/multi-chat/:conversationId" element={<MultiChatScreen />} />
+          <Route path="/multi-chat" element={<MultiChatScreen />} />
           <Route path="*" element={
             requiresAuth ? (
               /* 未認証時: ログイン促進画面 */

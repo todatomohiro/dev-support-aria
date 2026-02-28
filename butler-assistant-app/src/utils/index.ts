@@ -11,3 +11,10 @@ export {
   createFPSCounter,
   getMemoryUsage,
 } from './performance'
+
+export {
+  isSameDay,
+  formatTime,
+  formatRelativeTimestamp,
+  formatDateSeparator,
+} from './dateFormat'

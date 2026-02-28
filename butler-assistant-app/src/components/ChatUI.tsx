@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import type { Message } from '@/types'
 import { ttsService } from '@/services/ttsService'
+import { formatTime } from '@/utils'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { CameraPreview } from './CameraPreview'
 import type { CameraPreviewHandle } from './CameraPreview'
@@ -416,13 +417,3 @@ function LoadingIndicator() {
   )
 }
 
-/**
- * タイムスタンプをフォーマット
- */
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString('ja-JP', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
