@@ -132,6 +132,12 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-friends-list',
     })
 
+    const friendsUnfriendFn = new lambdaNode.NodejsFunction(this, 'FriendsUnfriendFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'friends', 'unfriend.ts'),
+      functionName: 'butler-friends-unfriend',
+    })
+
     // ── Conversations Lambda 関数 ──
     const conversationsListFn = new lambdaNode.NodejsFunction(this, 'ConversationsListFn', {
       ...lambdaDefaults,
@@ -382,6 +388,7 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadData(friendsGetCodeFn)
     table.grantReadWriteData(friendsLinkFn)
     table.grantReadData(friendsListFn)
+    table.grantReadWriteData(friendsUnfriendFn)
     table.grantReadData(conversationsListFn)
     table.grantReadData(conversationsMessagesListFn)
     table.grantReadWriteData(conversationsMessagesSendFn)
@@ -460,6 +467,10 @@ export class ButlerStack extends cdk.Stack {
     // /friends/link
     const friendsLinkResource = friendsResource.addResource('link')
     friendsLinkResource.addMethod('POST', new apigateway.LambdaIntegration(friendsLinkFn), authMethodOptions)
+
+    // /friends/{friendUserId}
+    const friendByIdResource = friendsResource.addResource('{friendUserId}')
+    friendByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(friendsUnfriendFn), authMethodOptions)
 
     // /conversations
     const conversationsResource = api.root.addResource('conversations')

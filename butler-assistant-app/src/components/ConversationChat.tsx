@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useAppStore } from '@/stores'
 import { useMultiChatStore } from '@/stores/multiChatStore'
 import { conversationService } from '@/services/conversationService'
 import { useConversationPolling } from '@/hooks/useConversationPolling'
@@ -35,11 +36,12 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
   const setOtherLastReadAt = useMultiChatStore((s) => s.setOtherLastReadAt)
 
   const currentUser = useAuthStore((s) => s.user)
+  const nickname = useAppStore((s) => s.config.profile.nickname)
 
-  // WebSocket 接続 + ポーリングフォールバック
+  // WebSocket 接続 + ポーリング（WS 状態に関わらず常時有効）
   useWebSocket(conversationId)
   const wsStatus = useMultiChatStore((s) => s.wsStatus)
-  useConversationPolling(wsStatus === 'failed' ? conversationId : null)
+  useConversationPolling(conversationId)
 
   /** 初期メッセージを読み込み */
   const loadInitialMessages = useCallback(async () => {
@@ -96,7 +98,7 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
     setInputText('')
 
     try {
-      const senderName = currentUser?.displayName ?? currentUser?.email ?? ''
+      const senderName = nickname || (currentUser?.displayName ?? currentUser?.email ?? '')
       const newMessage = await conversationService.sendMessage(conversationId, text, senderName)
       appendMessages([newMessage])
       setLastPollTimestamp(newMessage.timestamp)
@@ -242,7 +244,7 @@ export function ConversationChat({ conversationId, otherDisplayName, onBack }: C
                   >
                     {!isOwn && (
                       <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-0.5">
-                        {message.senderName}
+                        {otherDisplayName || message.senderName}
                       </p>
                     )}
                     <p className="whitespace-pre-wrap text-sm">{message.content}</p>

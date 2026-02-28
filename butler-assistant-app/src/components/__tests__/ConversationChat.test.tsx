@@ -334,7 +334,7 @@ describe('ConversationChat', () => {
       expect(mockUseConversationPolling).toHaveBeenCalledWith('conv_1')
     })
 
-    it('wsStatus が open の場合はポーリングに null が渡される', async () => {
+    it('wsStatus が open の場合でもポーリングに conversationId が渡される（安全ネット）', async () => {
       const { useConversationPolling } = await import('@/hooks/useConversationPolling')
       const mockUseConversationPolling = vi.mocked(useConversationPolling)
 
@@ -343,8 +343,8 @@ describe('ConversationChat', () => {
 
       render(<ConversationChat conversationId="conv_1" otherDisplayName="Friend" onBack={mockOnBack} />)
 
-      // wsStatus !== 'failed' なので null が渡される
-      expect(mockUseConversationPolling).toHaveBeenCalledWith(null)
+      // WS 状態に関わらず常にポーリング有効
+      expect(mockUseConversationPolling).toHaveBeenCalledWith('conv_1')
     })
   })
 })

@@ -40,7 +40,8 @@ export class ConversationServiceImpl implements ConversationServiceType {
     const query = params.toString()
     const path = `/conversations/${conversationId}/messages${query ? `?${query}` : ''}`
     const data = await this.fetchAPI(path) as { messages: ConversationMessage[]; nextCursor?: string; otherLastReadAt?: number | null }
-    return data
+    // API は新しい順で返すため、表示用に古い順へ反転
+    return { ...data, messages: data.messages.reverse() }
   }
 
   /**

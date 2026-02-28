@@ -14,6 +14,8 @@ export interface FriendServiceType {
   linkByCode(code: string, displayName: string): Promise<{ conversationId: string; friendUserId: string }>
   /** フレンド一覧を取得 */
   listFriends(): Promise<FriendLink[]>
+  /** フレンドを解除 */
+  unfriend(friendUserId: string): Promise<void>
 }
 
 /**
@@ -53,6 +55,13 @@ export class FriendServiceImpl implements FriendServiceType {
   async listFriends(): Promise<FriendLink[]> {
     const data = await this.fetchAPI('/friends') as { friends: FriendLink[] }
     return data.friends
+  }
+
+  /**
+   * フレンドを解除
+   */
+  async unfriend(friendUserId: string): Promise<void> {
+    await this.fetchAPI(`/friends/${friendUserId}`, { method: 'DELETE' })
   }
 
   /**

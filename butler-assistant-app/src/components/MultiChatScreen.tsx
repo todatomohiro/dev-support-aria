@@ -1,7 +1,9 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
+import { useAppStore } from '@/stores'
 import { useMultiChatStore } from '@/stores/multiChatStore'
 import { conversationService } from '@/services/conversationService'
+import { friendService } from '@/services/friendService'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { ConversationList } from './ConversationList'
 import { ConversationChat } from './ConversationChat'
@@ -20,6 +22,9 @@ export function MultiChatScreen() {
   const navigate = useNavigate()
   const bgPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const prevUpdatedAtRef = useRef<Record<string, number>>({})
+
+  // ニックネーム
+  const nickname = useAppStore((s) => s.config.profile.nickname)
 
   // WebSocket 接続（会話一覧レベル — conversation_updated イベント受信用）
   useWebSocket(null)
@@ -131,6 +136,20 @@ export function MultiChatScreen() {
   // アクティブな会話の相手情報を取得
   const activeConversation = conversations.find((c) => c.conversationId === activeConversationId)
 
+  /** フレンド解除 */
+  const handleUnfriend = useCallback(async () => {
+    if (!activeConversation) return
+    try {
+      await friendService.unfriend(activeConversation.otherUserId)
+      setActiveConversation(null)
+      navigate('/multi-chat')
+      await loadConversations()
+    } catch (err) {
+      console.error('[MultiChatScreen] フレンド解除に失敗:', err)
+      setError('フレンド解除に失敗しました')
+    }
+  }, [activeConversation, setActiveConversation, navigate, loadConversations, setError])
+
   if (!activeConversationId) {
     return (
       <ConversationList
@@ -141,6 +160,7 @@ export function MultiChatScreen() {
         error={error}
         unreadCounts={unreadCounts}
         wsStatus={wsStatus}
+        nickname={nickname}
       />
     )
   }
@@ -150,6 +170,7 @@ export function MultiChatScreen() {
       <div className="hidden md:block flex-[1] border-r border-gray-200 dark:border-gray-700 min-w-0">
         <ParticipantPanel
           displayName={activeConversation?.otherDisplayName ?? ''}
+          onUnfriend={handleUnfriend}
         />
       </div>
       <div className="flex-[2] flex flex-col min-h-0 min-w-0">

@@ -35,8 +35,15 @@ export class WsServiceImpl implements WsServiceType {
 
   /**
    * WebSocket 接続を開始
+   *
+   * 同じトークンで既に接続中（OPEN or CONNECTING）なら再接続しない。
    */
   connect(token: string): void {
+    // 既に同じトークンで接続中なら何もしない
+    if (this.ws && this.currentToken === token && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return
+    }
+
     this.currentToken = token
     const wsUrl = import.meta.env.VITE_WS_URL
     if (!wsUrl) return
@@ -104,6 +111,7 @@ export class WsServiceImpl implements WsServiceType {
    */
   reconnect(): void {
     this.reconnectAttempts = 0
+    this.cleanup()
     const token = this.currentToken ?? useAuthStore.getState().accessToken
     if (token) {
       this.connect(token)
