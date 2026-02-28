@@ -68,6 +68,7 @@ class ChatControllerImpl {
         content: structuredResponse.text,
         timestamp: Date.now(),
         motion: structuredResponse.motion,
+        rawResponse: JSON.stringify(structuredResponse, null, 2),
       }
 
       // ストアにアシスタントメッセージを追加

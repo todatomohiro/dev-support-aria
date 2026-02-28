@@ -9,12 +9,13 @@ interface ChatUIProps {
   onSendMessage: (text: string) => void
   ttsEnabled: boolean
   onToggleTts: (enabled: boolean) => void
+  developerMode?: boolean
 }
 
 /**
  * チャットUI コンポーネント
  */
-export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts }: ChatUIProps) {
+export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, developerMode = false }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
   const [autoSendEnabled, setAutoSendEnabled] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -126,7 +127,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       {/* メッセージ履歴エリア */}
       <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-2 sm:space-y-4">
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <MessageBubble key={message.id} message={message} developerMode={developerMode} />
         ))}
 
         {/* ローディングインジケーター */}
@@ -248,9 +249,10 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 /**
  * メッセージバブル コンポーネント
  */
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({ message, developerMode = false }: { message: Message; developerMode?: boolean }) {
   const isUser = message.role === 'user'
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [showRaw, setShowRaw] = useState(false)
 
   const handleSpeak = useCallback(async () => {
     setIsSpeaking(true)
@@ -280,26 +282,46 @@ function MessageBubble({ message }: { message: Message }) {
           <span className="text-[10px] sm:text-xs opacity-70">
             {formatTime(message.timestamp)}
           </span>
-          {!isUser && (
-            <button
-              onClick={handleSpeak}
-              disabled={isSpeaking}
-              className="ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity disabled:opacity-30"
-              title="読み上げ"
-              data-testid="tts-speak-button"
-            >
-              {isSpeaking ? (
-                <svg className="w-3.5 h-3.5 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
-                </svg>
-              ) : (
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
-                </svg>
-              )}
-            </button>
-          )}
+          <div className="flex items-center">
+            {!isUser && developerMode && message.rawResponse && (
+              <button
+                onClick={() => setShowRaw((prev) => !prev)}
+                className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold opacity-60 hover:opacity-100 transition-opacity bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20"
+                title="Raw JSON を表示"
+                data-testid="raw-json-toggle"
+              >
+                JSON
+              </button>
+            )}
+            {!isUser && (
+              <button
+                onClick={handleSpeak}
+                disabled={isSpeaking}
+                className="ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity disabled:opacity-30"
+                title="読み上げ"
+                data-testid="tts-speak-button"
+              >
+                {isSpeaking ? (
+                  <svg className="w-3.5 h-3.5 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+                  </svg>
+                )}
+              </button>
+            )}
+          </div>
         </div>
+        {showRaw && message.rawResponse && (
+          <pre
+            className="mt-2 p-2 rounded text-xs bg-gray-900 text-green-400 overflow-x-auto whitespace-pre-wrap break-all"
+            data-testid="raw-json-content"
+          >
+            {message.rawResponse}
+          </pre>
+        )}
       </div>
     </div>
   )

@@ -7,6 +7,8 @@ export interface Message {
   content: string
   timestamp: number
   motion?: string
+  /** LLM が返した StructuredResponse の JSON 文字列（開発者モード表示用） */
+  rawResponse?: string
 }
 
 /**

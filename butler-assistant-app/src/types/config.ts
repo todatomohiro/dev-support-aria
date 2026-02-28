@@ -13,6 +13,7 @@ export interface UIConfig {
   fontSize: number
   characterSize: number
   ttsEnabled: boolean
+  developerMode: boolean
 }
 
 /**
@@ -41,6 +42,7 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   fontSize: 14,
   characterSize: 100,
   ttsEnabled: false,
+  developerMode: false,
 }
 
 /**
