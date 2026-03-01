@@ -53,15 +53,21 @@ interface ChatUIProps {
   cameraEnabled: boolean
   onToggleCamera: (enabled: boolean) => void
   developerMode?: boolean
+  hasEarlierMessages?: boolean
+  isLoadingEarlier?: boolean
+  onLoadEarlier?: () => void
 }
 
 /**
  * チャットUI コンポーネント
  */
-export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false }: ChatUIProps) {
+export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
   const [autoSendEnabled, setAutoSendEnabled] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const scrollHeightBeforeRef = useRef<number>(0)
+  const isLoadingEarlierRef = useRef(false)
   const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputTextRef = useRef('')
   const autoSendEnabledRef = useRef(false)
@@ -133,10 +139,35 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
     }
   }, [])
 
-  // 新しいメッセージ追加時に自動スクロール
+  // isLoadingEarlier の ref を同期
+  useEffect(() => { isLoadingEarlierRef.current = isLoadingEarlier }, [isLoadingEarlier])
+
+  // 過去メッセージ読み込み後のスクロール位置復元
   useEffect(() => {
-    scrollToBottom()
+    const container = scrollContainerRef.current
+    if (container && isLoadingEarlierRef.current) {
+      // 読み込み前のスクロール高さとの差分だけスクロール位置を調整
+      const diff = container.scrollHeight - scrollHeightBeforeRef.current
+      container.scrollTop += diff
+    }
   }, [messages])
+
+  // 新しいメッセージ追加時に自動スクロール（過去メッセージ読み込み中は除外）
+  useEffect(() => {
+    if (!isLoadingEarlierRef.current) {
+      scrollToBottom()
+    }
+  }, [messages])
+
+  /** 過去のメッセージを読み込む */
+  const handleLoadEarlier = useCallback(() => {
+    if (!onLoadEarlier || isLoadingEarlier) return
+    // スクロール位置を記録
+    if (scrollContainerRef.current) {
+      scrollHeightBeforeRef.current = scrollContainerRef.current.scrollHeight
+    }
+    onLoadEarlier()
+  }, [onLoadEarlier, isLoadingEarlier])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -171,7 +202,26 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       {/* メッセージ履歴エリア */}
-      <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-2 sm:space-y-4">
+      <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-2 sm:space-y-4" ref={scrollContainerRef}>
+        {hasEarlierMessages && (
+          <div className="flex justify-center py-2">
+            <button
+              onClick={handleLoadEarlier}
+              disabled={isLoadingEarlier}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+              data-testid="load-earlier-button"
+            >
+              {isLoadingEarlier ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  読み込み中...
+                </span>
+              ) : (
+                '過去のメッセージを読み込む'
+              )}
+            </button>
+          </div>
+        )}
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} developerMode={developerMode} />
         ))}

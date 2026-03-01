@@ -33,6 +33,9 @@ const defaultProps = {
   onToggleTts: vi.fn(),
   cameraEnabled: false,
   onToggleCamera: vi.fn(),
+  hasEarlierMessages: false,
+  isLoadingEarlier: false,
+  onLoadEarlier: vi.fn(),
 }
 
 /** ChatUI をデフォルト props 付きでレンダリング */
@@ -244,6 +247,47 @@ describe('ChatUI', () => {
       expect(links).toHaveLength(2)
       expect(links[0]).toHaveAttribute('href', 'https://a.com')
       expect(links[1]).toHaveAttribute('href', 'https://b.com')
+    })
+  })
+
+  describe('過去メッセージ読み込み', () => {
+    it('hasEarlierMessages=true の場合、読み込みボタンが表示される', () => {
+      renderChatUI({ hasEarlierMessages: true })
+
+      expect(screen.getByTestId('load-earlier-button')).toBeInTheDocument()
+      expect(screen.getByText('過去のメッセージを読み込む')).toBeInTheDocument()
+    })
+
+    it('hasEarlierMessages=false の場合、読み込みボタンが表示されない', () => {
+      renderChatUI({ hasEarlierMessages: false })
+
+      expect(screen.queryByTestId('load-earlier-button')).not.toBeInTheDocument()
+    })
+
+    it('ボタンクリックで onLoadEarlier が呼ばれる', () => {
+      const onLoadEarlier = vi.fn()
+      renderChatUI({ hasEarlierMessages: true, onLoadEarlier })
+
+      fireEvent.click(screen.getByTestId('load-earlier-button'))
+
+      expect(onLoadEarlier).toHaveBeenCalledTimes(1)
+    })
+
+    it('isLoadingEarlier=true の場合、ボタンが無効化されスピナーが表示される', () => {
+      renderChatUI({ hasEarlierMessages: true, isLoadingEarlier: true })
+
+      const button = screen.getByTestId('load-earlier-button')
+      expect(button).toBeDisabled()
+      expect(screen.getByText('読み込み中...')).toBeInTheDocument()
+    })
+
+    it('isLoadingEarlier=true の場合、ボタンクリックで onLoadEarlier が呼ばれない', () => {
+      const onLoadEarlier = vi.fn()
+      renderChatUI({ hasEarlierMessages: true, isLoadingEarlier: true, onLoadEarlier })
+
+      fireEvent.click(screen.getByTestId('load-earlier-button'))
+
+      expect(onLoadEarlier).not.toHaveBeenCalled()
     })
   })
 

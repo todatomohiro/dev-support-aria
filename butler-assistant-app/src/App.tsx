@@ -5,6 +5,7 @@ import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotific
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
+import { syncService } from './services/syncService'
 import { llmClient } from './services/llmClient'
 import { currentPlatform, logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
@@ -41,6 +42,9 @@ function App() {
   const currentExpression = useAppStore((state) => state.currentExpression)
   const config = useAppStore((state) => state.config)
   const lastError = useAppStore((state) => state.lastError)
+  const messagesCursor = useAppStore((state) => state.messagesCursor)
+  const hasEarlierMessages = useAppStore((state) => state.hasEarlierMessages)
+  const isLoadingEarlier = useAppStore((state) => state.isLoadingEarlier)
   const updateConfig = useAppStore((state) => state.updateConfig)
   const setError = useAppStore((state) => state.setError)
   const setCurrentExpression = useAppStore((state) => state.setCurrentExpression)
@@ -87,6 +91,25 @@ function App() {
   // メッセージ送信ハンドラー
   const handleSendMessage = useCallback(async (text: string, imageBase64?: string) => {
     await chatController.sendMessage(text, imageBase64)
+  }, [])
+
+  // 過去メッセージ読み込みハンドラー
+  const handleLoadEarlier = useCallback(async () => {
+    const store = useAppStore.getState()
+    const cursor = store.messagesCursor
+    if (!cursor) return
+
+    store.setLoadingEarlier(true)
+    try {
+      const result = await syncService.fetchEarlierMessages(cursor)
+      store.prependMessages(result.messages)
+      store.setMessagesCursor(result.nextCursor)
+      store.setHasEarlierMessages(!!result.nextCursor)
+    } catch (error) {
+      console.error('[App] 過去メッセージ読み込みエラー:', error)
+    } finally {
+      store.setLoadingEarlier(false)
+    }
   }, [])
 
   // モーション完了ハンドラー
@@ -374,6 +397,9 @@ function App() {
                     cameraEnabled={config.ui.cameraEnabled}
                     onToggleCamera={(enabled) => updateConfig({ ui: { ...config.ui, cameraEnabled: enabled } })}
                     developerMode={config.ui.developerMode}
+                    hasEarlierMessages={hasEarlierMessages}
+                    isLoadingEarlier={isLoadingEarlier}
+                    onLoadEarlier={handleLoadEarlier}
                   />
                 </div>
               </>

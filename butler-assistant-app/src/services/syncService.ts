@@ -54,9 +54,12 @@ class SyncServiceImpl {
 
       // メッセージのマージ
       if (messagesResult.status === 'fulfilled' && messagesResult.value) {
-        const merged = this.mergeMessages(store.messages, messagesResult.value)
-        // ストアのメッセージを置き換え
+        const { messages, nextCursor } = messagesResult.value
+        const merged = this.mergeMessages(store.messages, messages)
+        // ストアのメッセージを置き換え + カーソル情報を保存
         useAppStore.setState({ messages: merged })
+        store.setMessagesCursor(nextCursor)
+        store.setHasEarlierMessages(!!nextCursor)
       }
     } catch (error) {
       console.error('[Sync] ログイン同期エラー:', error)
@@ -211,7 +214,7 @@ class SyncServiceImpl {
    */
   private async pollMessages(): Promise<void> {
     try {
-      const serverMessages = await this.fetchMessages()
+      const { messages: serverMessages } = await this.fetchMessages()
       const store = useAppStore.getState()
       const merged = this.mergeMessages(store.messages, serverMessages)
 
@@ -262,12 +265,27 @@ class SyncServiceImpl {
   }
 
   /**
-   * サーバーからメッセージを取得
+   * サーバーからメッセージを取得（カーソル情報も返す）
    */
-  private async fetchMessages(): Promise<Message[]> {
+  private async fetchMessages(): Promise<{ messages: Message[]; nextCursor: string | null }> {
     const res = await this.fetch('/messages?limit=100')
     const data = await res.json()
-    return data.messages ?? []
+    return {
+      messages: data.messages ?? [],
+      nextCursor: data.nextCursor ?? null,
+    }
+  }
+
+  /**
+   * 過去のメッセージを取得（カーソルベースページネーション）
+   */
+  async fetchEarlierMessages(before: string, limit = 50): Promise<{ messages: Message[]; nextCursor: string | null }> {
+    const res = await this.fetch(`/messages?limit=${limit}&before=${encodeURIComponent(before)}`)
+    const data = await res.json()
+    return {
+      messages: data.messages ?? [],
+      nextCursor: data.nextCursor ?? null,
+    }
   }
 
   /**

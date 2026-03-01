@@ -134,7 +134,7 @@ describe('SyncService', () => {
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ messages: [mockMessage] }),
+          json: () => Promise.resolve({ messages: [mockMessage], nextCursor: 'MSG#2024-01-01' }),
         })
 
       await syncService.onLogin(mockToken)
@@ -145,6 +145,27 @@ describe('SyncService', () => {
       // メッセージがマージされる
       expect(state.messages).toHaveLength(1)
       expect(state.messages[0].id).toBe('msg-1')
+      // カーソルが保存される
+      expect(state.messagesCursor).toBe('MSG#2024-01-01')
+      expect(state.hasEarlierMessages).toBe(true)
+    })
+
+    it('nextCursor がない場合は hasEarlierMessages が false になる', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ settings: null }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ messages: [mockMessage] }),
+        })
+
+      await syncService.onLogin(mockToken)
+
+      const state = useAppStore.getState()
+      expect(state.messagesCursor).toBeNull()
+      expect(state.hasEarlierMessages).toBe(false)
     })
 
     it('Authorization ヘッダーにトークンを含める', async () => {
@@ -561,6 +582,78 @@ describe('SyncService', () => {
 
       // ストアは変更されない
       expect(useAppStore.getState().messages).toHaveLength(0)
+    })
+  })
+
+  describe('fetchEarlierMessages', () => {
+    it('before カーソルを使って過去メッセージを取得する', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ settings: null, messages: [] }),
+      })
+      await syncService.onLogin(mockToken)
+      vi.clearAllMocks()
+
+      const earlierMessages: Message[] = [
+        { id: 'old-1', role: 'user', content: '過去のメッセージ', timestamp: 1600000000000 },
+      ]
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ messages: earlierMessages, nextCursor: 'MSG#2023-12-01' }),
+      })
+
+      const result = await syncService.fetchEarlierMessages('MSG#2024-01-01')
+
+      expect(result.messages).toHaveLength(1)
+      expect(result.messages[0].id).toBe('old-1')
+      expect(result.nextCursor).toBe('MSG#2023-12-01')
+
+      // before パラメータが URL に含まれる
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/messages?limit=50&before=MSG%232024-01-01'),
+        expect.any(Object)
+      )
+    })
+
+    it('nextCursor がない場合は null を返す', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ settings: null, messages: [] }),
+      })
+      await syncService.onLogin(mockToken)
+      vi.clearAllMocks()
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ messages: [] }),
+      })
+
+      const result = await syncService.fetchEarlierMessages('MSG#2024-01-01')
+
+      expect(result.messages).toHaveLength(0)
+      expect(result.nextCursor).toBeNull()
+    })
+
+    it('カスタム limit を指定できる', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ settings: null, messages: [] }),
+      })
+      await syncService.onLogin(mockToken)
+      vi.clearAllMocks()
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ messages: [] }),
+      })
+
+      await syncService.fetchEarlierMessages('MSG#2024-01-01', 20)
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/messages?limit=20&before='),
+        expect.any(Object)
+      )
     })
   })
 })

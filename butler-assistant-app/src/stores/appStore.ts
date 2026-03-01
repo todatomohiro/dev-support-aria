@@ -12,6 +12,11 @@ export interface AppState {
   messages: Message[]
   isLoading: boolean
 
+  // 過去メッセージ読み込み関連
+  messagesCursor: string | null
+  hasEarlierMessages: boolean
+  isLoadingEarlier: boolean
+
   // Live2D関連
   currentMotion: string | null
   currentExpression: string | null
@@ -28,7 +33,11 @@ export interface AppState {
 
   // アクション
   addMessage: (message: Message) => void
+  prependMessages: (messages: Message[]) => void
   setLoading: (isLoading: boolean) => void
+  setMessagesCursor: (cursor: string | null) => void
+  setHasEarlierMessages: (has: boolean) => void
+  setLoadingEarlier: (loading: boolean) => void
   setCurrentMotion: (motion: string | null) => void
   setCurrentExpression: (expression: string | null) => void
   setMotionPlaying: (isPlaying: boolean) => void
@@ -59,6 +68,9 @@ export const useAppStore = create<AppState>()(
       // 初期状態
       messages: [],
       isLoading: false,
+      messagesCursor: null,
+      hasEarlierMessages: false,
+      isLoadingEarlier: false,
       currentMotion: null,
       currentExpression: null,
       expressionVersion: 0,
@@ -78,10 +90,23 @@ export const useAppStore = create<AppState>()(
           return { messages: newMessages }
         }),
 
-      clearMessages: () => set({ messages: [] }),
+      clearMessages: () => set({ messages: [], messagesCursor: null, hasEarlierMessages: false }),
+
+      // 過去メッセージを先頭に追加（重複排除）
+      prependMessages: (newMessages: Message[]) =>
+        set((state) => {
+          const existingIds = new Set(state.messages.map((m) => m.id))
+          const unique = newMessages.filter((m) => !existingIds.has(m.id))
+          return { messages: [...unique, ...state.messages] }
+        }),
 
       // ローディング状態
       setLoading: (isLoading: boolean) => set({ isLoading }),
+
+      // 過去メッセージ読み込み状態
+      setMessagesCursor: (cursor: string | null) => set({ messagesCursor: cursor }),
+      setHasEarlierMessages: (has: boolean) => set({ hasEarlierMessages: has }),
+      setLoadingEarlier: (loading: boolean) => set({ isLoadingEarlier: loading }),
 
       // モーションアクション
       setCurrentMotion: (motion: string | null) => set({ currentMotion: motion }),
@@ -135,6 +160,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         messages: state.messages,
         config: state.config,
+        // messagesCursor, hasEarlierMessages, isLoadingEarlier は永続化不要（毎回サーバーから取得）
       }),
     }
   )
