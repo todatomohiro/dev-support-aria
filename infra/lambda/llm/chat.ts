@@ -39,13 +39,13 @@ const SUMMARY_INTERVAL = 5
 const RECENT_MESSAGES_LIMIT = 10
 
 /**
- * AgentCore Memory からユーザーに関する記憶を検索
+ * AgentCore Memory からユーザーに関する記憶を検索（生レコード配列）
  *
- * 失敗時は空文字を返し、チャット機能を壊さない。
+ * 失敗時は空配列を返し、チャット機能を壊さない。
  */
-async function retrieveMemories(userId: string, query: string): Promise<string> {
+async function retrieveMemoryRecords(userId: string, query: string): Promise<string[]> {
   if (!MEMORY_ID) {
-    return ''
+    return []
   }
 
   try {
@@ -58,26 +58,40 @@ async function retrieveMemories(userId: string, query: string): Promise<string> 
       maxResults: 10,
     }))
 
-    const records = result.memoryRecordSummaries ?? []
-    if (records.length === 0) {
-      return ''
-    }
-
-    const memoryLines = records
+    return (result.memoryRecordSummaries ?? [])
       .map((record) => record.content?.text)
-      .filter(Boolean)
-      .map((text) => `- ${text}`)
-      .join('\n')
-
-    if (!memoryLines) {
-      return ''
-    }
-
-    return `\nあなたが過去の会話から覚えていること：\n${memoryLines}`
+      .filter((text): text is string => Boolean(text))
   } catch (error) {
     console.warn('[Memory] メモリ検索エラー（スキップ）:', error)
-    return ''
+    return []
   }
+}
+
+/**
+ * AgentCore Memory レコードから永久記憶と重複する内容を除外
+ *
+ * 日本語テキスト対応: 空白除去した部分文字列一致で判定。
+ */
+function deduplicateRecords(memoryRecords: string[], permanentFacts: string[]): string[] {
+  if (permanentFacts.length === 0) return memoryRecords
+
+  const normalizedFacts = permanentFacts.map((f) => f.replace(/\s+/g, ''))
+
+  return memoryRecords.filter((record) => {
+    const normalizedRecord = record.replace(/\s+/g, '')
+    return !normalizedFacts.some((fact) =>
+      normalizedRecord.includes(fact) || fact.includes(normalizedRecord)
+    )
+  })
+}
+
+/**
+ * メモリレコード配列をシステムプロンプト注入用テキストに整形
+ */
+function formatMemoryContext(records: string[]): string {
+  if (records.length === 0) return ''
+  const lines = records.map((text) => `- ${text}`).join('\n')
+  return `\nあなたが過去の会話から覚えていること：\n${lines}`
 }
 
 /**
@@ -365,10 +379,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   // メモリ検索 + 永久記憶取得（並列、失敗してもチャットは続行）
-  const [memoryContext, permanentFacts] = await Promise.all([
-    retrieveMemories(userId, message),
+  const [memoryRecords, permanentFacts] = await Promise.all([
+    retrieveMemoryRecords(userId, message),
     getPermanentFacts(userId),
   ])
+
+  // 永久記憶と重複する中期記憶を除外してからテキスト整形
+  const dedupedRecords = deduplicateRecords(memoryRecords, permanentFacts)
+  if (memoryRecords.length !== dedupedRecords.length) {
+    console.log(`[LLM] メモリ重複排除: ${memoryRecords.length} → ${dedupedRecords.length} 件`)
+  }
+  const memoryContext = formatMemoryContext(dedupedRecords)
 
   // sessionId の有無で分岐: 新フロー vs 既存フロー
   let messages: BedrockMessage[]
