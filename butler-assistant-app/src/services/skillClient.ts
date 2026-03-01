@@ -1,6 +1,6 @@
 import type { SkillConnection } from '@/types'
 import { APIError, NetworkError } from '@/types'
-import { useAuthStore } from '@/auth/authStore'
+import { getIdToken } from '@/auth'
 import { currentPlatform } from '@/platform'
 
 /** iOS 用リバース Client ID URL スキーム */
@@ -126,7 +126,7 @@ export class SkillClientImpl implements SkillClientService {
    */
   private async fetchAPI(path: string, options?: RequestInit): Promise<unknown> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
-    const accessToken = useAuthStore.getState().accessToken
+    const accessToken = await getIdToken()
 
     if (!apiBaseUrl) {
       throw new APIError('API Base URL が設定されていません', 500)

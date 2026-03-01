@@ -1,6 +1,7 @@
 import { useAppStore } from '@/stores/appStore'
 import type { Message, AppConfig } from '@/types'
 import { debounce } from '@/utils/performance'
+import { getIdToken } from '@/auth'
 
 /**
  * API ベース URL を取得（テスト時に import.meta.env を動的に参照するため関数化）
@@ -15,7 +16,7 @@ function getApiBaseUrl(): string {
  * 同一ブラウザのタブ間は BroadcastChannel、異なる端末間はポーリングで同期する
  */
 class SyncServiceImpl {
-  private accessToken: string | null = null
+  private isLoggedIn = false
   private configUnsubscribe: (() => void) | null = null
   private channel: BroadcastChannel | null = null
   private pollingTimer: ReturnType<typeof setInterval> | null = null
@@ -35,8 +36,8 @@ class SyncServiceImpl {
    * ログイン時の処理
    * サーバーから設定・メッセージを取得してストアにマージ
    */
-  async onLogin(token: string): Promise<void> {
-    this.accessToken = token
+  async onLogin(_token?: string): Promise<void> {
+    this.isLoggedIn = true
 
     try {
       // 設定とメッセージを並列取得
@@ -79,7 +80,7 @@ class SyncServiceImpl {
    * ログアウト時の処理
    */
   onLogout(): void {
-    this.accessToken = null
+    this.isLoggedIn = false
     this.stopConfigSubscription()
     this.stopBroadcastChannel()
     this.stopPolling()
@@ -89,7 +90,7 @@ class SyncServiceImpl {
    * メッセージをサーバーに保存（fire-and-forget）
    */
   saveMessage(message: Message): void {
-    if (!this.accessToken || !getApiBaseUrl()) return
+    if (!this.isLoggedIn || !getApiBaseUrl()) return
 
     this.postMessages([message]).catch((error) => {
       console.error('[Sync] メッセージ保存エラー:', error)
@@ -103,7 +104,7 @@ class SyncServiceImpl {
    * 設定をサーバーに保存（デバウンス付き）
    */
   saveSettings(config: AppConfig): void {
-    if (!this.accessToken || !getApiBaseUrl()) return
+    if (!this.isLoggedIn || !getApiBaseUrl()) return
     this.debouncedSaveSettings(config)
   }
 
@@ -312,11 +313,12 @@ class SyncServiceImpl {
    * 認証付き fetch ヘルパー
    */
   private async fetch(path: string, init?: RequestInit): Promise<Response> {
+    const token = await getIdToken()
     const res = await fetch(`${getApiBaseUrl()}${path}`, {
       ...init,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.accessToken}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init?.headers,
       },
     })

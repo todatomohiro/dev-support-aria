@@ -1,4 +1,4 @@
-import { useAuthStore } from '@/auth'
+import { getIdToken } from '@/auth'
 
 /**
  * TTS サービス
@@ -49,7 +49,7 @@ class TtsServiceImpl {
       return
     }
 
-    const accessToken = useAuthStore.getState().accessToken
+    const accessToken = await getIdToken()
     if (!accessToken) {
       console.warn('[TTS] 認証トークンがありません')
       return

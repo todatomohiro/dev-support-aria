@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { TtsServiceImpl } from '../ttsService'
-import { useAuthStore } from '@/auth/authStore'
+import { getIdToken } from '@/auth'
 
-// useAuthStore をモック
-vi.mock('@/auth/authStore', () => ({
-  useAuthStore: {
-    getState: vi.fn(() => ({ accessToken: 'test-access-token' })),
-  },
+// getIdToken をモック
+vi.mock('@/auth', () => ({
+  getIdToken: vi.fn(() => Promise.resolve('test-access-token')),
 }))
 
 // VITE_API_BASE_URL をモック
@@ -41,9 +39,7 @@ describe('TtsServiceImpl', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     tts = new TtsServiceImpl()
-    vi.mocked(useAuthStore.getState).mockReturnValue({
-      accessToken: 'test-access-token',
-    } as ReturnType<typeof useAuthStore.getState>)
+    vi.mocked(getIdToken).mockResolvedValue('test-access-token')
     restoreAudio = mockAudioAutoEnd()
   })
 

@@ -4,7 +4,7 @@ import { motionController } from './motionController'
 import { syncService } from './syncService'
 import { ttsService } from './ttsService'
 import { useAppStore } from '@/stores/appStore'
-import { useAuthStore } from '@/auth/authStore'
+import { getIdToken } from '@/auth'
 import type { Message, StructuredResponse, AppError } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
 import { measurePerformanceAsync } from '@/utils/performance'
@@ -139,9 +139,9 @@ class ChatControllerImpl {
   /**
    * メモリイベントを AgentCore Memory に保存（fire-and-forget）
    */
-  private storeMemoryEvent(userMessage: string, assistantMessage: string): void {
+  private async storeMemoryEvent(userMessage: string, assistantMessage: string): Promise<void> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
-    const accessToken = useAuthStore.getState().accessToken
+    const accessToken = await getIdToken()
     if (!apiBaseUrl || !accessToken) return
 
     fetch(`${apiBaseUrl}/memory/events`, {

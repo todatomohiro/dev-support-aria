@@ -4,7 +4,7 @@ import type {
   UserProfile,
 } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
-import { useAuthStore } from '@/auth/authStore'
+import { getIdToken } from '@/auth'
 
 /**
  * アシスタントキャラクターのシステムプロンプト
@@ -113,7 +113,7 @@ class LLMClientImpl implements LLMClientService {
    */
   async sendMessage(message: string, sessionId: string, imageBase64?: string): Promise<StructuredResponse> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
-    const accessToken = useAuthStore.getState().accessToken
+    const accessToken = await getIdToken()
 
     if (!apiBaseUrl) {
       throw new APIError('API Base URL が設定されていません', 500)

@@ -1,5 +1,5 @@
 import { useGroupChatStore } from '@/stores/groupChatStore'
-import { useAuthStore } from '@/auth/authStore'
+import { getIdToken } from '@/auth'
 import { groupService } from '@/services/groupService'
 import type { GroupMessage } from '@/types'
 
@@ -15,7 +15,7 @@ const MAX_BACKOFF_MS = 30000
 export interface WsServiceType {
   connect(token: string): void
   disconnect(): void
-  reconnect(): void
+  reconnect(): void | Promise<void>
   subscribe(groupId: string): void
   unsubscribe(groupId: string): void
 }
@@ -109,10 +109,10 @@ export class WsServiceImpl implements WsServiceType {
   /**
    * 手動で再接続を試行（再接続カウンタをリセット）
    */
-  reconnect(): void {
+  async reconnect(): Promise<void> {
     this.reconnectAttempts = 0
     this.cleanup()
-    const token = this.currentToken ?? useAuthStore.getState().accessToken
+    const token = this.currentToken ?? await getIdToken()
     if (token) {
       this.connect(token)
     }
@@ -186,9 +186,9 @@ export class WsServiceImpl implements WsServiceType {
     const backoff = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), MAX_BACKOFF_MS)
     useGroupChatStore.getState().setWsStatus('connecting')
 
-    this.reconnectTimer = setTimeout(() => {
+    this.reconnectTimer = setTimeout(async () => {
       // 最新のトークンを取得して再接続
-      const token = this.currentToken ?? useAuthStore.getState().accessToken
+      const token = this.currentToken ?? await getIdToken()
       if (token) {
         this.connect(token)
       } else {

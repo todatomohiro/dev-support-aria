@@ -2,11 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { SkillClientImpl } from '../skillClient'
 import { APIError, NetworkError } from '@/types'
 
-// useAuthStore をモック
-vi.mock('@/auth/authStore', () => ({
-  useAuthStore: {
-    getState: vi.fn(() => ({ accessToken: 'test-access-token' })),
-  },
+// getIdToken をモック
+vi.mock('@/auth', () => ({
+  getIdToken: vi.fn(() => Promise.resolve('test-access-token')),
 }))
 
 // currentPlatform をモック（デフォルトは 'web'）

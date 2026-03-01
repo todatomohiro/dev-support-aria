@@ -2,13 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { llmClient, retryWithBackoff, buildSystemPrompt, BUTLER_SYSTEM_PROMPT, buildSkillSystemPrompt } from '../llmClient'
 import { APIError, NetworkError, RateLimitError, ParseError } from '@/types'
 import type { UserProfile } from '@/types'
-import { useAuthStore } from '@/auth/authStore'
+import { getIdToken } from '@/auth'
 
-// useAuthStore をモック
-vi.mock('@/auth/authStore', () => ({
-  useAuthStore: {
-    getState: vi.fn(() => ({ accessToken: 'test-access-token' })),
-  },
+// getIdToken をモック
+vi.mock('@/auth', () => ({
+  getIdToken: vi.fn(() => Promise.resolve('test-access-token')),
 }))
 
 // VITE_API_BASE_URL をモック
@@ -20,10 +18,8 @@ describe('LLMClient', () => {
 
   beforeEach(() => {
     vi.resetAllMocks()
-    // useAuthStore のモックをリセット
-    vi.mocked(useAuthStore.getState).mockReturnValue({
-      accessToken: 'test-access-token',
-    } as ReturnType<typeof useAuthStore.getState>)
+    // getIdToken のモックをリセット
+    vi.mocked(getIdToken).mockResolvedValue('test-access-token')
   })
 
   afterEach(() => {

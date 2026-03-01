@@ -3,7 +3,7 @@ import { ChatControllerImpl } from '../chatController'
 import { llmClient } from '../llmClient'
 import { motionController } from '../motionController'
 import { useAppStore } from '@/stores/appStore'
-import { useAuthStore } from '@/auth/authStore'
+import { getIdToken } from '@/auth'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
 
 // モックセットアップ
@@ -18,6 +18,11 @@ vi.mock('../motionController', () => ({
     playMotion: vi.fn(),
     returnToIdle: vi.fn(),
   },
+}))
+
+// getIdToken をモック（デフォルト: null でメモリイベント無効化）
+vi.mock('@/auth', () => ({
+  getIdToken: vi.fn(() => Promise.resolve(null)),
 }))
 
 const mockLLMClient = vi.mocked(llmClient)
@@ -41,8 +46,8 @@ describe('ChatController', () => {
       motionQueue: [],
       lastError: null,
     })
-    // 認証ストアをリセット（メモリイベントはデフォルトで送信しない）
-    useAuthStore.setState({ accessToken: null })
+    // getIdToken をリセット（メモリイベントはデフォルトで送信しない）
+    vi.mocked(getIdToken).mockResolvedValue(null)
     chatController = new ChatControllerImpl()
   })
 
@@ -159,7 +164,7 @@ describe('ChatController', () => {
     it('成功時にメモリイベントが送信される', async () => {
       // 環境変数とアクセストークンを設定
       vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
-      useAuthStore.setState({ accessToken: 'test-token' })
+      vi.mocked(getIdToken).mockResolvedValue('test-token')
 
       mockLLMClient.sendMessage.mockResolvedValue({
         text: 'ご主人様、かしこまりました。',
@@ -190,7 +195,7 @@ describe('ChatController', () => {
 
     it('API URL が未設定の場合、メモリイベントは送信されない', async () => {
       vi.stubEnv('VITE_API_BASE_URL', '')
-      useAuthStore.setState({ accessToken: 'test-token' })
+      vi.mocked(getIdToken).mockResolvedValue('test-token')
 
       mockLLMClient.sendMessage.mockResolvedValue({
         text: 'test',
@@ -209,7 +214,7 @@ describe('ChatController', () => {
 
     it('アクセストークンがない場合、メモリイベントは送信されない', async () => {
       vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
-      useAuthStore.setState({ accessToken: null })
+      vi.mocked(getIdToken).mockResolvedValue(null)
 
       mockLLMClient.sendMessage.mockResolvedValue({
         text: 'test',
@@ -228,7 +233,7 @@ describe('ChatController', () => {
 
     it('メモリイベント送信が失敗してもチャットは正常に完了する', async () => {
       vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
-      useAuthStore.setState({ accessToken: 'test-token' })
+      vi.mocked(getIdToken).mockResolvedValue('test-token')
       mockFetch.mockRejectedValueOnce(new Error('Network error'))
 
       mockLLMClient.sendMessage.mockResolvedValue({
@@ -248,7 +253,7 @@ describe('ChatController', () => {
 
     it('エラー時にはメモリイベントは送信されない', async () => {
       vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
-      useAuthStore.setState({ accessToken: 'test-token' })
+      vi.mocked(getIdToken).mockResolvedValue('test-token')
 
       mockLLMClient.sendMessage.mockRejectedValue(new NetworkError('ネットワークエラー'))
 

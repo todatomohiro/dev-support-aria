@@ -19,7 +19,7 @@ function App() {
   const navigate = useNavigate()
   const location = useLocation()
   const isPocPage = location.pathname.startsWith('/poc')
-  const isGroupChatPage = location.pathname.startsWith('/groups')
+  // const isGroupChatPage = location.pathname.startsWith('/groups')
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
@@ -243,26 +243,6 @@ function App() {
             <UserMenu onOpenProfile={() => setIsProfileOpen(true)} onOpenSkills={() => setIsSkillsOpen(true)} />
             {!requiresAuth && (
               <>
-                {isGroupChatPage ? (
-                  <button
-                    onClick={() => navigate('/')}
-                    className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                    data-testid="group-chat-back-button"
-                  >
-                    ← 戻る
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => navigate('/groups')}
-                    className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-purple-700 dark:text-purple-200 bg-purple-50 dark:bg-purple-900/50 border border-purple-300 dark:border-purple-700 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900 transition-colors"
-                    data-testid="group-chat-button"
-                  >
-                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    <span className="hidden sm:inline">マルチチャット</span>
-                  </button>
-                )}
                 {config.ui.developerMode && (
                   isPocPage ? (
                     <button

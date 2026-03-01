@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { SyncServiceImpl } from '../syncService'
 import { useAppStore } from '@/stores/appStore'
 import type { Message, AppConfig } from '@/types'
+import { getIdToken } from '@/auth'
+
+// getIdToken をモック
+vi.mock('@/auth', () => ({
+  getIdToken: vi.fn(() => Promise.resolve('mock-access-token')),
+}))
 
 // fetch モック
 const mockFetch = vi.fn()
