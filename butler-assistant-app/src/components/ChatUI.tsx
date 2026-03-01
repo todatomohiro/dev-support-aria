@@ -368,6 +368,21 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
   const isUser = message.role === 'user'
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [showRaw, setShowRaw] = useState(false)
+  const [showDebug, setShowDebug] = useState(false)
+
+  // rawResponse から permanentFacts と sessionSummary を抽出
+  const debugInfo = (() => {
+    if (!developerMode || isUser || !message.rawResponse) return null
+    try {
+      const raw = JSON.parse(message.rawResponse)
+      const permanentFacts = raw.permanentFacts as string[] | undefined
+      const sessionSummary = raw.sessionSummary as string | undefined
+      if (!permanentFacts?.length && !sessionSummary) return null
+      return { permanentFacts, sessionSummary }
+    } catch {
+      return null
+    }
+  })()
 
   const handleSpeak = useCallback(async () => {
     if (isSpeaking) {
@@ -408,6 +423,16 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
             {formatTime(message.timestamp)}
           </span>
           <div className="flex items-center">
+            {!isUser && developerMode && debugInfo && (
+              <button
+                onClick={() => setShowDebug((prev) => !prev)}
+                className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold opacity-60 hover:opacity-100 transition-opacity bg-purple-500/20 hover:bg-purple-500/30 text-purple-700 dark:text-purple-300"
+                title="記憶デバッグ情報を表示"
+                data-testid="debug-info-toggle"
+              >
+                MEM
+              </button>
+            )}
             {!isUser && developerMode && message.rawResponse && (
               <button
                 onClick={() => setShowRaw((prev) => !prev)}
@@ -438,6 +463,26 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
             )}
           </div>
         </div>
+        {showDebug && debugInfo && (
+          <div className="mt-2 p-2 rounded text-xs bg-purple-950/80 text-purple-200 space-y-2" data-testid="debug-info-content">
+            {debugInfo.permanentFacts && debugInfo.permanentFacts.length > 0 && (
+              <div>
+                <div className="font-bold text-purple-300 mb-1">permanent_profile ({debugInfo.permanentFacts.length})</div>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {debugInfo.permanentFacts.map((fact, i) => (
+                    <li key={i}>{fact}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {debugInfo.sessionSummary && (
+              <div>
+                <div className="font-bold text-purple-300 mb-1">session_summary</div>
+                <p className="whitespace-pre-wrap">{debugInfo.sessionSummary}</p>
+              </div>
+            )}
+          </div>
+        )}
         {showRaw && message.rawResponse && (
           <pre
             className="mt-2 p-2 rounded text-xs bg-gray-900 text-green-400 overflow-x-auto whitespace-pre-wrap break-all"

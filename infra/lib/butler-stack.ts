@@ -9,6 +9,8 @@ import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as iam from 'aws-cdk-lib/aws-iam'
 import * as ssm from 'aws-cdk-lib/aws-ssm'
+import * as events from 'aws-cdk-lib/aws-events'
+import * as eventsTargets from 'aws-cdk-lib/aws-events-targets'
 import type { Construct } from 'constructs'
 import * as path from 'path'
 
@@ -343,6 +345,64 @@ export class ButlerStack extends cdk.Stack {
         `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
       ],
     }))
+
+    // 事実抽出 Lambda（セッション終了時に永久記憶を抽出）
+    const extractFactsFn = new lambdaNode.NodejsFunction(this, 'ExtractFactsFn', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 256,
+      entry: path.join(__dirname, '..', 'lambda', 'llm', 'extractFacts.ts'),
+      functionName: 'butler-extract-facts',
+      environment: {
+        TABLE_NAME: table.tableName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node22',
+      },
+    })
+
+    table.grantReadWriteData(extractFactsFn)
+
+    // Bedrock Converse 権限（Haiku 4.5 inference profile）
+    extractFactsFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel', 'bedrock:Converse'],
+      resources: [
+        'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
+        `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
+      ],
+    }))
+
+    // セッション終了検出 Lambda（EventBridge 15分ルールで起動）
+    const sessionFinalizerFn = new lambdaNode.NodejsFunction(this, 'SessionFinalizerFn', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      entry: path.join(__dirname, '..', 'lambda', 'llm', 'sessionFinalizer.ts'),
+      functionName: 'butler-session-finalizer',
+      environment: {
+        TABLE_NAME: table.tableName,
+        EXTRACT_FACTS_FUNCTION_NAME: extractFactsFn.functionName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node22',
+      },
+    })
+
+    table.grantReadData(sessionFinalizerFn)
+    extractFactsFn.grantInvoke(sessionFinalizerFn)
+
+    // EventBridge ルール: 15分ごとに sessionFinalizer を起動
+    new events.Rule(this, 'SessionFinalizerRule', {
+      ruleName: 'butler-session-finalizer-schedule',
+      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+      targets: [new eventsTargets.LambdaFunction(sessionFinalizerFn)],
+    })
 
     // LLM Lambda（Bedrock Converse API + Tool Use + AgentCore Memory 検索）
     const llmChatFn = new lambdaNode.NodejsFunction(this, 'LlmChatFn', {

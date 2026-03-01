@@ -29,6 +29,8 @@ export interface StructuredResponse {
   mapData?: MapData
   /** Lambda から返されたセッション要約（開発者モード表示用） */
   sessionSummary?: string
+  /** Lambda から返された永久記憶（開発者モード表示用） */
+  permanentFacts?: string[]
 }
 
 /**

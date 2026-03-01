@@ -215,6 +215,26 @@ async function updateSessionAndMaybeSummarize(
       console.warn('[LLM] 要約 Lambda 起動エラー（スキップ）:', error)
     }
   }
+
+  // ACTIVE_SESSION レコードを upsert（セッション終了検出用）
+  try {
+    await dynamo.send(new UpdateItemCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        PK: { S: 'ACTIVE_SESSION' },
+        SK: { S: `${userId}#${sessionId}` },
+      },
+      UpdateExpression: 'SET userId = :uid, sessionId = :sid, updatedAt = :now, ttlExpiry = :ttl',
+      ExpressionAttributeValues: {
+        ':uid': { S: userId },
+        ':sid': { S: sessionId },
+        ':now': { S: now },
+        ':ttl': { N: String(Math.floor(Date.now() / 1000) + 24 * 60 * 60) },
+      },
+    }))
+  } catch (error) {
+    console.warn('[LLM] ACTIVE_SESSION upsert エラー（スキップ）:', error)
+  }
 }
 
 /**
@@ -256,19 +276,49 @@ function extractTextFromOutput(output: { message?: BedrockMessage }): string {
 }
 
 /**
- * システムプロンプトを構築（メモリ + セッション要約を注入）
+ * DynamoDB から永久記憶（PERMANENT_FACTS）を取得
+ */
+async function getPermanentFacts(userId: string): Promise<string[]> {
+  try {
+    const result = await dynamo.send(new GetItemCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        PK: { S: `USER#${userId}` },
+        SK: { S: 'PERMANENT_FACTS' },
+      },
+    }))
+    return (result.Item?.facts?.L ?? [])
+      .map((item) => item.S ?? '')
+      .filter(Boolean)
+  } catch (error) {
+    console.warn('[LLM] 永久記憶取得エラー（スキップ）:', error)
+    return []
+  }
+}
+
+/**
+ * システムプロンプトを構築（永久記憶 + メモリ + セッション要約を注入）
  */
 function buildEnhancedSystemPrompt(
   systemPrompt: string,
+  permanentFacts: string[],
   memoryContext: string,
   sessionSummary: string
 ): string {
   let enhanced = systemPrompt
 
+  // 永久記憶（最優先）
+  if (permanentFacts.length > 0) {
+    const factsText = permanentFacts.map((f) => `- ${f}`).join('\n')
+    enhanced += `\n\n<permanent_profile>\nユーザーについて知っている事実：\n${factsText}\n</permanent_profile>`
+  }
+
+  // AgentCore Memory（中期記憶）
   if (memoryContext) {
     enhanced += `\n\n<user_context>\n${memoryContext}\n</user_context>`
   }
 
+  // セッション要約（短期記憶）
   if (sessionSummary) {
     enhanced += `\n\n<current_session_summary>\n${sessionSummary}\n</current_session_summary>`
   }
@@ -314,8 +364,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return response(400, { error: 'Invalid JSON' })
   }
 
-  // メモリ検索（失敗してもチャットは続行）
-  const memoryContext = await retrieveMemories(userId, message)
+  // メモリ検索 + 永久記憶取得（並列、失敗してもチャットは続行）
+  const [memoryContext, permanentFacts] = await Promise.all([
+    retrieveMemories(userId, message),
+    getPermanentFacts(userId),
+  ])
 
   // sessionId の有無で分岐: 新フロー vs 既存フロー
   let messages: BedrockMessage[]
@@ -332,6 +385,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     enhancedSystemPrompt = buildEnhancedSystemPrompt(
       systemPrompt,
+      permanentFacts,
       memoryContext,
       sessionSummary
     )
@@ -340,7 +394,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     messages = toConverseMessages(sessionContext.recentMessages, message, imageBase64)
   } else {
     // 既存フロー: フロントエンドからの history をそのまま使用
-    enhancedSystemPrompt = systemPrompt + memoryContext
+    enhancedSystemPrompt = buildEnhancedSystemPrompt(
+      systemPrompt,
+      permanentFacts,
+      memoryContext,
+      ''
+    )
     messages = toConverseMessages(history, message, imageBase64)
   }
 
@@ -426,6 +485,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response(200, {
         content,
         ...(sessionSummary ? { sessionSummary } : {}),
+        ...(permanentFacts.length > 0 ? { permanentFacts } : {}),
       })
     }
 
