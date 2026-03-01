@@ -124,11 +124,13 @@ class LLMClientImpl implements LLMClientService {
     const systemPrompt = buildSystemPrompt(this.userProfile) +
       '\n\n必ず以下のJSON形式で回答してください：\n{"text": "回答テキスト", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。'
 
-    // 会話履歴を {role, content} 形式に変換
-    const historyMessages = (history?.messages ?? []).map((m) => ({
-      role: m.role,
-      content: m.content,
-    }))
+    // 会話履歴を {role, content} 形式に変換（content が空のメッセージは除外）
+    const historyMessages = (history?.messages ?? [])
+      .filter((m) => m.content != null && m.content !== '')
+      .map((m) => ({
+        role: m.role,
+        content: m.content,
+      }))
 
     try {
       const res = await fetch(`${apiBaseUrl}/llm/chat`, {

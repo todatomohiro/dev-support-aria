@@ -17,6 +17,7 @@ const URL_REGEX = /https?:\/\/\S+/g
  * @param isUser - ユーザーメッセージかどうか（スタイル切り替え用）
  */
 function linkifyContent(text: string, isUser: boolean): React.ReactNode[] {
+  if (!text) return [text ?? '']
   const result: React.ReactNode[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null

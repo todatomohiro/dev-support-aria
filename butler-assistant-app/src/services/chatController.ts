@@ -65,7 +65,7 @@ class ChatControllerImpl {
       const assistantMessage: Message = {
         id: uuidv4(),
         role: 'assistant',
-        content: structuredResponse.text,
+        content: structuredResponse.text ?? '',
         timestamp: Date.now(),
         motion: structuredResponse.motion,
         rawResponse: JSON.stringify(structuredResponse, null, 2),
