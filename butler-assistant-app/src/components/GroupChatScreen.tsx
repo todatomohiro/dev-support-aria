@@ -8,7 +8,6 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { FriendList } from './FriendList'
 import { GroupList } from './GroupList'
 import { GroupChat } from './GroupChat'
-import { GroupInfoPanel } from './GroupInfoPanel'
 
 /** バックグラウンドポーリング間隔（ミリ秒） */
 const BACKGROUND_POLL_INTERVAL = 30000
@@ -24,7 +23,6 @@ export function GroupChatScreen() {
   const navigate = useNavigate()
   const bgPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const prevUpdatedAtRef = useRef<Record<string, number>>({})
-  const [showInfoPanel, setShowInfoPanel] = useState(false)
 
   // ニックネーム
   const nickname = useAppStore((s) => s.config.profile.nickname)
@@ -144,14 +142,12 @@ export function GroupChatScreen() {
   const handleSelectGroup = useCallback((groupId: string) => {
     setActiveGroup(groupId)
     clearUnread(groupId)
-    setShowInfoPanel(false)
     navigate(`/groups/${groupId}`)
   }, [setActiveGroup, clearUnread, navigate])
 
   /** 一覧に戻る */
   const handleBack = useCallback(() => {
     setActiveGroup(null)
-    setShowInfoPanel(false)
     navigate('/groups')
     loadGroups()
     loadFriends()
@@ -229,24 +225,26 @@ export function GroupChatScreen() {
     )
   }
 
-  // チャット表示
+  // チャット表示（左: グループ一覧サイドバー、右: チャット）
   return (
     <div className="flex flex-1 min-h-0">
-      {showInfoPanel && (
-        <div className="hidden md:block flex-[1] border-r border-gray-200 dark:border-gray-700 min-w-0">
-          <GroupInfoPanel
-            groupId={activeGroupId}
-            onClose={() => setShowInfoPanel(false)}
-            onLeave={handleBack}
-          />
-        </div>
-      )}
-      <div className="flex-[2] flex flex-col min-h-0 min-w-0">
+      {/* 左: グループ一覧（デスクトップのみ） */}
+      <div className="hidden md:flex w-72 border-r border-gray-200 dark:border-gray-700 flex-col min-h-0">
+        <GroupList
+          groups={groups}
+          onSelectGroup={handleSelectGroup}
+          onRefresh={loadGroups}
+          unreadCounts={unreadCounts}
+          activeGroupId={activeGroupId}
+        />
+      </div>
+      {/* 右: チャット */}
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
         <GroupChat
           groupId={activeGroupId}
           groupName={activeGroup?.groupName ?? ''}
           onBack={handleBack}
-          onOpenInfo={() => setShowInfoPanel(!showInfoPanel)}
+          onLeave={handleBack}
         />
       </div>
     </div>

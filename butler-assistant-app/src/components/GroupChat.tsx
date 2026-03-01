@@ -7,23 +7,33 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAuthStore } from '@/auth/authStore'
 import { wsService } from '@/services/wsService'
 import { formatTime, formatDateSeparator, isSameDay } from '@/utils'
+import { AddMemberModal } from './AddMemberModal'
+import type { GroupMember } from '@/types'
 
 interface GroupChatProps {
   groupId: string
   groupName: string
   onBack: () => void
-  onOpenInfo: () => void
+  onLeave: () => void
 }
+
+/** メンバーアバターの最大表示数 */
+const MAX_AVATARS = 4
 
 /**
  * グループチャットコンポーネント
  *
  * メッセージの表示・送信・ポーリングを行う。
+ * ヘッダーにメンバーアバターアイコンとポップオーバーを表示する。
  */
-export function GroupChat({ groupId, groupName, onBack, onOpenInfo }: GroupChatProps) {
+export function GroupChat({ groupId, groupName, onBack, onLeave }: GroupChatProps) {
   const [inputText, setInputText] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [members, setMembers] = useState<GroupMember[]>([])
+  const [showPopover, setShowPopover] = useState(false)
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
 
   const activeMessages = useGroupChatStore((s) => s.activeMessages)
   const isSending = useGroupChatStore((s) => s.isSending)
@@ -41,6 +51,16 @@ export function GroupChat({ groupId, groupName, onBack, onOpenInfo }: GroupChatP
   useWebSocket(groupId)
   const wsStatus = useGroupChatStore((s) => s.wsStatus)
   useGroupPolling(groupId)
+
+  /** メンバー一覧を取得 */
+  const loadMembers = useCallback(async () => {
+    try {
+      const { members: m } = await groupService.getMembers(groupId)
+      setMembers(m)
+    } catch {
+      // メンバー取得失敗は無視（アバター非表示のまま）
+    }
+  }, [groupId])
 
   /** 初期メッセージを読み込み */
   const loadInitialMessages = useCallback(async () => {
@@ -65,14 +85,15 @@ export function GroupChat({ groupId, groupName, onBack, onOpenInfo }: GroupChatP
     }
   }, [groupId, setActiveMessages, setLastPollTimestamp, setLoadingMessages])
 
-  // マウント時にメッセージを読み込み
+  // マウント時にメッセージ + メンバーを読み込み
   useEffect(() => {
     loadInitialMessages()
+    loadMembers()
     return () => {
       setActiveMessages([])
       setLastPollTimestamp(null)
     }
-  }, [loadInitialMessages, setActiveMessages, setLastPollTimestamp])
+  }, [loadInitialMessages, loadMembers, setActiveMessages, setLastPollTimestamp])
 
   // メッセージ追加時に自動スクロール + 新着メッセージを既読通知
   useEffect(() => {
@@ -84,6 +105,18 @@ export function GroupChat({ groupId, groupName, onBack, onOpenInfo }: GroupChatP
       }
     }
   }, [activeMessages, groupId, currentUser?.userId])
+
+  // ポップオーバー外側クリックで閉じる
+  useEffect(() => {
+    if (!showPopover) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setShowPopover(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showPopover])
 
   /** メッセージを送信 */
   const handleSend = useCallback(async () => {
@@ -115,24 +148,37 @@ export function GroupChat({ groupId, groupName, onBack, onOpenInfo }: GroupChatP
     }
   }
 
+  /** グループを退出 */
+  const handleLeaveGroup = useCallback(async () => {
+    if (!confirm('このグループを退出しますか？')) return
+    try {
+      await groupService.leaveGroup(groupId)
+      onLeave()
+    } catch (error) {
+      console.error('[GroupChat] グループ退出に失敗:', error)
+    }
+  }, [groupId, onLeave])
+
+  /** メンバー追加モーダルを閉じた後にメンバーをリロード */
+  const handleAddMemberClose = useCallback((added?: boolean) => {
+    setShowAddMemberModal(false)
+    if (added) loadMembers()
+  }, [loadMembers])
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900" data-testid="group-chat">
       {/* ヘッダー */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
         <button
           onClick={onBack}
-          className="p-2 -ml-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors"
+          className="p-2 -ml-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors md:hidden"
           data-testid="chat-back-button"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <button
-          onClick={onOpenInfo}
-          className="flex items-center gap-2.5 min-w-0 flex-1"
-          data-testid="group-header-info"
-        >
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div className="shrink-0 w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
             <span className="text-xs font-medium text-purple-600 dark:text-purple-300">
               {groupName.charAt(0).toUpperCase()}
@@ -141,7 +187,93 @@ export function GroupChat({ groupId, groupName, onBack, onOpenInfo }: GroupChatP
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
             {groupName}
           </h3>
-        </button>
+        </div>
+
+        {/* メンバーアバターアイコン */}
+        {members.length > 0 && (
+          <div className="relative" ref={popoverRef}>
+            <button
+              onClick={() => setShowPopover(!showPopover)}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              data-testid="member-avatars-button"
+            >
+              <div className="flex -space-x-1.5">
+                {members.slice(0, MAX_AVATARS).map((member) => (
+                  <div
+                    key={member.userId}
+                    className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center border-2 border-white dark:border-gray-900"
+                    title={member.nickname}
+                  >
+                    <span className="text-[10px] font-medium text-blue-600 dark:text-blue-300">
+                      {member.nickname.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {members.length > MAX_AVATARS && (
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-0.5" data-testid="member-overflow-count">
+                  +{members.length - MAX_AVATARS}
+                </span>
+              )}
+            </button>
+
+            {/* メンバーポップオーバー */}
+            {showPopover && (
+              <div
+                className="absolute right-0 top-full mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20"
+                data-testid="member-popover"
+              >
+                <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    メンバー ({members.length})
+                  </h4>
+                </div>
+                <ul className="max-h-48 overflow-y-auto py-1" data-testid="member-list">
+                  {members.map((member) => (
+                    <li
+                      key={member.userId}
+                      className="flex items-center gap-2.5 px-4 py-2"
+                    >
+                      <div className="shrink-0 w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                        <span className="text-[10px] font-medium text-blue-600 dark:text-blue-300">
+                          {member.nickname.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <span className="text-sm text-gray-900 dark:text-gray-100 truncate">
+                        {member.nickname}
+                        {member.userId === currentUser?.userId && (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">(自分)</span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="border-t border-gray-200 dark:border-gray-700 p-2 space-y-1">
+                  <button
+                    onClick={() => {
+                      setShowPopover(false)
+                      setShowAddMemberModal(true)
+                    }}
+                    className="w-full px-3 py-2 text-sm text-left text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
+                    data-testid="popover-add-member"
+                  >
+                    メンバーを追加
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPopover(false)
+                      handleLeaveGroup()
+                    }}
+                    className="w-full px-3 py-2 text-sm text-left text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
+                    data-testid="popover-leave-group"
+                  >
+                    グループを退出
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* WebSocket ステータスバー */}
@@ -281,6 +413,13 @@ export function GroupChat({ groupId, groupName, onBack, onOpenInfo }: GroupChatP
           </button>
         </div>
       </div>
+
+      {/* メンバー追加モーダル */}
+      <AddMemberModal
+        isOpen={showAddMemberModal}
+        groupId={groupId}
+        onClose={handleAddMemberClose}
+      />
     </div>
   )
 }

@@ -10,6 +10,7 @@ interface GroupListProps {
   isLoading?: boolean
   error?: string | null
   unreadCounts?: Record<string, number>
+  activeGroupId?: string
 }
 
 /**
@@ -24,6 +25,7 @@ export function GroupList({
   isLoading = false,
   error = null,
   unreadCounts = {},
+  activeGroupId,
 }: GroupListProps) {
   const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false)
 
@@ -103,11 +105,12 @@ export function GroupList({
           <ul>
             {sorted.map((group) => {
               const unread = unreadCounts[group.groupId] ?? 0
+              const isActive = group.groupId === activeGroupId
               return (
                 <li key={group.groupId}>
                   <button
                     onClick={() => onSelectGroup(group.groupId)}
-                    className="w-full flex items-center gap-3 px-4 py-3.5 sm:py-3 hover:bg-gray-50 dark:hover:bg-gray-800 active:bg-gray-100 dark:active:bg-gray-700 transition-colors text-left border-b border-gray-100 dark:border-gray-800"
+                    className={`w-full flex items-center gap-3 px-4 py-3.5 sm:py-3 hover:bg-gray-50 dark:hover:bg-gray-800 active:bg-gray-100 dark:active:bg-gray-700 transition-colors text-left border-b border-gray-100 dark:border-gray-800 ${isActive ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
                     data-testid={`group-row-${group.groupId}`}
                   >
                     {/* アバタープレースホルダー */}

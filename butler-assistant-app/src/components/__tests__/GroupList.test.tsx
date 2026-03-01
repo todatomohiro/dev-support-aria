@@ -114,6 +114,29 @@ describe('GroupList', () => {
     })
   })
 
+  describe('アクティブグループハイライト', () => {
+    it('activeGroupId に一致するグループ行にハイライト背景色を適用する', () => {
+      render(<GroupList {...defaultProps} activeGroupId="g1" />)
+
+      const activeRow = screen.getByTestId('group-row-g1')
+      expect(activeRow.className).toContain('bg-blue-50')
+    })
+
+    it('activeGroupId に一致しないグループ行にはハイライトを適用しない', () => {
+      render(<GroupList {...defaultProps} activeGroupId="g1" />)
+
+      const inactiveRow = screen.getByTestId('group-row-g2')
+      expect(inactiveRow.className).not.toContain('bg-blue-50')
+    })
+
+    it('activeGroupId が未指定の場合はハイライトしない', () => {
+      render(<GroupList {...defaultProps} />)
+
+      const row = screen.getByTestId('group-row-g1')
+      expect(row.className).not.toContain('bg-blue-50')
+    })
+  })
+
   describe('グループ作成モーダル', () => {
     it('「作成」ボタンでグループ作成モーダルを開く', () => {
       render(<GroupList {...defaultProps} />)
