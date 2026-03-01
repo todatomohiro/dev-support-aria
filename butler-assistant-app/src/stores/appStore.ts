@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { v4 as uuidv4 } from 'uuid'
 import type { Message, AppConfig, AppError } from '@/types'
 import { DEFAULT_UI_CONFIG, DEFAULT_USER_PROFILE } from '@/types'
 import { MAX_MESSAGE_HISTORY } from '@/utils/performance'
@@ -8,6 +9,9 @@ import { MAX_MESSAGE_HISTORY } from '@/utils/performance'
  * グローバルアプリケーション状態
  */
 export interface AppState {
+  // セッション関連
+  sessionId: string
+
   // メッセージ関連
   messages: Message[]
   isLoading: boolean
@@ -46,6 +50,7 @@ export interface AppState {
   updateConfig: (config: Partial<AppConfig>) => void
   setError: (error: AppError | null) => void
   clearMessages: () => void
+  resetSession: () => void
 }
 
 /**
@@ -66,6 +71,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       // 初期状態
+      sessionId: uuidv4(),
       messages: [],
       isLoading: false,
       messagesCursor: null,
@@ -90,7 +96,9 @@ export const useAppStore = create<AppState>()(
           return { messages: newMessages }
         }),
 
-      clearMessages: () => set({ messages: [], messagesCursor: null, hasEarlierMessages: false }),
+      clearMessages: () => set({ messages: [], messagesCursor: null, hasEarlierMessages: false, sessionId: uuidv4() }),
+
+      resetSession: () => set({ sessionId: uuidv4() }),
 
       // 過去メッセージを先頭に追加（重複排除）
       prependMessages: (newMessages: Message[]) =>

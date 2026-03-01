@@ -5,7 +5,7 @@ import { syncService } from './syncService'
 import { ttsService } from './ttsService'
 import { useAppStore } from '@/stores/appStore'
 import { useAuthStore } from '@/auth/authStore'
-import type { Message, StructuredResponse, ConversationHistory, AppError } from '@/types'
+import type { Message, StructuredResponse, AppError } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
 import { measurePerformanceAsync } from '@/utils/performance'
 
@@ -52,13 +52,10 @@ class ChatControllerImpl {
     store.setLoading(true)
 
     try {
-      // 会話履歴を構築
-      const history = this.buildConversationHistory()
-
-      // LLMにメッセージを送信
+      // LLMにメッセージを送信（sessionId でサーバー側コンテキスト構築）
       const structuredResponse = await measurePerformanceAsync(
         'LLM送信→レスポンス受信',
-        () => llmClient.sendMessage(content.trim(), history, imageBase64)
+        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64)
       )
 
       // アシスタントメッセージを作成
@@ -137,17 +134,6 @@ class ChatControllerImpl {
       angry: 'exp_08',
     }
     return emotionMap[emotion] || 'exp_01'
-  }
-
-  /**
-   * 会話履歴を構築
-   */
-  private buildConversationHistory(): ConversationHistory {
-    const store = useAppStore.getState()
-    return {
-      messages: store.messages,
-      maxLength: 50, // 最大50メッセージまで保持
-    }
   }
 
   /**

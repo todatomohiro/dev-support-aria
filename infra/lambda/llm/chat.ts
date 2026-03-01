@@ -11,17 +11,32 @@ import {
   BedrockAgentCoreClient,
   RetrieveMemoryRecordsCommand,
 } from '@aws-sdk/client-bedrock-agentcore'
+import {
+  DynamoDBClient,
+  GetItemCommand,
+  QueryCommand,
+  UpdateItemCommand,
+} from '@aws-sdk/client-dynamodb'
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import { executeSkill } from './skills'
 import { TOOL_DEFINITIONS } from './skills/toolDefinitions'
 
 const bedrock = new BedrockRuntimeClient({})
 const agentCore = new BedrockAgentCoreClient({})
+const dynamo = new DynamoDBClient({})
+const lambdaClient = new LambdaClient({})
 
 const MEMORY_ID = process.env.MEMORY_ID ?? ''
+const TABLE_NAME = process.env.TABLE_NAME ?? ''
+const SUMMARIZE_FUNCTION_NAME = process.env.SUMMARIZE_FUNCTION_NAME ?? ''
 const MAX_TOOL_USE_ITERATIONS = 5
 /** imageBase64 の最大サイズ（5MB = 約 6.67MB の base64 文字列） */
 const MAX_IMAGE_BASE64_LENGTH = Math.ceil(5 * 1024 * 1024 * 4 / 3)
+/** 要約を生成する間隔（ターン数） */
+const SUMMARY_INTERVAL = 5
+/** セッションから取得する直近メッセージ数 */
+const RECENT_MESSAGES_LIMIT = 10
 
 /**
  * AgentCore Memory からユーザーに関する記憶を検索
@@ -58,10 +73,147 @@ async function retrieveMemories(userId: string, query: string): Promise<string> 
       return ''
     }
 
-    return `\n\nあなたが過去の会話から覚えていること：\n${memoryLines}`
+    return `\nあなたが過去の会話から覚えていること：\n${memoryLines}`
   } catch (error) {
     console.warn('[Memory] メモリ検索エラー（スキップ）:', error)
     return ''
+  }
+}
+
+/**
+ * DynamoDB からセッションコンテキスト（要約 + 直近メッセージ）を取得
+ */
+async function getSessionContext(userId: string, sessionId: string): Promise<{
+  summary: string
+  recentMessages: Array<{ role: string; content: string }>
+  turnsSinceSummary: number
+}> {
+  // セッションレコード（要約）を取得
+  const sessionResult = await dynamo.send(new GetItemCommand({
+    TableName: TABLE_NAME,
+    Key: {
+      PK: { S: `USER#${userId}` },
+      SK: { S: `SESSION#${sessionId}` },
+    },
+  }))
+
+  const summary = sessionResult.Item?.summary?.S ?? ''
+  const turnsSinceSummary = parseInt(sessionResult.Item?.turnsSinceSummary?.N ?? '0', 10)
+
+  // 直近メッセージを取得（新しい順 → 逆順にして返す）
+  const messagesResult = await dynamo.send(new QueryCommand({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+    ExpressionAttributeValues: {
+      ':pk': { S: `USER#${userId}#SESSION#${sessionId}` },
+      ':skPrefix': { S: 'MSG#' },
+    },
+    ScanIndexForward: false,
+    Limit: RECENT_MESSAGES_LIMIT,
+  }))
+
+  const recentMessages = (messagesResult.Items ?? [])
+    .reverse()
+    .map((item) => ({
+      role: item.role?.S ?? 'user',
+      content: item.content?.S ?? '',
+    }))
+
+  return { summary, recentMessages, turnsSinceSummary }
+}
+
+/**
+ * セッションのターンカウントを更新し、必要に応じて要約 Lambda を非同期起動
+ */
+async function updateSessionAndMaybeSummarize(
+  userId: string,
+  sessionId: string,
+  turnsSinceSummary: number,
+  userMessage: string,
+  assistantMessage: string
+): Promise<void> {
+  const now = new Date().toISOString()
+  const ttlExpiry = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+
+  // メッセージを DynamoDB に保存（user + assistant）
+  const msgTimestamp = now
+  const userMsgSK = `MSG#${msgTimestamp}#user`
+  const assistantMsgSK = `MSG#${msgTimestamp}#assistant`
+
+  // 並列保存
+  await Promise.all([
+    dynamo.send(new UpdateItemCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        PK: { S: `USER#${userId}#SESSION#${sessionId}` },
+        SK: { S: userMsgSK },
+      },
+      UpdateExpression: 'SET #role = :role, #content = :content, #ts = :ts, #ttl = :ttl',
+      ExpressionAttributeNames: {
+        '#role': 'role',
+        '#content': 'content',
+        '#ts': 'createdAt',
+        '#ttl': 'ttlExpiry',
+      },
+      ExpressionAttributeValues: {
+        ':role': { S: 'user' },
+        ':content': { S: userMessage },
+        ':ts': { S: now },
+        ':ttl': { N: String(ttlExpiry) },
+      },
+    })),
+    dynamo.send(new UpdateItemCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        PK: { S: `USER#${userId}#SESSION#${sessionId}` },
+        SK: { S: assistantMsgSK },
+      },
+      UpdateExpression: 'SET #role = :role, #content = :content, #ts = :ts, #ttl = :ttl',
+      ExpressionAttributeNames: {
+        '#role': 'role',
+        '#content': 'content',
+        '#ts': 'createdAt',
+        '#ttl': 'ttlExpiry',
+      },
+      ExpressionAttributeValues: {
+        ':role': { S: 'assistant' },
+        ':content': { S: assistantMessage },
+        ':ts': { S: now },
+        ':ttl': { N: String(ttlExpiry) },
+      },
+    })),
+  ])
+
+  const newTurnsSinceSummary = turnsSinceSummary + 1
+
+  // セッションレコードのターンカウントを更新
+  await dynamo.send(new UpdateItemCommand({
+    TableName: TABLE_NAME,
+    Key: {
+      PK: { S: `USER#${userId}` },
+      SK: { S: `SESSION#${sessionId}` },
+    },
+    UpdateExpression: 'SET turnsSinceSummary = :tss, updatedAt = :now, ttlExpiry = :ttl ADD totalTurns :one',
+    ExpressionAttributeValues: {
+      ':tss': { N: String(newTurnsSinceSummary >= SUMMARY_INTERVAL ? 0 : newTurnsSinceSummary) },
+      ':now': { S: now },
+      ':ttl': { N: String(ttlExpiry) },
+      ':one': { N: '1' },
+    },
+  }))
+
+  // 5ターンに達したら要約 Lambda を非同期起動
+  if (newTurnsSinceSummary >= SUMMARY_INTERVAL && SUMMARIZE_FUNCTION_NAME) {
+    console.log(`[LLM] ${newTurnsSinceSummary} ターン経過 — 要約 Lambda を非同期起動`)
+    try {
+      await lambdaClient.send(new InvokeCommand({
+        FunctionName: SUMMARIZE_FUNCTION_NAME,
+        InvocationType: 'Event',
+        Payload: Buffer.from(JSON.stringify({ userId, sessionId })),
+      }))
+    } catch (error) {
+      console.warn('[LLM] 要約 Lambda 起動エラー（スキップ）:', error)
+    }
   }
 }
 
@@ -104,6 +256,27 @@ function extractTextFromOutput(output: { message?: BedrockMessage }): string {
 }
 
 /**
+ * システムプロンプトを構築（メモリ + セッション要約を注入）
+ */
+function buildEnhancedSystemPrompt(
+  systemPrompt: string,
+  memoryContext: string,
+  sessionSummary: string
+): string {
+  let enhanced = systemPrompt
+
+  if (memoryContext) {
+    enhanced += `\n\n<user_context>\n${memoryContext}\n</user_context>`
+  }
+
+  if (sessionSummary) {
+    enhanced += `\n\n<current_session_summary>\n${sessionSummary}\n</current_session_summary>`
+  }
+
+  return enhanced
+}
+
+/**
  * POST /llm/chat — Bedrock Claude でチャット応答を生成（Converse API + Tool Use）
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -120,6 +293,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let history: Array<{ role: string; content: string }>
   let systemPrompt: string
   let imageBase64: string | undefined
+  let sessionId: string | undefined
 
   try {
     const body = JSON.parse(event.body)
@@ -127,6 +301,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     history = body.history ?? []
     systemPrompt = body.systemPrompt ?? ''
     imageBase64 = typeof body.imageBase64 === 'string' ? body.imageBase64 : undefined
+    sessionId = typeof body.sessionId === 'string' ? body.sessionId : undefined
 
     if (!message || typeof message !== 'string') {
       return response(400, { error: 'message is required' })
@@ -141,9 +316,33 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   // メモリ検索（失敗してもチャットは続行）
   const memoryContext = await retrieveMemories(userId, message)
-  const enhancedSystemPrompt = systemPrompt + memoryContext
 
-  const messages = toConverseMessages(history, message, imageBase64)
+  // sessionId の有無で分岐: 新フロー vs 既存フロー
+  let messages: BedrockMessage[]
+  let enhancedSystemPrompt: string
+  let sessionTurnsSinceSummary = 0
+  let sessionSummary = ''
+
+  if (sessionId) {
+    // 新フロー: DynamoDB からセッションコンテキストを構築
+    console.log(`[LLM] セッションモード: sessionId=${sessionId}`)
+    const sessionContext = await getSessionContext(userId, sessionId)
+    sessionTurnsSinceSummary = sessionContext.turnsSinceSummary
+    sessionSummary = sessionContext.summary
+
+    enhancedSystemPrompt = buildEnhancedSystemPrompt(
+      systemPrompt,
+      memoryContext,
+      sessionSummary
+    )
+
+    // セッションの直近メッセージ + 今回のメッセージで会話構築
+    messages = toConverseMessages(sessionContext.recentMessages, message, imageBase64)
+  } else {
+    // 既存フロー: フロントエンドからの history をそのまま使用
+    enhancedSystemPrompt = systemPrompt + memoryContext
+    messages = toConverseMessages(history, message, imageBase64)
+  }
 
   const system: SystemContentBlock[] = enhancedSystemPrompt
     ? [{ text: enhancedSystemPrompt }]
@@ -208,7 +407,26 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       // ツール使用でない場合（end_turn 等）→ テキスト応答を返却
       const content = extractTextFromOutput(result.output ?? {})
       console.log(`[LLM] Final response (${content.length} chars):`, content.slice(0, 200))
-      return response(200, { content })
+
+      // セッションモードの場合: メッセージ保存 + 要約トリガー
+      if (sessionId) {
+        try {
+          await updateSessionAndMaybeSummarize(
+            userId,
+            sessionId,
+            sessionTurnsSinceSummary,
+            message,
+            content
+          )
+        } catch (error) {
+          console.warn('[LLM] セッション更新エラー（スキップ）:', error)
+        }
+      }
+
+      return response(200, {
+        content,
+        ...(sessionSummary ? { sessionSummary } : {}),
+      })
     }
 
     // 最大ループ回数に到達

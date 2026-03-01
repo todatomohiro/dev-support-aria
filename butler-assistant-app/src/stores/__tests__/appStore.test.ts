@@ -12,6 +12,28 @@ describe('AppStore', () => {
     })
   })
 
+  describe('sessionId', () => {
+    it('初期状態で sessionId が UUID 形式で生成される', () => {
+      const { sessionId } = useAppStore.getState()
+      expect(sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    })
+
+    it('resetSession で新しい sessionId が生成される', () => {
+      const oldSessionId = useAppStore.getState().sessionId
+      useAppStore.getState().resetSession()
+      const newSessionId = useAppStore.getState().sessionId
+      expect(newSessionId).not.toBe(oldSessionId)
+      expect(newSessionId).toMatch(/^[0-9a-f]{8}-/)
+    })
+
+    it('clearMessages で sessionId もリセットされる', () => {
+      const oldSessionId = useAppStore.getState().sessionId
+      useAppStore.getState().clearMessages()
+      const newSessionId = useAppStore.getState().sessionId
+      expect(newSessionId).not.toBe(oldSessionId)
+    })
+  })
+
   describe('prependMessages', () => {
     it('メッセージを先頭に追加する', () => {
       const existing: Message[] = [

@@ -1,6 +1,5 @@
 import type {
   LLMClientService,
-  ConversationHistory,
   StructuredResponse,
   UserProfile,
 } from '@/types'
@@ -112,7 +111,7 @@ class LLMClientImpl implements LLMClientService {
   /**
    * Lambda /llm/chat を経由して Bedrock Claude にメッセージを送信
    */
-  async sendMessage(message: string, history?: ConversationHistory, imageBase64?: string): Promise<StructuredResponse> {
+  async sendMessage(message: string, sessionId: string, imageBase64?: string): Promise<StructuredResponse> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     const accessToken = useAuthStore.getState().accessToken
 
@@ -124,14 +123,6 @@ class LLMClientImpl implements LLMClientService {
     const systemPrompt = buildSystemPrompt(this.userProfile) +
       '\n\n必ず以下のJSON形式で回答してください：\n{"text": "回答テキスト", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。'
 
-    // 会話履歴を {role, content} 形式に変換（content が空のメッセージは除外）
-    const historyMessages = (history?.messages ?? [])
-      .filter((m) => m.content != null && m.content !== '')
-      .map((m) => ({
-        role: m.role,
-        content: m.content,
-      }))
-
     try {
       const res = await fetch(`${apiBaseUrl}/llm/chat`, {
         method: 'POST',
@@ -139,7 +130,7 @@ class LLMClientImpl implements LLMClientService {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ message, history: historyMessages, systemPrompt, ...(imageBase64 ? { imageBase64 } : {}) }),
+        body: JSON.stringify({ message, sessionId, systemPrompt, ...(imageBase64 ? { imageBase64 } : {}) }),
       })
 
       if (!res.ok) {
@@ -147,7 +138,7 @@ class LLMClientImpl implements LLMClientService {
         throw await this.handleAPIError(res, errorBody)
       }
 
-      const data = (await res.json()) as { content: string }
+      const data = (await res.json()) as { content: string; sessionSummary?: string }
 
       // JSON を抽出（マークダウンコードブロック対応）
       let cleanJson = data.content.trim()
@@ -165,15 +156,19 @@ class LLMClientImpl implements LLMClientService {
       if (!jsonMatch) {
         // JSON が返らなかった場合、テキストをそのまま使用
         console.warn('[LLM] JSON形式でない応答をフォールバック処理:', cleanJson.slice(0, 100))
-        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral' } as StructuredResponse
+        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral', sessionSummary: data.sessionSummary } as StructuredResponse
       }
 
       try {
-        return JSON.parse(jsonMatch[0]) as StructuredResponse
+        const parsed = JSON.parse(jsonMatch[0]) as StructuredResponse
+        if (data.sessionSummary) {
+          parsed.sessionSummary = data.sessionSummary
+        }
+        return parsed
       } catch {
         // JSON パースに失敗した場合もフォールバック
         console.warn('[LLM] JSONパース失敗、フォールバック処理')
-        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral' } as StructuredResponse
+        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral', sessionSummary: data.sessionSummary } as StructuredResponse
       }
     } catch (error) {
       if (

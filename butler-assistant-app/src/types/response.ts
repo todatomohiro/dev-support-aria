@@ -27,6 +27,8 @@ export interface StructuredResponse {
   motion: string
   emotion?: EmotionType
   mapData?: MapData
+  /** Lambda から返されたセッション要約（開発者モード表示用） */
+  sessionSummary?: string
 }
 
 /**

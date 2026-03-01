@@ -42,7 +42,6 @@ function App() {
   const currentExpression = useAppStore((state) => state.currentExpression)
   const config = useAppStore((state) => state.config)
   const lastError = useAppStore((state) => state.lastError)
-  const messagesCursor = useAppStore((state) => state.messagesCursor)
   const hasEarlierMessages = useAppStore((state) => state.hasEarlierMessages)
   const isLoadingEarlier = useAppStore((state) => state.isLoadingEarlier)
   const updateConfig = useAppStore((state) => state.updateConfig)

@@ -315,6 +315,35 @@ export class ButlerStack extends cdk.Stack {
     const googlePlacesApiKey = getSecret('GOOGLE_PLACES_API_KEY', 'GOOGLE_PLACES_API_KEY')
     const braveSearchApiKey = getSecret('BRAVE_SEARCH_API_KEY', 'BRAVE_SEARCH_API_KEY')
 
+    // 要約 Lambda（Haiku 4.5 で会話ローリング要約を生成）
+    const llmSummarizeFn = new lambdaNode.NodejsFunction(this, 'LlmSummarizeFn', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      entry: path.join(__dirname, '..', 'lambda', 'llm', 'summarize.ts'),
+      functionName: 'butler-llm-summarize',
+      environment: {
+        TABLE_NAME: table.tableName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node22',
+      },
+    })
+
+    table.grantReadWriteData(llmSummarizeFn)
+
+    // Bedrock Converse 権限（Haiku 4.5 inference profile）
+    llmSummarizeFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel', 'bedrock:Converse'],
+      resources: [
+        'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
+        `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
+      ],
+    }))
+
     // LLM Lambda（Bedrock Converse API + Tool Use + AgentCore Memory 検索）
     const llmChatFn = new lambdaNode.NodejsFunction(this, 'LlmChatFn', {
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -331,6 +360,7 @@ export class ButlerStack extends cdk.Stack {
         GOOGLE_IOS_CLIENT_ID: googleIosClientId,
         GOOGLE_PLACES_API_KEY: googlePlacesApiKey,
         BRAVE_SEARCH_API_KEY: braveSearchApiKey,
+        SUMMARIZE_FUNCTION_NAME: llmSummarizeFn.functionName,
       },
       bundling: {
         minify: true,
@@ -356,6 +386,9 @@ export class ButlerStack extends cdk.Stack {
       actions: ['bedrock-agentcore:RetrieveMemoryRecords'],
       resources: ['*'],
     }))
+
+    // 要約 Lambda 非同期起動権限
+    llmSummarizeFn.grantInvoke(llmChatFn)
 
     // Memory Events Lambda（AgentCore Memory にイベント記録）
     const memoryEventsFn = new lambdaNode.NodejsFunction(this, 'MemoryEventsFn', {

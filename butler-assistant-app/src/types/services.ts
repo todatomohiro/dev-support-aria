@@ -1,4 +1,3 @@
-import type { ConversationHistory } from './message'
 import type { ModelConfig, MotionPriority } from './model'
 import type { ParsedResponse, StructuredResponse, ValidationResult } from './response'
 import type { UserProfile } from './config'
@@ -10,7 +9,7 @@ export interface LLMClientService {
   /**
    * LLMにメッセージを送信し、構造化された回答を取得
    */
-  sendMessage(message: string, history?: ConversationHistory, imageBase64?: string): Promise<StructuredResponse>
+  sendMessage(message: string, sessionId: string, imageBase64?: string): Promise<StructuredResponse>
 
   /**
    * ユーザープロフィールを設定

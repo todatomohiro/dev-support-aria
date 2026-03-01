@@ -74,10 +74,7 @@ describe('チャットフロー統合テスト', () => {
       await waitFor(() => {
         expect(llmClient.sendMessage).toHaveBeenCalledWith(
           'こんにちは',
-          expect.objectContaining({
-            messages: expect.any(Array),
-            maxLength: expect.any(Number),
-          }),
+          expect.any(String),
           undefined
         )
       })

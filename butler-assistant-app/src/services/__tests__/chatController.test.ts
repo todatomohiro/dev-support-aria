@@ -121,7 +121,7 @@ describe('ChatController', () => {
 
       expect(mockLLMClient.sendMessage).toHaveBeenCalledWith(
         'これ何？',
-        expect.anything(),
+        expect.any(String),
         'aW1hZ2VkYXRh'
       )
 

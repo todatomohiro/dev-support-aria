@@ -39,7 +39,7 @@ describe('LLMClient', () => {
         json: async () => mockResponse,
       })
 
-      await llmClient.sendMessage('こんにちは')
+      await llmClient.sendMessage('こんにちは', 'test-session-id')
 
       const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
       expect(fetchCall[0]).toBe(`${MOCK_API_BASE_URL}/llm/chat`)
@@ -47,8 +47,9 @@ describe('LLMClient', () => {
 
       const body = JSON.parse(fetchCall[1].body)
       expect(body.message).toBe('こんにちは')
+      expect(body.sessionId).toBe('test-session-id')
       expect(body.systemPrompt).toContain(BUTLER_SYSTEM_PROMPT)
-      expect(body.history).toEqual([])
+      expect(body.history).toBeUndefined()
     })
 
     it('認証トークンを Authorization ヘッダーに含める', async () => {
@@ -59,7 +60,7 @@ describe('LLMClient', () => {
         json: async () => mockResponse,
       })
 
-      await llmClient.sendMessage('テスト')
+      await llmClient.sendMessage('テスト', 'test-session-id')
 
       const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
       expect(fetchCall[1].headers.Authorization).toBe('Bearer test-access-token')
@@ -73,7 +74,7 @@ describe('LLMClient', () => {
         json: async () => mockResponse,
       })
 
-      const result = await llmClient.sendMessage('お願いします')
+      const result = await llmClient.sendMessage('お願いします', 'test-session-id')
 
       expect(result.text).toBe('かしこまりました')
       expect(result.motion).toBe('bow')
@@ -83,7 +84,7 @@ describe('LLMClient', () => {
     it('ネットワークエラー時は NetworkError をスローする', async () => {
       global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
 
-      await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(NetworkError)
+      await expect(llmClient.sendMessage('こんにちは', 'test-session-id')).rejects.toThrow(NetworkError)
     })
 
     it('Lambda の 429 レスポンス時は RateLimitError をスローする', async () => {
@@ -94,7 +95,7 @@ describe('LLMClient', () => {
         text: async () => 'Rate limit exceeded',
       })
 
-      await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(RateLimitError)
+      await expect(llmClient.sendMessage('こんにちは', 'test-session-id')).rejects.toThrow(RateLimitError)
     })
 
     it('Lambda の 500 レスポンス時は APIError をスローする', async () => {
@@ -105,7 +106,7 @@ describe('LLMClient', () => {
         text: async () => 'Internal Server Error',
       })
 
-      await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow(APIError)
+      await expect(llmClient.sendMessage('こんにちは', 'test-session-id')).rejects.toThrow(APIError)
     })
 
     it('mapData を含む JSON レスポンスを正しくパースする', async () => {
@@ -128,7 +129,7 @@ describe('LLMClient', () => {
         json: async () => mockResponse,
       })
 
-      const result = await llmClient.sendMessage('渋谷のカフェを教えて')
+      const result = await llmClient.sendMessage('渋谷のカフェを教えて', 'test-session-id')
 
       expect(result.text).toBe('渋谷のカフェだよ！')
       expect(result.mapData).toEqual(mapData)
@@ -142,14 +143,14 @@ describe('LLMClient', () => {
         json: async () => mockResponse,
       })
 
-      const result = await llmClient.sendMessage('こんにちは')
+      const result = await llmClient.sendMessage('こんにちは', 'test-session-id')
 
       expect(result.text).toBe('これはJSONではありません')
       expect(result.motion).toBe('idle')
       expect(result.emotion).toBe('neutral')
     })
 
-    it('会話履歴を正しい形式で送信する', async () => {
+    it('sessionId をリクエストボディに含めて送信する', async () => {
       const mockResponse = { content: '{"text": "元気だよ！", "motion": "smile", "emotion": "happy"}' }
 
       global.fetch = vi.fn().mockResolvedValue({
@@ -157,22 +158,12 @@ describe('LLMClient', () => {
         json: async () => mockResponse,
       })
 
-      const history = {
-        messages: [
-          { role: 'user' as const, content: '最初のメッセージ' },
-          { role: 'assistant' as const, content: '最初の応答' },
-        ],
-        maxLength: 10,
-      }
-
-      await llmClient.sendMessage('元気？', history)
+      await llmClient.sendMessage('元気？', 'my-session-123')
 
       const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
       const body = JSON.parse(fetchCall[1].body)
-      expect(body.history).toEqual([
-        { role: 'user', content: '最初のメッセージ' },
-        { role: 'assistant', content: '最初の応答' },
-      ])
+      expect(body.sessionId).toBe('my-session-123')
+      expect(body.history).toBeUndefined()
     })
 
     it('マークダウンコードブロックで囲まれた JSON を正しくパースする', async () => {
@@ -183,7 +174,7 @@ describe('LLMClient', () => {
         json: async () => mockResponse,
       })
 
-      const result = await llmClient.sendMessage('テスト')
+      const result = await llmClient.sendMessage('テスト', 'test-session-id')
 
       expect(result.text).toBe('テスト')
       expect(result.motion).toBe('idle')
@@ -197,7 +188,7 @@ describe('LLMClient', () => {
         json: async () => mockResponse,
       })
 
-      await llmClient.sendMessage('これ何？', undefined, 'aW1hZ2VkYXRh')
+      await llmClient.sendMessage('これ何？', 'test-session-id', 'aW1hZ2VkYXRh')
 
       const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
       const body = JSON.parse(fetchCall[1].body)
@@ -212,7 +203,7 @@ describe('LLMClient', () => {
         json: async () => mockResponse,
       })
 
-      await llmClient.sendMessage('こんにちは')
+      await llmClient.sendMessage('こんにちは', 'test-session-id')
 
       const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
       const body = JSON.parse(fetchCall[1].body)
@@ -227,7 +218,7 @@ describe('LLMClient', () => {
         text: async () => 'Unauthorized',
       })
 
-      await expect(llmClient.sendMessage('こんにちは')).rejects.toThrow('認証エラーです')
+      await expect(llmClient.sendMessage('こんにちは', 'test-session-id')).rejects.toThrow('認証エラーです')
     })
   })
 })
@@ -317,7 +308,7 @@ describe('setUserProfile', () => {
       json: async () => mockResponse,
     })
 
-    await llmClient.sendMessage('こんにちは')
+    await llmClient.sendMessage('こんにちは', 'test-session-id')
 
     const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
     const body = JSON.parse(fetchCall[1].body)
