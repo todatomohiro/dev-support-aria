@@ -294,64 +294,66 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
           </button>
         </div>
         <div className="flex items-center justify-between mt-1 sm:mt-2">
-          <div className="flex items-center gap-3">
-            {sttSupported && (
-              <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="auto-send-toggle">
-                <span className="text-xs text-gray-500">🎤 音声自動送信</span>
+          {developerMode && (
+            <div className="flex items-center gap-3">
+              {sttSupported && (
+                <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="auto-send-toggle">
+                  <span className="text-xs text-gray-500">🎤 音声自動送信</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={autoSendEnabled}
+                    onClick={() => setAutoSendEnabled(!autoSendEnabled)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      autoSendEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                        autoSendEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                      }`}
+                    />
+                  </button>
+                </label>
+              )}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="camera-toggle">
+                <span className="text-xs text-gray-500">📷 カメラ</span>
                 <button
                   type="button"
                   role="switch"
-                  aria-checked={autoSendEnabled}
-                  onClick={() => setAutoSendEnabled(!autoSendEnabled)}
+                  aria-checked={cameraEnabled}
+                  onClick={() => onToggleCamera(!cameraEnabled)}
                   className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    autoSendEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                    cameraEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
                   }`}
                 >
                   <span
                     className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                      autoSendEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                      cameraEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
                     }`}
                   />
                 </button>
               </label>
-            )}
-            <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="camera-toggle">
-              <span className="text-xs text-gray-500">📷 カメラ</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={cameraEnabled}
-                onClick={() => onToggleCamera(!cameraEnabled)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  cameraEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                    cameraEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+              <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="tts-toggle">
+                <span className="text-xs text-gray-500">🔊 自動読み上げ</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={ttsEnabled}
+                  onClick={() => onToggleTts(!ttsEnabled)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    ttsEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
                   }`}
-                />
-              </button>
-            </label>
-            <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="tts-toggle">
-              <span className="text-xs text-gray-500">🔊 自動読み上げ</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={ttsEnabled}
-                onClick={() => onToggleTts(!ttsEnabled)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  ttsEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                    ttsEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
-                  }`}
-                />
-              </button>
-            </label>
-          </div>
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                      ttsEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                    }`}
+                  />
+                </button>
+              </label>
+            </div>
+          )}
           <p className="text-xs text-gray-500 hidden sm:block">
             Enter で送信、Shift+Enter で改行
           </p>
