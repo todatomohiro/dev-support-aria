@@ -7,7 +7,7 @@
 ```bash
 cd butler-assistant-app
 
-pnpm test             # 全テスト実行（587テスト / 40ファイル）
+pnpm test             # 全テスト実行（621テスト / 42ファイル）
 pnpm dev              # 開発サーバー（http://localhost:5173）
 pnpm typecheck        # 型チェック
 pnpm lint             # ESLint
@@ -67,8 +67,11 @@ infra/
     ├── settings/           # 設定 get/put
     ├── messages/           # メッセージ list/put
     ├── tts/                # 音声合成 synthesize
-    ├── llm/                # LLM チャット（Bedrock Claude + Tool Use + メモリ検索）
-    │   └── skills/         #   スキル実装（Google Calendar, Google Places）
+    ├── llm/                # LLM チャット（Bedrock Claude + Tool Use + 3層記憶）
+    │   ├── skills/         #   スキル実装（Google Calendar, Google Places）
+    │   ├── summarize.ts    #   ローリング要約（短期記憶、Haiku 4.5）
+    │   ├── extractFacts.ts #   永久事実抽出（セッション終了時、Haiku 4.5）
+    │   └── sessionFinalizer.ts # セッション終了検出（EventBridge 15分ルール）
     ├── friends/            # フレンド管理（generateCode, getCode, link, list, unfriend）
     ├── groups/             # グループ管理（create, addMember, leave, members）
     ├── conversations/      # グループチャット会話（list, messagesList, messagesSend, messagesPoll）
@@ -122,7 +125,7 @@ export const responseParser = new ResponseParserImpl()
 
 ## テスト
 
-- **Vitest** + **jsdom** 環境（587テスト / 40ファイル）
+- **Vitest** + **jsdom** 環境（621テスト / 42ファイル）
 - セットアップ: `src/__tests__/setup.ts`（Live2D SDK・PixiJS のモック定義済み）
 - プロパティベーステスト: `fast-check`（`@fast-check/vitest`）、最低100回実行
 
@@ -172,14 +175,24 @@ test.prop([fc.string()])(
 ```
 ユーザー発言 → chatController
   ├→ llmClient → Lambda /llm/chat
-  │              ↓ RetrieveMemoryRecords（メモリ検索）
-  │              ↓ systemPrompt にメモリ情報を注入
+  │              ↓ 3層記憶を並列取得:
+  │              │   ① getPermanentFacts（永久記憶 — DynamoDB）
+  │              │   ② retrieveMemoryRecords（中期記憶 — AgentCore Memory）
+  │              │   ③ getSessionContext（短期記憶 — ローリング要約）
+  │              ↓ 中期記憶から永久記憶との重複を除外（deduplicateRecords）
+  │              ↓ systemPrompt に3層記憶を注入:
+  │              │   <permanent_profile> → <user_context> → <current_session_summary>
   │              ↓ Bedrock Claude 呼び出し（Tool Use 対応）
-  │              ↓ ツール実行: list_events / create_event / search_places
-  │              → レスポンス返却（text, motion, emotion, mapData?）
-  └→ fire-and-forget: Lambda /memory/events
-                       ↓ CreateEvent（会話を記録）
-                       → AgentCore Memory が自動で要約・抽出
+  │              ↓ ツール実行: list_events / create_event / search_places / web_search
+  │              ↓ メッセージ保存 + ACTIVE_SESSION upsert
+  │              ↓ 5ターンごとに要約 Lambda を非同期起動
+  │              → レスポンス返却（text, motion, emotion, mapData?, permanentFacts?, sessionSummary?）
+  ├→ fire-and-forget: Lambda /memory/events
+  │                    ↓ CreateEvent（会話を記録）
+  │                    → AgentCore Memory が自動で要約・抽出
+  └→ EventBridge rate(15min) → sessionFinalizer Lambda
+                                ↓ 30分無言セッションを検出
+                                → extractFacts Lambda（Haiku 4.5 で永久事実を抽出・保存）
 ```
 
 - フロントエンドに API キーは存在しない（IAM ロールで認証）
@@ -199,13 +212,34 @@ test.prop([fc.string()])(
 - ルーティング: `infra/lambda/llm/skills/index.ts`（`executeSkill()`）
 - トークン管理: `infra/lambda/llm/skills/tokenManager.ts`（Google OAuth トークン取得・リフレッシュ）
 
-### 長期記憶（AgentCore Memory）
+### 3層記憶モデル
 
+```
+① 永久記憶（PERMANENT_FACTS）  → <permanent_profile> タグ
+② 中期記憶（AgentCore Memory） → <user_context> タグ（重複排除済み）
+③ 短期記憶（ローリング要約）    → <current_session_summary> タグ
+```
+
+#### ① 永久記憶（DynamoDB 自前管理）
+- DynamoDB: `PK=USER#{userId}`, `SK=PERMANENT_FACTS`（TTL なし、永久保持）
+- 最大50件、各50文字以内の事実を配列で保持
+- セッション終了（30分無言）を EventBridge 15分ルールで検出
+- `sessionFinalizer` → `extractFacts`（Haiku 4.5）で会話から重要事実を自動抽出
+- `ACTIVE_SESSION` レコード（TTL 1日）でアクティブセッションを追跡
+
+#### ② 中期記憶（AgentCore Memory）
 - **Memory ID**: 環境変数 `MEMORY_ID` で設定
 - **記憶保存**: `chatController` が成功レスポンス後に `/memory/events` へ fire-and-forget で送信
-- **記憶検索**: `/llm/chat` Lambda が Bedrock 呼び出し前にメモリを検索し systemPrompt に注入
+- **記憶検索**: `/llm/chat` Lambda が Bedrock 呼び出し前に検索
 - **ストラテジー**: `facts`（SEMANTIC）+ `preferences`（USER_PREFERENCE）
+- **重複排除**: 永久記憶と部分文字列一致するレコードを自動除外
 - **フォールバック**: メモリ検索失敗時は通常のチャットとして動作
+
+#### ③ 短期記憶（ローリング要約）
+- フロントエンドは `{ message, sessionId }` のみ送信
+- Lambda が DynamoDB から要約 + 直近10件メッセージを取得してプロンプト構築
+- 5ターンごとに Haiku 4.5 で非同期要約生成
+- DynamoDB: `SESSION#{sessionId}`（TTL 7日）+ `MSG#`（セッションメッセージ）
 
 ### コンポーネント層（src/components/ — 17コンポーネント）
 
@@ -264,8 +298,9 @@ test.prop([fc.string()])(
 | Cognito | ユーザープール + SPA クライアント（SRP 認証） |
 | API Gateway (REST) | REST API（CORS 設定済み、Cognito 認可） |
 | API Gateway (WebSocket) | WebSocket API（JWT 認証、リアルタイムメッセージ配信） |
-| Lambda × 26 | Node.js 22.x / ARM_64 |
-| AgentCore Memory | 長期記憶（SEMANTIC + USER_PREFERENCE ストラテジー） |
+| Lambda × 29 | Node.js 22.x / ARM_64 |
+| EventBridge | `rate(15 minutes)` → sessionFinalizer Lambda |
+| AgentCore Memory | 中期記憶（SEMANTIC + USER_PREFERENCE ストラテジー） |
 
 **Lambda 関数一覧:**
 
@@ -276,7 +311,10 @@ test.prop([fc.string()])(
 | `butler-messages-list` | `GET /messages` | メッセージ履歴取得 |
 | `butler-messages-put` | `POST /messages` | メッセージ保存 |
 | `butler-tts-synthesize` | `POST /tts/synthesize` | Amazon Polly 音声合成 |
-| `butler-llm-chat` | `POST /llm/chat` | LLM チャット（Bedrock + Tool Use + メモリ検索） |
+| `butler-llm-chat` | `POST /llm/chat` | LLM チャット（Bedrock + Tool Use + 3層記憶） |
+| `butler-llm-summarize` | （chat Lambda から非同期起動） | ローリング要約生成（Haiku 4.5） |
+| `butler-extract-facts` | （sessionFinalizer から非同期起動） | 永久事実抽出（Haiku 4.5） |
+| `butler-session-finalizer` | （EventBridge 15分ルール） | セッション終了検出 → extractFacts 起動 |
 | `butler-memory-events` | `POST /memory/events` | AgentCore Memory イベント記録 |
 | `butler-skills-callback` | `POST /skills/google/callback` | Google OAuth コールバック |
 | `butler-skills-connections` | `GET /skills/connections` | スキル接続状態取得 |
