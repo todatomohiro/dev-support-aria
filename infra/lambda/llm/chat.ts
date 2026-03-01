@@ -95,12 +95,13 @@ function formatMemoryContext(records: string[]): string {
 }
 
 /**
- * DynamoDB からセッションコンテキスト（要約 + 直近メッセージ）を取得
+ * DynamoDB からセッションコンテキスト（要約 + 直近メッセージ + チェックポイント）を取得
  */
 async function getSessionContext(userId: string, sessionId: string): Promise<{
   summary: string
   recentMessages: Array<{ role: string; content: string }>
   turnsSinceSummary: number
+  checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }>
 }> {
   // セッションレコード（要約）を取得
   const sessionResult = await dynamo.send(new GetItemCommand({
@@ -114,17 +115,28 @@ async function getSessionContext(userId: string, sessionId: string): Promise<{
   const summary = sessionResult.Item?.summary?.S ?? ''
   const turnsSinceSummary = parseInt(sessionResult.Item?.turnsSinceSummary?.N ?? '0', 10)
 
-  // 直近メッセージを取得（新しい順 → 逆順にして返す）
-  const messagesResult = await dynamo.send(new QueryCommand({
-    TableName: TABLE_NAME,
-    KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
-    ExpressionAttributeValues: {
-      ':pk': { S: `USER#${userId}#SESSION#${sessionId}` },
-      ':skPrefix': { S: 'MSG#' },
-    },
-    ScanIndexForward: false,
-    Limit: RECENT_MESSAGES_LIMIT,
-  }))
+  // 直近メッセージとチェックポイントを並列取得
+  const [messagesResult, checkpointsResult] = await Promise.all([
+    dynamo.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+      ExpressionAttributeValues: {
+        ':pk': { S: `USER#${userId}#SESSION#${sessionId}` },
+        ':skPrefix': { S: 'MSG#' },
+      },
+      ScanIndexForward: false,
+      Limit: RECENT_MESSAGES_LIMIT,
+    })),
+    dynamo.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+      ExpressionAttributeValues: {
+        ':pk': { S: `USER#${userId}#SESSION#${sessionId}` },
+        ':skPrefix': { S: 'SUMMARY_CP#' },
+      },
+      ScanIndexForward: true,
+    })),
+  ])
 
   const recentMessages = (messagesResult.Items ?? [])
     .reverse()
@@ -133,7 +145,13 @@ async function getSessionContext(userId: string, sessionId: string): Promise<{
       content: item.content?.S ?? '',
     }))
 
-  return { summary, recentMessages, turnsSinceSummary }
+  const checkpoints = (checkpointsResult.Items ?? []).map((item) => ({
+    timestamp: item.createdAt?.S ?? '',
+    keywords: (item.keywords?.L ?? []).map((k) => k.S ?? ''),
+    summary: item.summary?.S ?? '',
+  }))
+
+  return { summary, recentMessages, turnsSinceSummary, checkpoints }
 }
 
 /**
@@ -311,13 +329,22 @@ async function getPermanentFacts(userId: string): Promise<string[]> {
 }
 
 /**
- * システムプロンプトを構築（永久記憶 + メモリ + セッション要約を注入）
+ * JST の HH:MM 文字列に変換
+ */
+function toJSTTimeString(isoTimestamp: string): string {
+  const date = new Date(isoTimestamp)
+  return date.toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' })
+}
+
+/**
+ * システムプロンプトを構築（永久記憶 + メモリ + セッション要約 + チェックポイントを注入）
  */
 function buildEnhancedSystemPrompt(
   systemPrompt: string,
   permanentFacts: string[],
   memoryContext: string,
-  sessionSummary: string
+  sessionSummary: string,
+  checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }> = []
 ): string {
   let enhanced = systemPrompt
 
@@ -332,9 +359,21 @@ function buildEnhancedSystemPrompt(
     enhanced += `\n\n<user_context>\n${memoryContext}\n</user_context>`
   }
 
-  // セッション要約（短期記憶）
-  if (sessionSummary) {
-    enhanced += `\n\n<current_session_summary>\n${sessionSummary}\n</current_session_summary>`
+  // セッション要約 + チェックポイント（短期記憶）
+  if (sessionSummary || checkpoints.length > 0) {
+    let sessionBlock = ''
+    if (sessionSummary) {
+      sessionBlock += sessionSummary
+    }
+    if (checkpoints.length > 0) {
+      const lines = checkpoints.map((cp) => {
+        const time = toJSTTimeString(cp.timestamp)
+        const kw = cp.keywords.join('・')
+        return `[${time} ${kw}] ${cp.summary}`
+      })
+      sessionBlock += `\n\n<session_checkpoints>\n${lines.join('\n')}\n</session_checkpoints>`
+    }
+    enhanced += `\n\n<current_session_summary>\n${sessionBlock}\n</current_session_summary>`
   }
 
   return enhanced
@@ -408,8 +447,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       systemPrompt,
       permanentFacts,
       memoryContext,
-      sessionSummary
+      sessionSummary,
+      sessionContext.checkpoints
     )
+
+    if (sessionContext.checkpoints.length > 0) {
+      console.log(`[LLM] チェックポイント ${sessionContext.checkpoints.length} 件をプロンプトに注入`)
+    }
 
     // セッションの直近メッセージ + 今回のメッセージで会話構築
     messages = toConverseMessages(sessionContext.recentMessages, message, imageBase64)
