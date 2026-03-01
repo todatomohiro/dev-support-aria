@@ -78,6 +78,10 @@ export function buildSkillSystemPrompt(): string {
 export function buildSystemPrompt(profile?: UserProfile): string {
   let prompt = BUTLER_SYSTEM_PROMPT + buildSkillSystemPrompt()
 
+  if (profile?.aiName) {
+    prompt += `\n\n- あなたの名前は「${profile.aiName}」です。自己紹介や会話で自分の名前として使ってください`
+  }
+
   if (!profile || !profile.nickname) return prompt
 
   const callName = profile.honorific

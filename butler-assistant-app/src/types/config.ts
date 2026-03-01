@@ -24,6 +24,7 @@ export interface UserProfile {
   nickname: string
   honorific: '' | 'さん' | 'くん' | '様'
   gender: '' | 'female' | 'male'
+  aiName: string
 }
 
 /**
@@ -54,4 +55,5 @@ export const DEFAULT_USER_PROFILE: UserProfile = {
   nickname: '',
   honorific: '',
   gender: '',
+  aiName: '',
 }

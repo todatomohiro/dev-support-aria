@@ -139,22 +139,15 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
     }
   }, [])
 
-  // isLoadingEarlier の ref を同期
-  useEffect(() => { isLoadingEarlierRef.current = isLoadingEarlier }, [isLoadingEarlier])
-
-  // 過去メッセージ読み込み後のスクロール位置復元
+  // メッセージ変更時: 過去読み込み時はスクロール位置復元、それ以外は最下部へスクロール
   useEffect(() => {
     const container = scrollContainerRef.current
     if (container && isLoadingEarlierRef.current) {
       // 読み込み前のスクロール高さとの差分だけスクロール位置を調整
       const diff = container.scrollHeight - scrollHeightBeforeRef.current
       container.scrollTop += diff
-    }
-  }, [messages])
-
-  // 新しいメッセージ追加時に自動スクロール（過去メッセージ読み込み中は除外）
-  useEffect(() => {
-    if (!isLoadingEarlierRef.current) {
+      isLoadingEarlierRef.current = false
+    } else {
       scrollToBottom()
     }
   }, [messages])
@@ -162,6 +155,8 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   /** 過去のメッセージを読み込む */
   const handleLoadEarlier = useCallback(() => {
     if (!onLoadEarlier || isLoadingEarlier) return
+    // フラグを立てて scrollToBottom を抑制
+    isLoadingEarlierRef.current = true
     // スクロール位置を記録
     if (scrollContainerRef.current) {
       scrollHeightBeforeRef.current = scrollContainerRef.current.scrollHeight

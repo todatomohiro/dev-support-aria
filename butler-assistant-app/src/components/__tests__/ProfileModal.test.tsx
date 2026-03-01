@@ -6,6 +6,7 @@ const mockProfile = {
   nickname: '' as string,
   honorific: '' as '' | 'さん' | 'くん' | '様',
   gender: '' as '' | 'female' | 'male',
+  aiName: '' as string,
 }
 
 describe('ProfileModal', () => {
@@ -149,6 +150,7 @@ describe('ProfileModal', () => {
         nickname: '太郎',
         honorific: 'さん',
         gender: 'male',
+        aiName: '',
       })
       expect(mockOnClose).toHaveBeenCalled()
     })

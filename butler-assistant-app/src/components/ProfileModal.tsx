@@ -15,6 +15,7 @@ export function ProfileModal({ isOpen, onClose, profile, onSave }: ProfileModalP
   const [nickname, setNickname] = useState(profile.nickname)
   const [honorific, setHonorific] = useState<UserProfile['honorific']>(profile.honorific)
   const [gender, setGender] = useState<UserProfile['gender']>(profile.gender)
+  const [aiName, setAiName] = useState(profile.aiName ?? '')
   const [isSaving, setIsSaving] = useState(false)
 
   // 設定が変更された時にローカル状態を更新
@@ -22,12 +23,13 @@ export function ProfileModal({ isOpen, onClose, profile, onSave }: ProfileModalP
     setNickname(profile.nickname)
     setHonorific(profile.honorific)
     setGender(profile.gender)
+    setAiName(profile.aiName ?? '')
   }, [profile])
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      onSave({ nickname, honorific, gender })
+      onSave({ nickname, honorific, gender, aiName })
       onClose()
     } catch (error) {
       console.error('プロフィールの保存に失敗:', error)
@@ -40,6 +42,7 @@ export function ProfileModal({ isOpen, onClose, profile, onSave }: ProfileModalP
     setNickname(profile.nickname)
     setHonorific(profile.honorific)
     setGender(profile.gender)
+    setAiName(profile.aiName ?? '')
     onClose()
   }
 
@@ -135,6 +138,22 @@ export function ProfileModal({ isOpen, onClose, profile, onSave }: ProfileModalP
                 <option value="female">女性</option>
                 <option value="male">男性</option>
               </select>
+            </div>
+
+            {/* AIネーム */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                AIネーム
+              </label>
+              <input
+                type="text"
+                value={aiName}
+                onChange={(e) => setAiName(e.target.value.slice(0, 20))}
+                maxLength={20}
+                placeholder="AIの名前を入力"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                data-testid="ai-name-input"
+              />
             </div>
           </div>
         </div>
