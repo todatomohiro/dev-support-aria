@@ -13,6 +13,8 @@ export interface Message {
   rawResponse?: string
   /** 場所検索結果の地図データ */
   mapData?: MapData
+  /** LLM が提案するテーマ別ノート */
+  suggestedTheme?: { themeName: string }
 }
 
 /**

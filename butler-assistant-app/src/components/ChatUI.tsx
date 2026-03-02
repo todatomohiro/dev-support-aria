@@ -56,12 +56,13 @@ interface ChatUIProps {
   hasEarlierMessages?: boolean
   isLoadingEarlier?: boolean
   onLoadEarlier?: () => void
+  onCreateTheme?: (themeName: string) => void
 }
 
 /**
  * チャットUI コンポーネント
  */
-export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier }: ChatUIProps) {
+export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
   const [autoSendEnabled, setAutoSendEnabled] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -235,7 +236,15 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
           </div>
         )}
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} developerMode={developerMode} />
+          <div key={message.id}>
+            <MessageBubble message={message} developerMode={developerMode} />
+            {message.suggestedTheme && onCreateTheme && (
+              <ThemeSuggestionCard
+                themeName={message.suggestedTheme.themeName}
+                onCreateTheme={onCreateTheme}
+              />
+            )}
+          </div>
         ))}
 
         {/* ローディングインジケーター */}
@@ -519,6 +528,56 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
             {message.rawResponse}
           </pre>
         )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * テーマ提案カード コンポーネント
+ */
+function ThemeSuggestionCard({ themeName, onCreateTheme }: { themeName: string; onCreateTheme: (name: string) => void }) {
+  const [dismissed, setDismissed] = useState(false)
+  const [creating, setCreating] = useState(false)
+
+  if (dismissed) return null
+
+  const handleCreate = async () => {
+    setCreating(true)
+    try {
+      onCreateTheme(themeName)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <div className="flex justify-start mt-1 mb-2" data-testid="theme-suggestion-card">
+      <div className="max-w-[85%] sm:max-w-[70%] flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-sm">
+        <svg className="w-4 h-4 shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <span className="text-gray-700 dark:text-gray-300">
+          「{themeName}」のノートを作成する？
+        </span>
+        <button
+          onClick={handleCreate}
+          disabled={creating}
+          className="shrink-0 px-2.5 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 rounded-md transition-colors"
+          data-testid="theme-suggestion-create"
+        >
+          {creating ? '...' : '作成'}
+        </button>
+        <button
+          onClick={() => setDismissed(true)}
+          className="shrink-0 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          title="閉じる"
+          data-testid="theme-suggestion-dismiss"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   )

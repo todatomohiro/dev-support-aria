@@ -27,6 +27,8 @@ export interface StructuredResponse {
   motion: string
   emotion?: EmotionType
   mapData?: MapData
+  /** LLM が提案するテーマ別ノート（メイン会話で深い話題が検出された場合） */
+  suggestedTheme?: { themeName: string }
   /** Lambda から返されたセッション要約（開発者モード表示用） */
   sessionSummary?: string
   /** Lambda から返された永久記憶（開発者モード表示用） */

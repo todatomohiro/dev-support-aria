@@ -124,8 +124,17 @@ class LLMClientImpl implements LLMClientService {
     }
 
     // システムプロンプト構築（JSON 形式指示含む）
-    const systemPrompt = buildSystemPrompt(this.userProfile) +
-      '\n\n必ず以下のJSON形式で回答してください：\n{"text": "回答テキスト", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。'
+    const jsonInstruction = '\n\n必ず以下のJSON形式で回答してください：\n{"text": "回答テキスト", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedTheme": {"themeName": "テーマ名"}}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。'
+
+    // メイン会話の場合のみテーマ提案指示を追加
+    const themeSuggestionInstruction = themeId ? '' : `
+※ suggestedTheme は以下の条件をすべて満たす場合のみ含めてください（通常は省略）：
+  - ユーザーが特定のテーマ（旅行計画、料理、勉強、仕事の相談など）について深く掘り下げている
+  - そのテーマで継続的に会話する価値がある（一問一答で終わる質問には不要）
+  - テーマ名は短く具体的に（例: "京都旅行の計画", "英語学習", "転職の相談"）
+  - 同じテーマを繰り返し提案しない（一度提案したら次のターンでは提案しない）`
+
+    const systemPrompt = buildSystemPrompt(this.userProfile) + jsonInstruction + themeSuggestionInstruction
 
     try {
       const res = await fetch(`${apiBaseUrl}/llm/chat`, {

@@ -7,6 +7,7 @@ import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
 import { syncService } from './services/syncService'
 import { llmClient } from './services/llmClient'
+import { themeService } from './services/themeService'
 import { logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
 import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
@@ -167,6 +168,21 @@ function App() {
       model: { currentModelId: modelConfig.modelPath },
     })
   }, [updateConfig])
+
+  // テーマ提案から作成ハンドラー
+  const handleCreateThemeFromSuggestion = useCallback(async (themeName: string) => {
+    try {
+      const result = await themeService.createTheme(themeName)
+      const store = useThemeStore.getState()
+      // テーマ一覧を更新
+      const themes = await themeService.listThemes()
+      store.setThemes(themes)
+      // 作成したテーマに遷移
+      navigate(`/themes/${result.themeId}`)
+    } catch (error) {
+      console.error('[App] テーマ作成エラー:', error)
+    }
+  }, [navigate])
 
   // エラークリアハンドラー
   const handleDismissError = useCallback(() => {
@@ -361,6 +377,7 @@ function App() {
                     hasEarlierMessages={hasEarlierMessages}
                     isLoadingEarlier={isLoadingEarlier}
                     onLoadEarlier={handleLoadEarlier}
+                    onCreateTheme={handleCreateThemeFromSuggestion}
                   />
                 </div>
               </div>

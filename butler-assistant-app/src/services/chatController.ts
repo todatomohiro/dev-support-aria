@@ -68,6 +68,7 @@ class ChatControllerImpl {
         motion: structuredResponse.motion,
         rawResponse: JSON.stringify(structuredResponse, null, 2),
         mapData: structuredResponse.mapData,
+        suggestedTheme: structuredResponse.suggestedTheme,
       }
 
       // ストアにアシスタントメッセージを追加
