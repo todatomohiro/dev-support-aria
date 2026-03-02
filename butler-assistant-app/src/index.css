@@ -27,3 +27,175 @@ body {
     background-color: #ffffff;
   }
 }
+
+/* Markdown コンテンツスタイル */
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content p {
+  margin: 0.25em 0;
+}
+
+.markdown-content p:first-child {
+  margin-top: 0;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* 見出し */
+.markdown-content h1 {
+  font-size: 1.25em;
+  font-weight: 700;
+  margin: 0.75em 0 0.25em;
+}
+
+.markdown-content h2 {
+  font-size: 1.125em;
+  font-weight: 700;
+  margin: 0.75em 0 0.25em;
+}
+
+.markdown-content h3 {
+  font-size: 1em;
+  font-weight: 700;
+  margin: 0.5em 0 0.25em;
+}
+
+/* リスト */
+.markdown-content ul {
+  list-style-type: disc;
+  padding-left: 1.5em;
+  margin: 0.25em 0;
+}
+
+.markdown-content ol {
+  list-style-type: decimal;
+  padding-left: 1.5em;
+  margin: 0.25em 0;
+}
+
+.markdown-content li {
+  margin: 0.125em 0;
+}
+
+.markdown-content li > ul,
+.markdown-content li > ol {
+  margin: 0;
+}
+
+/* テーブル */
+.markdown-content table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.875em;
+  width: 100%;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid #d1d5db;
+  padding: 0.375em 0.625em;
+  text-align: left;
+}
+
+.markdown-content th {
+  font-weight: 600;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* インラインコード */
+.markdown-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875em;
+  background-color: rgba(0, 0, 0, 0.06);
+  padding: 0.125em 0.375em;
+  border-radius: 0.25em;
+}
+
+/* コードブロック */
+.markdown-content pre {
+  margin: 0.5em 0;
+  padding: 0.75em;
+  border-radius: 0.375em;
+  background-color: rgba(0, 0, 0, 0.06);
+  overflow-x: auto;
+}
+
+.markdown-content pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+/* 太字・斜体 */
+.markdown-content strong {
+  font-weight: 700;
+}
+
+.markdown-content em {
+  font-style: italic;
+}
+
+/* リンク */
+.markdown-content a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.markdown-content a:hover {
+  color: #1d4ed8;
+}
+
+/* 引用 */
+.markdown-content blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 0.75em;
+  margin: 0.5em 0;
+  color: #6b7280;
+}
+
+/* 区切り線 */
+.markdown-content hr {
+  border: none;
+  border-top: 1px solid #d1d5db;
+  margin: 0.75em 0;
+}
+
+/* ダークモード */
+@media (prefers-color-scheme: dark) {
+  .markdown-content th,
+  .markdown-content td {
+    border-color: #4b5563;
+  }
+
+  .markdown-content th {
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .markdown-content code {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .markdown-content pre {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .markdown-content a {
+    color: #60a5fa;
+  }
+
+  .markdown-content a:hover {
+    color: #93bbfd;
+  }
+
+  .markdown-content blockquote {
+    border-left-color: #4b5563;
+    color: #9ca3af;
+  }
+
+  .markdown-content hr {
+    border-top-color: #4b5563;
+  }
+}

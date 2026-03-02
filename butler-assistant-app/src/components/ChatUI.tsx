@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { Message } from '@/types'
 import { ttsService } from '@/services/ttsService'
 import { formatTime } from '@/utils'
@@ -449,7 +451,24 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
             : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
         }`}
       >
-        <p className="whitespace-pre-wrap text-sm sm:text-base">{linkifyContent(message.content, isUser)}</p>
+        {isUser ? (
+          <p className="whitespace-pre-wrap text-sm sm:text-base">{linkifyContent(message.content, true)}</p>
+        ) : (
+          <div className="markdown-content text-sm sm:text-base">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ href, children }) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer">
+                    {children}
+                  </a>
+                ),
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        )}
         {message.mapData && (
           <Suspense fallback={<div className="w-full h-48 rounded-md bg-gray-200 dark:bg-gray-700 animate-pulse mt-2" />}>
             <MapView mapData={message.mapData} />
