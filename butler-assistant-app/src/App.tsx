@@ -67,7 +67,7 @@ function App() {
       ? 'トピック'
       : location.pathname.startsWith('/groups')
         ? 'グループチャット'
-        : 'メイン会話'
+        : 'AIチャット'
 
   // 初期化処理
   useEffect(() => {
