@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, GroupChatScreen } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
 import { syncService } from './services/syncService'
 import { llmClient } from './services/llmClient'
-import { currentPlatform, logPlatformInfo } from './platform'
+import { logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
 import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
 import { useAuthStore } from './auth'
+import { useThemeStore } from './stores/themeStore'
 import { ttsService } from './services/ttsService'
 import { PollyPoc, SttPoc } from './poc'
 import './App.css'
@@ -19,7 +20,6 @@ function App() {
   const navigate = useNavigate()
   const location = useLocation()
   const isPocPage = location.pathname.startsWith('/poc')
-  // const isGroupChatPage = location.pathname.startsWith('/groups')
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
@@ -48,6 +48,17 @@ function App() {
   const setError = useAppStore((state) => state.setError)
   const setCurrentExpression = useAppStore((state) => state.setCurrentExpression)
   const expressionVersion = useAppStore((state) => state.expressionVersion)
+
+  // Theme store
+  const activeThemeId = useThemeStore((s) => s.activeThemeId)
+  const themeThemes = useThemeStore((s) => s.themes)
+
+  // 現在のセッション名を判定
+  const currentSessionName = location.pathname.startsWith('/themes') && activeThemeId
+    ? themeThemes.find(t => t.themeId === activeThemeId)?.themeName ?? 'テーマ別ノート'
+    : location.pathname.startsWith('/groups')
+      ? 'グループチャット'
+      : 'AI Assistant'
 
   // 初期化処理
   useEffect(() => {
@@ -217,20 +228,11 @@ function App() {
 
   return (
     <AuthProvider>
-    <div className="h-screen flex flex-col bg-gray-100 dark:bg-gray-900 pb-[env(safe-area-inset-bottom)]">
-      {/* ヘッダー */}
-      <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 shrink-0 pt-[env(safe-area-inset-top)]">
-        <div className="flex items-center justify-between px-2 sm:px-4 py-2 sm:py-3 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))]">
-          <div className="flex items-center gap-1 sm:gap-2">
-            <h1 className="text-base sm:text-xl font-semibold text-gray-900 dark:text-gray-100">
-              AI Assistant
-            </h1>
-            <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded hidden sm:inline">
-              {currentPlatform}
-            </span>
-          </div>
-
-          <nav className="flex items-center gap-1 sm:gap-2">
+      <AppLayout
+        currentSessionName={currentSessionName}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        headerRight={
+          <>
             {isAuthConfigured() && authStatus !== 'authenticated' && authStatus !== 'loading' && (
               <button
                 onClick={() => setIsAuthModalOpen(true)}
@@ -279,9 +281,10 @@ function App() {
                     </svg>
                   </button>
                 )}
+                {/* 設定ボタン（モバイルのみ — PC はサイドバーに設定あり） */}
                 <button
                   onClick={() => setIsSettingsOpen(true)}
-                  className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
+                  className="md:hidden p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
                   title="設定"
                   data-testid="settings-button"
                 >
@@ -302,18 +305,17 @@ function App() {
                 </button>
               </>
             )}
-          </nav>
-        </div>
-      </header>
-
-      {/* メインコンテンツ */}
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
+          </>
+        }
+      >
         <Routes>
           <Route path="/oauth/callback" element={<OAuthCallback />} />
           <Route path="/poc/polly" element={<PollyPoc />} />
           <Route path="/poc/stt" element={<SttPoc />} />
           <Route path="/groups/:groupId" element={<GroupChatScreen />} />
           <Route path="/groups" element={<GroupChatScreen />} />
+          <Route path="/themes/:themeId" element={<ThemeScreen />} />
+          <Route path="/themes" element={<ThemeScreen />} />
           <Route path="*" element={
             requiresAuth ? (
               /* 未認証時: ログイン促進画面 */
@@ -339,7 +341,7 @@ function App() {
               </div>
             ) : (
               /* 認証済み or ゲストモード: 通常コンテンツ */
-              <>
+              <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                 {/* Live2Dキャラクター表示エリア */}
                 <div className="h-[25vh] md:h-auto md:w-1/3 md:min-w-[280px] md:max-w-[400px] bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0 overflow-hidden">
                   <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -381,11 +383,11 @@ function App() {
                     onLoadEarlier={handleLoadEarlier}
                   />
                 </div>
-              </>
+              </div>
             )
           } />
         </Routes>
-      </main>
+      </AppLayout>
 
       {/* 設定モーダル */}
       <Settings
@@ -447,7 +449,6 @@ function App() {
         onDismiss={handleDismissError}
         autoDismissDelay={5000}
       />
-    </div>
     </AuthProvider>
   )
 }

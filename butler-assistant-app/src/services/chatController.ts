@@ -4,6 +4,7 @@ import { motionController } from './motionController'
 import { syncService } from './syncService'
 import { ttsService } from './ttsService'
 import { useAppStore } from '@/stores/appStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { getIdToken } from '@/auth'
 import type { Message, StructuredResponse, AppError } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
@@ -285,6 +286,105 @@ class ChatControllerImpl {
       error instanceof RateLimitError ||
       error instanceof ParseError
     )
+  }
+
+  /**
+   * テーマセッションにメッセージを送信し、レスポンスを処理
+   */
+  async sendThemeMessage(content: string, themeId: string, imageBase64?: string): Promise<void> {
+    const store = useThemeStore.getState()
+
+    // 空メッセージはスキップ
+    if (!content.trim()) {
+      return
+    }
+
+    // ユーザーメッセージを作成
+    const userMessage: Message = {
+      id: uuidv4(),
+      role: 'user',
+      content: content.trim(),
+      timestamp: Date.now(),
+    }
+
+    // ストアにユーザーメッセージを追加
+    store.addMessage(userMessage)
+
+    // ローディング状態を開始
+    store.setSending(true)
+
+    try {
+      // LLMにメッセージを送信（themeId でテーマコンテキスト注入）
+      const structuredResponse = await measurePerformanceAsync(
+        'LLM送信→テーマレスポンス受信',
+        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, themeId)
+      )
+
+      // アシスタントメッセージを作成
+      const assistantMessage: Message = {
+        id: uuidv4(),
+        role: 'assistant',
+        content: structuredResponse.text ?? '',
+        timestamp: Date.now(),
+        motion: structuredResponse.motion,
+        rawResponse: JSON.stringify(structuredResponse, null, 2),
+        mapData: structuredResponse.mapData,
+      }
+
+      // ストアにアシスタントメッセージを追加
+      store.addMessage(assistantMessage)
+
+      // TTS 自動再生（fire-and-forget）
+      const appStore = useAppStore.getState()
+      if (appStore.config.ui.ttsEnabled) {
+        ttsService.synthesizeAndPlay(assistantMessage.content)
+      }
+
+      // メモリイベント保存（fire-and-forget）
+      this.storeMemoryEvent(content.trim(), structuredResponse.text)
+
+      // モーションと表情を再生
+      await this.playMotionAndExpression(structuredResponse)
+
+      // エラーをクリア
+      store.setError(null)
+    } catch (error) {
+      // エラーハンドリング
+      await this.handleThemeError(error, store)
+    } finally {
+      // ローディング状態を終了
+      store.setSending(false)
+    }
+  }
+
+  /**
+   * テーマセッションのエラーを処理
+   */
+  private async handleThemeError(error: unknown, store: { addMessage: (message: Message) => void; setError: (error: string | null) => void }): Promise<void> {
+    console.error('[ChatController] Theme Error:', error)
+
+    // エラーに対応するモーションを再生
+    const motionTag = this.getErrorMotion(error)
+    const appStore = useAppStore.getState()
+    appStore.enqueueMotion(motionTag)
+    motionController.playMotion(motionTag)
+    appStore.setCurrentMotion(motionTag)
+
+    // エラーメッセージをアシスタントメッセージとして追加
+    const errorMessage = this.getErrorMessage(error)
+    const assistantMessage: Message = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: errorMessage,
+      timestamp: Date.now(),
+      motion: motionTag,
+    }
+    store.addMessage(assistantMessage)
+
+    // TTS 自動再生（fire-and-forget）
+    if (appStore.config.ui.ttsEnabled) {
+      ttsService.synthesizeAndPlay(assistantMessage.content)
+    }
   }
 
   /**

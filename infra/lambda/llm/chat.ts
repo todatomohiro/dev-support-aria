@@ -97,19 +97,22 @@ function formatMemoryContext(records: string[]): string {
 /**
  * DynamoDB からセッションコンテキスト（要約 + 直近メッセージ + チェックポイント）を取得
  */
-async function getSessionContext(userId: string, sessionId: string): Promise<{
+async function getSessionContext(userId: string, sessionId: string, overrides?: { msgPK?: string; sessionSK?: string }): Promise<{
   summary: string
   recentMessages: Array<{ role: string; content: string; createdAt?: string }>
   turnsSinceSummary: number
   checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }>
   sessionCreatedAt: string
 }> {
+  const msgPK = overrides?.msgPK ?? `USER#${userId}#SESSION#${sessionId}`
+  const sessionSK = overrides?.sessionSK ?? `SESSION#${sessionId}`
+
   // セッションレコード（要約）を取得
   const sessionResult = await dynamo.send(new GetItemCommand({
     TableName: TABLE_NAME,
     Key: {
       PK: { S: `USER#${userId}` },
-      SK: { S: `SESSION#${sessionId}` },
+      SK: { S: sessionSK },
     },
   }))
 
@@ -123,7 +126,7 @@ async function getSessionContext(userId: string, sessionId: string): Promise<{
       TableName: TABLE_NAME,
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
       ExpressionAttributeValues: {
-        ':pk': { S: `USER#${userId}#SESSION#${sessionId}` },
+        ':pk': { S: msgPK },
         ':skPrefix': { S: 'MSG#' },
       },
       ScanIndexForward: false,
@@ -133,7 +136,7 @@ async function getSessionContext(userId: string, sessionId: string): Promise<{
       TableName: TABLE_NAME,
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
       ExpressionAttributeValues: {
-        ':pk': { S: `USER#${userId}#SESSION#${sessionId}` },
+        ':pk': { S: msgPK },
         ':skPrefix': { S: 'SUMMARY_CP#' },
       },
       ScanIndexForward: true,
@@ -165,10 +168,13 @@ async function updateSessionAndMaybeSummarize(
   sessionId: string,
   turnsSinceSummary: number,
   userMessage: string,
-  assistantMessage: string
+  assistantMessage: string,
+  overrides?: { msgPK?: string; sessionSK?: string; themeId?: string }
 ): Promise<void> {
   const now = new Date().toISOString()
   const ttlExpiry = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+  const msgPK = overrides?.msgPK ?? `USER#${userId}#SESSION#${sessionId}`
+  const sessionSK = overrides?.sessionSK ?? `SESSION#${sessionId}`
 
   // メッセージを DynamoDB に保存（user + assistant）
   const msgTimestamp = now
@@ -180,7 +186,7 @@ async function updateSessionAndMaybeSummarize(
     dynamo.send(new UpdateItemCommand({
       TableName: TABLE_NAME,
       Key: {
-        PK: { S: `USER#${userId}#SESSION#${sessionId}` },
+        PK: { S: msgPK },
         SK: { S: userMsgSK },
       },
       UpdateExpression: 'SET #role = :role, #content = :content, #ts = :ts, #ttl = :ttl',
@@ -200,7 +206,7 @@ async function updateSessionAndMaybeSummarize(
     dynamo.send(new UpdateItemCommand({
       TableName: TABLE_NAME,
       Key: {
-        PK: { S: `USER#${userId}#SESSION#${sessionId}` },
+        PK: { S: msgPK },
         SK: { S: assistantMsgSK },
       },
       UpdateExpression: 'SET #role = :role, #content = :content, #ts = :ts, #ttl = :ttl',
@@ -226,7 +232,7 @@ async function updateSessionAndMaybeSummarize(
     TableName: TABLE_NAME,
     Key: {
       PK: { S: `USER#${userId}` },
-      SK: { S: `SESSION#${sessionId}` },
+      SK: { S: sessionSK },
     },
     UpdateExpression: 'SET turnsSinceSummary = :tss, updatedAt = :now, ttlExpiry = :ttl, createdAt = if_not_exists(createdAt, :now) ADD totalTurns :one',
     ExpressionAttributeValues: {
@@ -251,13 +257,32 @@ async function updateSessionAndMaybeSummarize(
     }
   }
 
+  // テーマセッションの updatedAt を更新
+  if (overrides?.themeId) {
+    try {
+      await dynamo.send(new UpdateItemCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          PK: { S: `USER#${userId}` },
+          SK: { S: `THEME_SESSION#${overrides.themeId}` },
+        },
+        UpdateExpression: 'SET updatedAt = :now',
+        ExpressionAttributeValues: {
+          ':now': { S: now },
+        },
+      }))
+    } catch (error) {
+      console.warn('[LLM] テーマセッション updatedAt 更新エラー（スキップ）:', error)
+    }
+  }
+
   // ACTIVE_SESSION レコードを upsert（セッション終了検出用）
   try {
     await dynamo.send(new UpdateItemCommand({
       TableName: TABLE_NAME,
       Key: {
         PK: { S: 'ACTIVE_SESSION' },
-        SK: { S: `${userId}#${sessionId}` },
+        SK: { S: overrides?.themeId ? `${userId}#theme:${overrides.themeId}` : `${userId}#${sessionId}` },
       },
       UpdateExpression: 'SET userId = :uid, sessionId = :sid, updatedAt = :now, ttlExpiry = :ttl',
       ExpressionAttributeValues: {
@@ -459,6 +484,28 @@ function getJSTDateLabel(dateKey: string, todayKey: string, yesterdayKey: string
 }
 
 /**
+ * DynamoDB からテーマセッション情報を取得
+ */
+async function getThemeContext(userId: string, themeId: string): Promise<{ themeName: string } | null> {
+  try {
+    const result = await dynamo.send(new GetItemCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        PK: { S: `USER#${userId}` },
+        SK: { S: `THEME_SESSION#${themeId}` },
+      },
+    }))
+    if (!result.Item) return null
+    return {
+      themeName: result.Item.themeName?.S ?? '',
+    }
+  } catch (error) {
+    console.warn('[LLM] テーマコンテキスト取得エラー（スキップ）:', error)
+    return null
+  }
+}
+
+/**
  * システムプロンプトを構築（永久記憶 + メモリ + セッション要約 + チェックポイントを注入）
  */
 function buildEnhancedSystemPrompt(
@@ -468,7 +515,8 @@ function buildEnhancedSystemPrompt(
   sessionSummary: string,
   checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }> = [],
   sessionDate?: string,
-  pastSessions?: PastSessionGroup[]
+  pastSessions?: PastSessionGroup[],
+  themeContext?: { themeName: string }
 ): string {
   let enhanced = systemPrompt
 
@@ -490,6 +538,11 @@ function buildEnhancedSystemPrompt(
       return `【${g.date}（${g.label}）】\n${lines.join('\n')}`
     })
     enhanced += `\n\n<past_sessions>\n過去のセッション要約：\n\n${groups.join('\n\n')}\n</past_sessions>`
+  }
+
+  // テーマコンテキスト
+  if (themeContext) {
+    enhanced += `\n\n<theme_context>\nテーマ: ${themeContext.themeName}\nこのセッションでは「${themeContext.themeName}」について会話しています。\nテーマに関連する回答を心がけてください。\n</theme_context>`
   }
 
   // セッション要約 + チェックポイント（短期記憶）
@@ -533,6 +586,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let systemPrompt: string
   let imageBase64: string | undefined
   let sessionId: string | undefined
+  let themeId: string | undefined
 
   try {
     const body = JSON.parse(event.body)
@@ -541,6 +595,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     systemPrompt = body.systemPrompt ?? ''
     imageBase64 = typeof body.imageBase64 === 'string' ? body.imageBase64 : undefined
     sessionId = typeof body.sessionId === 'string' ? body.sessionId : undefined
+    themeId = typeof body.themeId === 'string' ? body.themeId : undefined
 
     if (!message || typeof message !== 'string') {
       return response(400, { error: 'message is required' })
@@ -573,10 +628,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let sessionSummary = ''
 
   if (sessionId) {
+    // テーマセッションかメインセッションかを判定
+    const msgPK = themeId
+      ? `USER#${userId}#THEME#${themeId}`
+      : `USER#${userId}#SESSION#${sessionId}`
+    const sessionRecordSK = themeId
+      ? `THEME_SESSION#${themeId}`
+      : `SESSION#${sessionId}`
+
+    console.log(`[LLM] セッションモード: sessionId=${sessionId}${themeId ? `, themeId=${themeId}` : ''}`)
+
+    // テーマコンテキストを取得（themeId がある場合のみ）
+    const themeContext = themeId ? await getThemeContext(userId, themeId) : null
+
     // 新フロー: DynamoDB からセッションコンテキストを構築（並列取得）
-    console.log(`[LLM] セッションモード: sessionId=${sessionId}`)
     const [sessionContext, pastSessions] = await Promise.all([
-      getSessionContext(userId, sessionId),
+      getSessionContext(userId, sessionId, { msgPK, sessionSK: sessionRecordSK }),
       getRecentSessionSummaries(userId, sessionId),
     ])
     sessionTurnsSinceSummary = sessionContext.turnsSinceSummary
@@ -591,7 +658,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       sessionSummary,
       sessionContext.checkpoints,
       sessionDate,
-      pastSessions
+      pastSessions,
+      themeContext ?? undefined
     )
 
     if (sessionContext.checkpoints.length > 0) {
@@ -703,12 +771,16 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       // セッションモードの場合: メッセージ保存 + 要約トリガー
       if (sessionId) {
         try {
+          const sessionOverrides = themeId
+            ? { msgPK: `USER#${userId}#THEME#${themeId}`, sessionSK: `THEME_SESSION#${themeId}`, themeId }
+            : undefined
           await updateSessionAndMaybeSummarize(
             userId,
             sessionId,
             sessionTurnsSinceSummary,
             message,
-            content
+            content,
+            sessionOverrides
           )
         } catch (error) {
           console.warn('[LLM] セッション更新エラー（スキップ）:', error)

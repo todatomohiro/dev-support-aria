@@ -165,6 +165,25 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-groups-members',
     })
 
+    // ── Themes Lambda 関数 ──
+    const themesCreateFn = new lambdaNode.NodejsFunction(this, 'ThemesCreateFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'themes', 'create.ts'),
+      functionName: 'butler-themes-create',
+    })
+
+    const themesListFn = new lambdaNode.NodejsFunction(this, 'ThemesListFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'themes', 'list.ts'),
+      functionName: 'butler-themes-list',
+    })
+
+    const themesDeleteFn = new lambdaNode.NodejsFunction(this, 'ThemesDeleteFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'themes', 'delete.ts'),
+      functionName: 'butler-themes-delete',
+    })
+
     // ── Conversations Lambda 関数（/groups ルートで利用）──
     const conversationsListFn = new lambdaNode.NodejsFunction(this, 'ConversationsListFn', {
       ...lambdaDefaults,
@@ -528,6 +547,11 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadWriteData(groupsLeaveFn)
     table.grantReadData(groupsMembersFn)
 
+    // Themes — DynamoDB 権限
+    table.grantReadWriteData(themesCreateFn)
+    table.grantReadData(themesListFn)
+    table.grantReadWriteData(themesDeleteFn)
+
     // Conversations（/groups ルート）— DynamoDB 権限
     table.grantReadData(conversationsListFn)
     table.grantReadData(conversationsMessagesListFn)
@@ -639,6 +663,15 @@ export class ButlerStack extends cdk.Stack {
     // /groups/{id}/members/me
     const groupMembersMeResource = groupMembersResource.addResource('me')
     groupMembersMeResource.addMethod('DELETE', new apigateway.LambdaIntegration(groupsLeaveFn), authMethodOptions)
+
+    // /themes
+    const themesResource = api.root.addResource('themes')
+    themesResource.addMethod('GET', new apigateway.LambdaIntegration(themesListFn), authMethodOptions)
+    themesResource.addMethod('POST', new apigateway.LambdaIntegration(themesCreateFn), authMethodOptions)
+
+    // /themes/{themeId}
+    const themeByIdResource = themesResource.addResource('{themeId}')
+    themeByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(themesDeleteFn), authMethodOptions)
 
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {

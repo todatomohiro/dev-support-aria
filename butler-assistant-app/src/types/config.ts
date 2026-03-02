@@ -37,6 +37,16 @@ export interface AppConfig {
 }
 
 /**
+ * テーマセッション
+ */
+export interface ThemeSession {
+  themeId: string
+  themeName: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
  * デフォルトのUI設定
  */
 export const DEFAULT_UI_CONFIG: UIConfig = {
