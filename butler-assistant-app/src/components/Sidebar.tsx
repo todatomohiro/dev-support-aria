@@ -12,6 +12,7 @@ interface SidebarProps {
 export function Sidebar({ activeTab, onOpenSettings }: SidebarProps) {
   const navigate = useNavigate()
   const themes = useThemeStore((s) => s.themes)
+  const activeThemeId = useThemeStore((s) => s.activeThemeId)
 
   return (
     <div className="h-full w-[260px] flex flex-col bg-white dark:bg-gray-800" data-testid="sidebar">
@@ -48,13 +49,15 @@ export function Sidebar({ activeTab, onOpenSettings }: SidebarProps) {
 
         {/* テーマ一覧（直近5件） */}
         <div className="max-h-40 overflow-y-auto">
-          {themes.slice(0, 5).map((theme) => (
+          {themes.slice(0, 5).map((theme) => {
+            const isActive = activeTab === 'themes' && activeThemeId === theme.themeId
+            return (
             <button
               key={theme.themeId}
               onClick={() => navigate(`/themes/${theme.themeId}`)}
               className={`w-full flex items-center gap-2 px-4 py-2 text-left text-sm transition-colors ${
-                activeTab === 'themes'
-                  ? 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                isActive
+                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
               }`}
             >
@@ -63,7 +66,8 @@ export function Sidebar({ activeTab, onOpenSettings }: SidebarProps) {
               </svg>
               <span className="truncate">{theme.themeName}</span>
             </button>
-          ))}
+            )
+          })}
         </div>
       </div>
 
