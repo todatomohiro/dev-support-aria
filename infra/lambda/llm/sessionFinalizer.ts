@@ -18,6 +18,7 @@ const SESSION_TIMEOUT_MS = 30 * 60 * 1000
  *
  * ACTIVE_SESSION レコードを走査し、30分以上非アクティブなセッションに対して
  * extractFacts Lambda を非同期起動する。
+ * テーマセッション（SK に `theme:` を含む）にも対応。
  */
 export const handler: Handler = async () => {
   console.log('[SessionFinalizer] 起動')
@@ -55,15 +56,17 @@ export const handler: Handler = async () => {
 
     const userId = item.userId?.S
     const sessionId = item.sessionId?.S
+    const themeId = item.themeId?.S
     if (!userId || !sessionId) continue
 
-    console.log(`[SessionFinalizer] セッション終了検出: userId=${userId}, sessionId=${sessionId}, elapsed=${Math.round(elapsed / 60000)}分`)
+    const sessionType = themeId ? `themeId=${themeId}` : `sessionId=${sessionId}`
+    console.log(`[SessionFinalizer] セッション終了検出: userId=${userId}, ${sessionType}, elapsed=${Math.round(elapsed / 60000)}分`)
 
     try {
       await lambdaClient.send(new InvokeCommand({
         FunctionName: EXTRACT_FACTS_FUNCTION_NAME,
         InvocationType: 'Event',
-        Payload: Buffer.from(JSON.stringify({ userId, sessionId })),
+        Payload: Buffer.from(JSON.stringify({ userId, sessionId, ...(themeId ? { themeId } : {}) })),
       }))
       processedCount++
     } catch (error) {

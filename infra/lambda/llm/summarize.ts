@@ -33,23 +33,35 @@ const SEGMENT_SUMMARY_PROMPT = `あなたは会話要約の専門家です。以
 interface SummarizeEvent {
   userId: string
   sessionId: string
+  /** テーマセッションの場合に設定される */
+  themeId?: string
 }
 
 /**
  * 会話要約 Lambda — Haiku 4.5 で会話の要約を生成し、DynamoDB に保存
  *
  * chat Lambda から InvocationType: 'Event' で非同期起動される。
+ * themeId が指定されている場合はテーマセッションの名前空間を使用する。
  */
 export const handler: Handler<SummarizeEvent, void> = async (event) => {
-  const { userId, sessionId } = event
-  console.log(`[Summarize] userId=${userId}, sessionId=${sessionId}`)
+  const { userId, sessionId, themeId } = event
+  const sessionType = themeId ? `themeId=${themeId}` : `sessionId=${sessionId}`
+  console.log(`[Summarize] userId=${userId}, ${sessionType}`)
+
+  // セッション種別に応じた PK/SK を決定
+  const sessionSK = themeId
+    ? `THEME_SESSION#${themeId}`
+    : `SESSION#${sessionId}`
+  const messagePK = themeId
+    ? `USER#${userId}#THEME#${themeId}`
+    : `USER#${userId}#SESSION#${sessionId}`
 
   // 既存セッションレコード（前回の要約）を取得
   const sessionResult = await dynamo.send(new GetItemCommand({
     TableName: TABLE_NAME,
     Key: {
       PK: { S: `USER#${userId}` },
-      SK: { S: `SESSION#${sessionId}` },
+      SK: { S: sessionSK },
     },
   }))
 
@@ -64,12 +76,12 @@ export const handler: Handler<SummarizeEvent, void> = async (event) => {
       : 'PK = :pk AND begins_with(SK, :skPrefix)',
     ExpressionAttributeValues: lastSummarizedAt
       ? {
-        ':pk': { S: `USER#${userId}#SESSION#${sessionId}` },
+        ':pk': { S: messagePK },
         ':skStart': { S: `MSG#${lastSummarizedAt}` },
         ':skEnd': { S: 'MSG#~' },
       }
       : {
-        ':pk': { S: `USER#${userId}#SESSION#${sessionId}` },
+        ':pk': { S: messagePK },
         ':skPrefix': { S: 'MSG#' },
       },
     ScanIndexForward: true,
@@ -153,13 +165,16 @@ export const handler: Handler<SummarizeEvent, void> = async (event) => {
     TableName: TABLE_NAME,
     Item: {
       PK: { S: `USER#${userId}` },
-      SK: { S: `SESSION#${sessionId}` },
+      SK: { S: sessionSK },
       summary: { S: summaryText },
       turnsSinceSummary: { N: '0' },
       lastSummarizedAt: { S: now },
       updatedAt: { S: now },
       ...(sessionResult.Item?.createdAt ? { createdAt: sessionResult.Item.createdAt } : { createdAt: { S: now } }),
       ...(sessionResult.Item?.totalTurns ? { totalTurns: sessionResult.Item.totalTurns } : {}),
+      // テーマセッションの場合は themeName と themeId を保持
+      ...(sessionResult.Item?.themeName ? { themeName: sessionResult.Item.themeName } : {}),
+      ...(sessionResult.Item?.themeId ? { themeId: sessionResult.Item.themeId } : {}),
       ttlExpiry: { N: String(ttlExpiry) },
     },
   }))
@@ -169,7 +184,7 @@ export const handler: Handler<SummarizeEvent, void> = async (event) => {
     await dynamo.send(new PutItemCommand({
       TableName: TABLE_NAME,
       Item: {
-        PK: { S: `USER#${userId}#SESSION#${sessionId}` },
+        PK: { S: messagePK },
         SK: { S: `SUMMARY_CP#${now}` },
         summary: { S: segmentSummary },
         keywords: { L: segmentKeywords.map((k) => ({ S: k })) },

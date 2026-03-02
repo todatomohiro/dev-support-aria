@@ -50,23 +50,32 @@ const FACT_EXTRACTION_PROMPT = `あなたはユーザープロフィール抽出
 interface ExtractFactsEvent {
   userId: string
   sessionId: string
+  /** テーマセッションの場合に設定される */
+  themeId?: string
 }
 
 /**
  * 事実抽出 Lambda — セッション終了時に会話から永久事実を抽出して保存
  *
  * sessionFinalizer Lambda から InvocationType: 'Event' で非同期起動される。
+ * themeId が指定されている場合はテーマセッションの名前空間からメッセージを取得する。
  */
 export const handler: Handler<ExtractFactsEvent, void> = async (event) => {
-  const { userId, sessionId } = event
-  console.log(`[ExtractFacts] userId=${userId}, sessionId=${sessionId}`)
+  const { userId, sessionId, themeId } = event
+  const sessionType = themeId ? `themeId=${themeId}` : `sessionId=${sessionId}`
+  console.log(`[ExtractFacts] userId=${userId}, ${sessionType}`)
+
+  // メッセージの PK をセッション種別に応じて決定
+  const messagePK = themeId
+    ? `USER#${userId}#THEME#${themeId}`
+    : `USER#${userId}#SESSION#${sessionId}`
 
   // 1. セッションの全メッセージを取得
   const messagesResult = await dynamo.send(new QueryCommand({
     TableName: TABLE_NAME,
     KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
     ExpressionAttributeValues: {
-      ':pk': { S: `USER#${userId}#SESSION#${sessionId}` },
+      ':pk': { S: messagePK },
       ':skPrefix': { S: 'MSG#' },
     },
     ScanIndexForward: true,
@@ -79,7 +88,7 @@ export const handler: Handler<ExtractFactsEvent, void> = async (event) => {
 
   if (messages.length === 0) {
     console.log('[ExtractFacts] メッセージなし — スキップ')
-    await deleteActiveSession(userId, sessionId)
+    await deleteActiveSession(userId, sessionId, themeId)
     return
   }
 
@@ -127,7 +136,7 @@ export const handler: Handler<ExtractFactsEvent, void> = async (event) => {
 
   if (!responseText || responseText.trim() === 'なし') {
     console.log('[ExtractFacts] 新規事実なし')
-    await deleteActiveSession(userId, sessionId)
+    await deleteActiveSession(userId, sessionId, themeId)
     return
   }
 
@@ -139,7 +148,7 @@ export const handler: Handler<ExtractFactsEvent, void> = async (event) => {
 
   if (newFacts.length === 0) {
     console.log('[ExtractFacts] パース後の新規事実なし')
-    await deleteActiveSession(userId, sessionId)
+    await deleteActiveSession(userId, sessionId, themeId)
     return
   }
 
@@ -148,7 +157,7 @@ export const handler: Handler<ExtractFactsEvent, void> = async (event) => {
   // 6. 既存事実とマージ（上限50個、古いものから押し出し）
   const mergedFacts = [...existingFacts, ...newFacts].slice(-MAX_FACTS)
 
-  // 7. PERMANENT_FACTS レコードを更新
+  // 7. PERMANENT_FACTS レコードを更新（メインと共有）
   const now = new Date().toISOString()
   await dynamo.send(new UpdateItemCommand({
     TableName: TABLE_NAME,
@@ -166,22 +175,23 @@ export const handler: Handler<ExtractFactsEvent, void> = async (event) => {
   console.log(`[ExtractFacts] 永久記憶更新完了 (計 ${mergedFacts.length} 件)`)
 
   // 8. ACTIVE_SESSION レコードを削除
-  await deleteActiveSession(userId, sessionId)
+  await deleteActiveSession(userId, sessionId, themeId)
 }
 
 /**
  * ACTIVE_SESSION レコードを削除
  */
-async function deleteActiveSession(userId: string, sessionId: string): Promise<void> {
+async function deleteActiveSession(userId: string, sessionId: string, themeId?: string): Promise<void> {
+  const sk = themeId ? `${userId}#theme:${themeId}` : `${userId}#${sessionId}`
   try {
     await dynamo.send(new DeleteItemCommand({
       TableName: TABLE_NAME,
       Key: {
         PK: { S: 'ACTIVE_SESSION' },
-        SK: { S: `${userId}#${sessionId}` },
+        SK: { S: sk },
       },
     }))
-    console.log(`[ExtractFacts] ACTIVE_SESSION 削除完了: ${userId}#${sessionId}`)
+    console.log(`[ExtractFacts] ACTIVE_SESSION 削除完了: ${sk}`)
   } catch (error) {
     console.warn('[ExtractFacts] ACTIVE_SESSION 削除エラー:', error)
   }

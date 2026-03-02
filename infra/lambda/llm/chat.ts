@@ -250,7 +250,7 @@ async function updateSessionAndMaybeSummarize(
       await lambdaClient.send(new InvokeCommand({
         FunctionName: SUMMARIZE_FUNCTION_NAME,
         InvocationType: 'Event',
-        Payload: Buffer.from(JSON.stringify({ userId, sessionId })),
+        Payload: Buffer.from(JSON.stringify({ userId, sessionId, ...(overrides?.themeId ? { themeId: overrides.themeId } : {}) })),
       }))
     } catch (error) {
       console.warn('[LLM] 要約 Lambda 起動エラー（スキップ）:', error)
@@ -284,12 +284,13 @@ async function updateSessionAndMaybeSummarize(
         PK: { S: 'ACTIVE_SESSION' },
         SK: { S: overrides?.themeId ? `${userId}#theme:${overrides.themeId}` : `${userId}#${sessionId}` },
       },
-      UpdateExpression: 'SET userId = :uid, sessionId = :sid, updatedAt = :now, ttlExpiry = :ttl',
+      UpdateExpression: `SET userId = :uid, sessionId = :sid, updatedAt = :now, ttlExpiry = :ttl${overrides?.themeId ? ', themeId = :tid' : ''}`,
       ExpressionAttributeValues: {
         ':uid': { S: userId },
         ':sid': { S: sessionId },
         ':now': { S: now },
         ':ttl': { N: String(Math.floor(Date.now() / 1000) + 24 * 60 * 60) },
+        ...(overrides?.themeId ? { ':tid': { S: overrides.themeId } } : {}),
       },
     }))
   } catch (error) {
