@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg-grad" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#26C6DA"/>
+      <stop offset="100%" stop-color="#FFB830"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" fill="url(#bg-grad)"/>
+
+  <!-- Chat bubble -->
+  <path d="M112,177 C112,148 136,124 165,124 L347,124 C376,124 400,148 400,177 L400,345 C400,374 376,398 347,398 L222,398 L160,470 L177,398 L165,398 C136,398 112,374 112,345 Z"
+        fill="white" fill-opacity="0.95"/>
+
+  <!-- AI Sparkle - main (center: 256,256) -->
+  <path d="M256,201 L268,244 L311,256 L268,268 L256,311 L244,268 L201,256 L244,244 Z"
+        fill="url(#bg-grad)"/>
+
+  <!-- AI Sparkle - small top-right -->
+  <path d="M350,153 L354,170 L371,174 L354,179 L350,196 L345,179 L328,174 L345,170 Z"
+        fill="url(#bg-grad)"/>
+
+  <!-- AI Sparkle - tiny bottom-left -->
+  <path d="M160,333 L164,345 L176,348 L164,352 L160,364 L156,352 L144,348 L156,345 Z"
+        fill="url(#bg-grad)"/>
+</svg>
