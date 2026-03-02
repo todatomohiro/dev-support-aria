@@ -651,15 +651,36 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         // アシスタントメッセージを会話に追加
         currentMessages.push(assistantMessage)
 
-        // ツール呼び出しを抽出・実行
-        const toolUseBlocks = (assistantMessage.content ?? [])
-          .filter((block): block is ContentBlock & { toolUse: { toolUseId: string; name: string; input: Record<string, unknown> } } =>
-            'toolUse' in block && block.toolUse !== undefined
-          )
+        // ツール呼び出しを抽出（SDK バージョン互換対応）
+        const assistantContent = assistantMessage.content ?? []
+        console.log(`[LLM] Assistant content block keys:`, JSON.stringify(assistantContent.map((b: Record<string, unknown>) => Object.keys(b))))
+        const toolUseBlocks: Array<{ toolUseId: string; name: string; input: Record<string, unknown> }> = []
+        for (const block of assistantContent) {
+          const b = block as Record<string, unknown>
+          const toolUse = b.toolUse as Record<string, unknown> | undefined
+          if (toolUse && typeof toolUse === 'object' && toolUse.toolUseId) {
+            toolUseBlocks.push({
+              toolUseId: toolUse.toolUseId as string,
+              name: toolUse.name as string,
+              input: (toolUse.input ?? {}) as Record<string, unknown>,
+            })
+          }
+        }
+
+        if (toolUseBlocks.length === 0) {
+          // SDK の ContentBlock 構造が想定外 — デバッグ用にフル出力
+          console.error(`[LLM] stopReason=tool_use だがツールブロック未検出。Content:`, JSON.stringify(assistantContent))
+          // テキスト応答があればそれを返す、なければエラーメッセージ
+          const fallbackText = assistantContent
+            .map((b: Record<string, unknown>) => (typeof b === 'object' && 'text' in b && typeof b.text === 'string') ? b.text : '')
+            .filter(Boolean)
+            .join('')
+          return response(200, { content: fallbackText || 'ツールの実行に失敗しました。もう一度お試しください。' })
+        }
 
         const toolResults: ToolResultContentBlock[] = []
         for (const block of toolUseBlocks) {
-          const { toolUseId, name, input } = block.toolUse
+          const { toolUseId, name, input } = block
           console.log(`[LLM] Tool use: ${name}`, JSON.stringify(input))
           const toolResult = await executeSkill(name, input, toolUseId, userId)
           console.log(`[LLM] Tool result:`, JSON.stringify(toolResult))
