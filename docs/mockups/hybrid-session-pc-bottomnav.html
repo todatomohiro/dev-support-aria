@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>案C ボトムナビ方式 — PC 表示モックアップ</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  /* ナビゲーション */
+  .nav { display: flex; justify-content: center; gap: 12px; padding: 16px; background: #1a1a2e; position: sticky; top: 0; z-index: 100; }
+  .nav button { padding: 10px 24px; border: 2px solid #6c63ff; background: transparent; color: #fff; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+  .nav button.active { background: #6c63ff; }
+  .nav button:hover { background: #5a52d5; color: #fff; }
+
+  .section { display: none; max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .section.active { display: block; }
+  .section-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 13px; color: #666; margin-bottom: 20px; line-height: 1.6; }
+
+  /* === 共通パーツ === */
+  .mockup-pc { height: 640px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); background: #fff; display: flex; flex-direction: column; }
+  .pc-header { padding: 12px 20px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; background: #fff; flex-shrink: 0; }
+  .pc-header h2 { font-size: 16px; font-weight: 700; }
+  .pc-header .header-right { display: flex; align-items: center; gap: 12px; }
+  .pc-header .badge { background: #e8e8ff; color: #6c63ff; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .pc-header .icon-btn { background: none; border: 1px solid #e0e0e0; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 14px; }
+
+  .pc-body { flex: 1; display: flex; overflow: hidden; }
+
+  /* サイドナビ（PC版のボトムナビ相当） */
+  .side-nav { width: 72px; background: #f8f9fa; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; align-items: center; padding-top: 12px; gap: 4px; flex-shrink: 0; }
+  .side-nav-item { width: 56px; padding: 10px 0; text-align: center; font-size: 10px; color: #999; cursor: pointer; border-radius: 10px; transition: all 0.15s; }
+  .side-nav-item:hover { background: #e8e8ff; color: #6c63ff; }
+  .side-nav-item.active { background: #6c63ff; color: #fff; }
+  .side-nav-item .nav-icon { font-size: 20px; display: block; margin-bottom: 3px; }
+
+  /* メインコンテンツ */
+  .pc-main { flex: 1; display: flex; overflow: hidden; }
+  .live2d-area { width: 300px; background: linear-gradient(135deg, #eef2ff, #e8e0ff); display: flex; align-items: center; justify-content: center; border-right: 1px solid #e0e0e0; flex-shrink: 0; }
+  .live2d-placeholder { width: 140px; height: 200px; background: rgba(108,99,255,0.08); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #6c63ff; font-size: 13px; text-align: center; border: 2px dashed rgba(108,99,255,0.2); }
+  .chat-area { flex: 1; display: flex; flex-direction: column; }
+  .chat-messages { flex: 1; padding: 20px; overflow-y: auto; }
+  .chat-msg { margin-bottom: 14px; display: flex; gap: 8px; }
+  .chat-msg.user { justify-content: flex-end; }
+  .chat-bubble { max-width: 65%; padding: 10px 16px; border-radius: 14px; font-size: 14px; line-height: 1.7; }
+  .chat-bubble.ai { background: #f0f0f0; border-bottom-left-radius: 4px; }
+  .chat-bubble.user { background: #6c63ff; color: #fff; border-bottom-right-radius: 4px; }
+  .chat-input-area { padding: 14px 20px; border-top: 1px solid #e0e0e0; display: flex; gap: 8px; }
+  .chat-input-area input { flex: 1; padding: 12px 16px; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; outline: none; }
+  .chat-input-area input:focus { border-color: #6c63ff; box-shadow: 0 0 0 3px rgba(108,99,255,0.1); }
+  .chat-input-area .send-btn { padding: 12px 20px; background: #6c63ff; color: #fff; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; }
+
+  /* テーマ一覧エリア */
+  .theme-panel { flex: 1; display: flex; flex-direction: column; }
+  .theme-panel-header { padding: 16px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+  .theme-panel-header h3 { font-size: 16px; font-weight: 700; }
+  .theme-new-btn { background: #6c63ff; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  .theme-grid { flex: 1; padding: 20px 24px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; align-content: start; }
+  .theme-card { background: #f8f9fa; border-radius: 12px; padding: 18px; cursor: pointer; transition: all 0.15s; border: 2px solid #e8e8e8; }
+  .theme-card:hover { border-color: #6c63ff; box-shadow: 0 4px 12px rgba(108,99,255,0.12); transform: translateY(-1px); }
+  .theme-card-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+  .theme-card-meta { font-size: 11px; color: #999; margin-bottom: 8px; }
+  .theme-card-preview { font-size: 13px; color: #555; line-height: 1.6; }
+  .theme-card-tags { display: flex; gap: 6px; margin-top: 10px; }
+  .theme-tag { background: #e8e8ff; color: #6c63ff; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; }
+  .add-theme-card { background: transparent; border: 2px dashed #ccc; border-radius: 12px; padding: 18px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 140px; transition: all 0.15s; color: #999; }
+  .add-theme-card:hover { border-color: #6c63ff; color: #6c63ff; }
+  .add-theme-card .plus { font-size: 28px; margin-bottom: 6px; }
+
+  /* テーマ別チャットヘッダー */
+  .theme-chat-header { padding: 12px 20px; border-bottom: 1px solid #e0e0e0; display: flex; align-items: center; gap: 12px; background: #fafafa; flex-shrink: 0; }
+  .theme-chat-header .back-btn { background: none; border: 1px solid #ddd; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; color: #666; }
+  .theme-chat-header .back-btn:hover { border-color: #6c63ff; color: #6c63ff; }
+  .theme-chat-header h3 { font-size: 15px; font-weight: 700; flex: 1; }
+  .theme-chat-header .theme-info { font-size: 11px; color: #999; }
+
+  .mockup-label { text-align: center; font-size: 12px; color: #999; margin-top: 12px; margin-bottom: 32px; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button class="active" onclick="showSection('main')">メイン会話</button>
+  <button onclick="showSection('list')">テーマ一覧</button>
+  <button onclick="showSection('theme-chat')">テーマ別チャット</button>
+</nav>
+
+<!-- ======================== メイン会話画面 ======================== -->
+<section id="section-main" class="section active">
+  <h1 class="section-title">メイン会話画面（PC）</h1>
+  <p class="section-desc">既存のメイン会話画面。左にサイドナビを追加し、ボトムナビの代わりにセクション切り替えを行う。<br>メイン会話の体験は現状とほぼ同じ。</p>
+
+  <div class="mockup-pc">
+    <div class="pc-header">
+      <h2>AI Assistant</h2>
+      <div class="header-right">
+        <span class="badge">web</span>
+        <button class="icon-btn">👤</button>
+        <button class="icon-btn">⚙️</button>
+      </div>
+    </div>
+    <div class="pc-body">
+      <div class="side-nav">
+        <div class="side-nav-item active"><span class="nav-icon">💬</span>チャット</div>
+        <div class="side-nav-item"><span class="nav-icon">📝</span>ノート</div>
+        <div class="side-nav-item"><span class="nav-icon">👥</span>グループ</div>
+        <div class="side-nav-item"><span class="nav-icon">⚙️</span>設定</div>
+      </div>
+      <div class="pc-main">
+        <div class="live2d-area">
+          <div class="live2d-placeholder">Live2D<br>キャラクター</div>
+        </div>
+        <div class="chat-area">
+          <div class="chat-messages">
+            <div class="chat-msg"><div class="chat-bubble ai">おはよー！今日は何する？</div></div>
+            <div class="chat-msg user"><div class="chat-bubble user">今日の予定を教えて</div></div>
+            <div class="chat-msg"><div class="chat-bubble ai">カレンダー見てみるね...今日は特に予定ないみたい！何か計画立てる？</div></div>
+            <div class="chat-msg user"><div class="chat-bubble user">そうだなー、京都旅行の計画を立てたいんだけど</div></div>
+            <div class="chat-msg"><div class="chat-bubble ai">京都！いいね〜！テーマ別ノートで「旅行計画」を作って、そこで詳しく話す？それともここで話す？</div></div>
+          </div>
+          <div class="chat-input-area">
+            <input type="text" placeholder="メッセージを入力...">
+            <button class="send-btn">送信</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="mockup-label">PC 表示（1200px） — サイドナビでセクション切り替え</p>
+</section>
+
+<!-- ======================== テーマ一覧画面 ======================== -->
+<section id="section-list" class="section">
+  <h1 class="section-title">テーマ一覧画面（PC）</h1>
+  <p class="section-desc">テーマ別ノートの一覧。カードグリッドで表示し、PC の広い画面を活用。<br>各カードにはテーマ名、最終更新日時、会話のプレビュー、タグが表示される。</p>
+
+  <div class="mockup-pc">
+    <div class="pc-header">
+      <h2>AI Assistant</h2>
+      <div class="header-right">
+        <span class="badge">web</span>
+        <button class="icon-btn">👤</button>
+        <button class="icon-btn">⚙️</button>
+      </div>
+    </div>
+    <div class="pc-body">
+      <div class="side-nav">
+        <div class="side-nav-item"><span class="nav-icon">💬</span>チャット</div>
+        <div class="side-nav-item active"><span class="nav-icon">📝</span>ノート</div>
+        <div class="side-nav-item"><span class="nav-icon">👥</span>グループ</div>
+        <div class="side-nav-item"><span class="nav-icon">⚙️</span>設定</div>
+      </div>
+      <div class="theme-panel">
+        <div class="theme-panel-header">
+          <h3>📝 テーマ別ノート</h3>
+          <button class="theme-new-btn">＋ 新しいテーマ</button>
+        </div>
+        <div class="theme-grid">
+          <div class="theme-card">
+            <div class="theme-card-title">✈️ 旅行計画</div>
+            <div class="theme-card-meta">最終更新: 2時間前 · 12件の会話</div>
+            <div class="theme-card-preview">京都旅行を計画中。清水寺、伏見稲荷、嵐山を候補にリストアップ。3泊4日の予定で...</div>
+            <div class="theme-card-tags"><span class="theme-tag">京都</span><span class="theme-tag">3泊4日</span><span class="theme-tag">計画中</span></div>
+          </div>
+          <div class="theme-card">
+            <div class="theme-card-title">📚 英語学習</div>
+            <div class="theme-card-meta">最終更新: 昨日 · 28件の会話</div>
+            <div class="theme-card-preview">TOEIC 700点を目指して勉強中。文法の復習を一通り終えて、リスニング対策に移行...</div>
+            <div class="theme-card-tags"><span class="theme-tag">TOEIC</span><span class="theme-tag">700点目標</span></div>
+          </div>
+          <div class="theme-card">
+            <div class="theme-card-title">🍳 料理レシピ</div>
+            <div class="theme-card-meta">最終更新: 3日前 · 8件の会話</div>
+            <div class="theme-card-preview">チョコレートケーキのレシピを教えてもらった。次はティラミスに挑戦したい...</div>
+            <div class="theme-card-tags"><span class="theme-tag">お菓子</span><span class="theme-tag">初心者</span></div>
+          </div>
+          <div class="theme-card">
+            <div class="theme-card-title">💼 仕事の相談</div>
+            <div class="theme-card-meta">最終更新: 1週間前 · 15件の会話</div>
+            <div class="theme-card-preview">来月のプレゼン資料の構成について相談。導入部分のストーリー作りを検討中...</div>
+            <div class="theme-card-tags"><span class="theme-tag">プレゼン</span><span class="theme-tag">来月</span></div>
+          </div>
+          <div class="theme-card">
+            <div class="theme-card-title">🏋️ ダイエット記録</div>
+            <div class="theme-card-meta">最終更新: 5日前 · 20件の会話</div>
+            <div class="theme-card-preview">週3回のジム通いを開始。食事制限のアドバイスをもらいながら進めてる...</div>
+            <div class="theme-card-tags"><span class="theme-tag">運動</span><span class="theme-tag">食事管理</span></div>
+          </div>
+          <div class="add-theme-card">
+            <span class="plus">＋</span>
+            <span>新しいテーマを作成</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="mockup-label">PC 表示（1200px） — カードグリッドでテーマを一覧</p>
+</section>
+
+<!-- ======================== テーマ別チャット画面 ======================== -->
+<section id="section-theme-chat" class="section">
+  <h1 class="section-title">テーマ別チャット画面（PC）</h1>
+  <p class="section-desc">テーマ別ノート内のチャット。メイン会話と同じレイアウトだが、テーマ情報のサブヘッダーがつく。<br>「← 一覧に戻る」で テーマ一覧に戻れる。Live2D キャラクターも同じように表示。</p>
+
+  <div class="mockup-pc">
+    <div class="pc-header">
+      <h2>AI Assistant</h2>
+      <div class="header-right">
+        <span class="badge">web</span>
+        <button class="icon-btn">👤</button>
+        <button class="icon-btn">⚙️</button>
+      </div>
+    </div>
+    <div class="pc-body">
+      <div class="side-nav">
+        <div class="side-nav-item"><span class="nav-icon">💬</span>チャット</div>
+        <div class="side-nav-item active"><span class="nav-icon">📝</span>ノート</div>
+        <div class="side-nav-item"><span class="nav-icon">👥</span>グループ</div>
+        <div class="side-nav-item"><span class="nav-icon">⚙️</span>設定</div>
+      </div>
+      <div class="pc-main" style="flex-direction: column;">
+        <div class="theme-chat-header">
+          <button class="back-btn">← 一覧に戻る</button>
+          <h3>✈️ 旅行計画</h3>
+          <span class="theme-info">12件の会話 · 最終更新 2時間前</span>
+        </div>
+        <div style="flex:1; display:flex; overflow:hidden;">
+          <div class="live2d-area">
+            <div class="live2d-placeholder">Live2D<br>キャラクター</div>
+          </div>
+          <div class="chat-area">
+            <div class="chat-messages">
+              <div class="chat-msg"><div class="chat-bubble ai">旅行計画の続きだね！前回は清水寺と伏見稲荷を候補に挙げてたよね。</div></div>
+              <div class="chat-msg user"><div class="chat-bubble user">うん、あと嵐山も行きたい。宿のおすすめある？</div></div>
+              <div class="chat-msg"><div class="chat-bubble ai">嵐山いいね〜！宿は予算どのくらいで考えてる？エリアは嵐山近くがいい？それとも京都駅周辺？</div></div>
+              <div class="chat-msg user"><div class="chat-bubble user">1泊1万円くらいで、京都駅周辺がいいかな</div></div>
+              <div class="chat-msg"><div class="chat-bubble ai">了解！京都駅周辺で1泊1万円くらいだと、ビジネスホテルか和風の民宿がおすすめかな。ちょっと探してみるね！</div></div>
+              <div class="chat-msg user"><div class="chat-bubble user">ありがとう！あと交通手段も調べてほしい</div></div>
+              <div class="chat-msg"><div class="chat-bubble ai">東京からだったら新幹線が一番楽だよ！のぞみで2時間15分くらい。早割使えば片道1万円ちょっとで行けるよ！</div></div>
+            </div>
+            <div class="chat-input-area">
+              <input type="text" placeholder="旅行計画について質問...">
+              <button class="send-btn">送信</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="mockup-label">PC 表示（1200px） — テーマ別チャット（旅行計画）</p>
+</section>
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('section-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>

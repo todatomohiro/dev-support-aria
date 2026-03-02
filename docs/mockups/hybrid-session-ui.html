@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ハイブリッドセッション UI モックアップ</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  /* ナビゲーション */
+  .nav { display: flex; justify-content: center; gap: 12px; padding: 20px; background: #1a1a2e; position: sticky; top: 0; z-index: 100; flex-wrap: wrap; }
+  .nav button { padding: 10px 24px; border: 2px solid #6c63ff; background: transparent; color: #fff; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+  .nav button.active { background: #6c63ff; color: #fff; }
+  .nav button:hover { background: #5a52d5; color: #fff; }
+
+  /* セクション */
+  .section { display: none; max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .section.active { display: block; }
+  .section-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; color: #1a1a2e; }
+  .section-desc { font-size: 14px; color: #666; margin-bottom: 24px; line-height: 1.6; }
+  .pros-cons { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  .pros, .cons { flex: 1; min-width: 200px; padding: 12px 16px; border-radius: 8px; font-size: 13px; line-height: 1.8; }
+  .pros { background: #e8f5e9; color: #2e7d32; }
+  .cons { background: #fce4ec; color: #c62828; }
+  .pros strong, .cons strong { display: block; margin-bottom: 4px; }
+
+  /* === 案A: サイドバー方式 === */
+  .mockup-a { display: flex; height: 600px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); background: #fff; }
+  .sidebar-a { width: 280px; background: #f8f9fa; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-a-header { padding: 16px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+  .sidebar-a-header h3 { font-size: 15px; font-weight: 700; }
+  .sidebar-a .new-btn { background: #6c63ff; color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+  .sidebar-a-list { flex: 1; overflow-y: auto; }
+  .sidebar-a-item { padding: 14px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.15s; }
+  .sidebar-a-item:hover { background: #e8e8ff; }
+  .sidebar-a-item.active { background: #6c63ff; color: #fff; }
+  .sidebar-a-item.main { border-left: 3px solid #6c63ff; }
+  .sidebar-a-item .item-title { font-size: 14px; font-weight: 600; }
+  .sidebar-a-item .item-meta { font-size: 11px; color: #999; margin-top: 4px; }
+  .sidebar-a-item.active .item-meta { color: rgba(255,255,255,0.7); }
+  .sidebar-a-item .item-icon { font-size: 16px; margin-right: 8px; }
+  .main-area-a { flex: 1; display: flex; flex-direction: column; }
+  .main-header-a { padding: 16px 20px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+  .main-header-a h2 { font-size: 16px; font-weight: 700; }
+  .main-header-a .badge { background: #e8e8ff; color: #6c63ff; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .main-content-a { flex: 1; display: flex; }
+  .live2d-area-a { width: 300px; background: linear-gradient(135deg, #eef2ff, #e8e0ff); display: flex; align-items: center; justify-content: center; border-right: 1px solid #e0e0e0; flex-shrink: 0; }
+  .live2d-placeholder { width: 120px; height: 180px; background: rgba(108,99,255,0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #6c63ff; font-size: 13px; text-align: center; }
+  .chat-area-a { flex: 1; display: flex; flex-direction: column; }
+  .chat-messages { flex: 1; padding: 16px; overflow-y: auto; }
+  .chat-msg { margin-bottom: 12px; display: flex; gap: 8px; }
+  .chat-msg.user { justify-content: flex-end; }
+  .chat-bubble { max-width: 70%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.6; }
+  .chat-bubble.ai { background: #f0f0f0; border-bottom-left-radius: 4px; }
+  .chat-bubble.user { background: #6c63ff; color: #fff; border-bottom-right-radius: 4px; }
+  .chat-input-area { padding: 12px 16px; border-top: 1px solid #e0e0e0; display: flex; gap: 8px; }
+  .chat-input-area input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; outline: none; }
+  .chat-input-area input:focus { border-color: #6c63ff; }
+  .chat-input-area button { padding: 10px 16px; background: #6c63ff; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; }
+
+  /* === 案B: タブ方式 === */
+  .mockup-b { height: 600px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); background: #fff; display: flex; flex-direction: column; }
+  .tabs-b { display: flex; background: #f8f9fa; border-bottom: 1px solid #e0e0e0; padding: 0 12px; gap: 4px; overflow-x: auto; }
+  .tab-b { padding: 12px 20px; font-size: 13px; font-weight: 600; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.15s; white-space: nowrap; color: #666; position: relative; }
+  .tab-b:hover { color: #6c63ff; }
+  .tab-b.active { color: #6c63ff; border-bottom-color: #6c63ff; }
+  .tab-b .tab-icon { margin-right: 6px; }
+  .tab-b .close { margin-left: 8px; font-size: 11px; color: #999; }
+  .tab-b-add { padding: 12px; font-size: 18px; cursor: pointer; color: #999; display: flex; align-items: center; }
+  .main-content-b { flex: 1; display: flex; overflow: hidden; }
+  .live2d-area-b { width: 280px; background: linear-gradient(135deg, #eef2ff, #e8e0ff); display: flex; align-items: center; justify-content: center; border-right: 1px solid #e0e0e0; flex-shrink: 0; }
+
+  /* === 案C: ボトムナビ方式 === */
+  .mockup-c { height: 700px; width: 375px; margin: 0 auto; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); background: #fff; display: flex; flex-direction: column; border: 8px solid #1a1a2e; }
+  .status-bar-c { background: #1a1a2e; color: #fff; padding: 8px 16px; font-size: 11px; display: flex; justify-content: space-between; }
+  .header-c { padding: 12px 16px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+  .header-c h2 { font-size: 16px; font-weight: 700; }
+  .mobile-content-c { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .live2d-area-c { height: 160px; background: linear-gradient(135deg, #eef2ff, #e8e0ff); display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #e0e0e0; flex-shrink: 0; }
+  .live2d-placeholder-sm { width: 80px; height: 120px; background: rgba(108,99,255,0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #6c63ff; font-size: 11px; text-align: center; }
+  .bottom-nav-c { display: flex; border-top: 1px solid #e0e0e0; background: #fff; flex-shrink: 0; }
+  .bottom-nav-item { flex: 1; padding: 10px 0; text-align: center; font-size: 10px; color: #999; cursor: pointer; transition: color 0.15s; }
+  .bottom-nav-item.active { color: #6c63ff; }
+  .bottom-nav-item .nav-icon { font-size: 20px; display: block; margin-bottom: 2px; }
+
+  /* テーマ一覧（ボトムナビ） */
+  .theme-list-c { flex: 1; overflow-y: auto; padding: 12px; }
+  .theme-card { background: #f8f9fa; border-radius: 12px; padding: 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.15s; border: 1px solid #e8e8e8; }
+  .theme-card:hover { border-color: #6c63ff; box-shadow: 0 2px 8px rgba(108,99,255,0.1); }
+  .theme-card-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .theme-card-meta { font-size: 11px; color: #999; }
+  .theme-card-preview { font-size: 12px; color: #666; margin-top: 6px; line-height: 1.5; }
+  .add-theme-btn { width: 100%; padding: 14px; border: 2px dashed #ccc; border-radius: 12px; background: transparent; font-size: 13px; color: #999; cursor: pointer; text-align: center; }
+  .add-theme-btn:hover { border-color: #6c63ff; color: #6c63ff; }
+
+  /* === 案D: フローティングボタン方式 === */
+  .mockup-d { height: 700px; width: 375px; margin: 0 auto; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); background: #fff; display: flex; flex-direction: column; border: 8px solid #1a1a2e; position: relative; }
+  .fab { position: absolute; bottom: 80px; right: 16px; width: 52px; height: 52px; border-radius: 50%; background: #6c63ff; color: #fff; border: none; font-size: 22px; cursor: pointer; box-shadow: 0 4px 12px rgba(108,99,255,0.4); display: flex; align-items: center; justify-content: center; z-index: 10; transition: transform 0.15s; }
+  .fab:hover { transform: scale(1.1); }
+  .fab-menu { position: absolute; bottom: 140px; right: 16px; background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.15); z-index: 10; overflow: hidden; min-width: 200px; }
+  .fab-menu-item { padding: 12px 16px; font-size: 13px; cursor: pointer; transition: background 0.15s; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #f0f0f0; }
+  .fab-menu-item:last-child { border-bottom: none; }
+  .fab-menu-item:hover { background: #f0f0ff; }
+  .fab-menu-item .fm-icon { font-size: 16px; }
+  .fab-menu-header { padding: 10px 16px; font-size: 11px; font-weight: 700; color: #999; background: #f8f9fa; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* 共通: モックアップラベル */
+  .mockup-label { text-align: center; font-size: 12px; color: #999; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button class="active" onclick="showSection('a')">A. サイドバー方式</button>
+  <button onclick="showSection('b')">B. タブ方式</button>
+  <button onclick="showSection('c')">C. ボトムナビ方式</button>
+  <button onclick="showSection('d')">D. フローティングボタン方式</button>
+</nav>
+
+<!-- ======================== 案A: サイドバー方式 ======================== -->
+<section id="section-a" class="section active">
+  <h1 class="section-title">A. サイドバー方式</h1>
+  <p class="section-desc">左にセッション一覧、右にチャット。Gemini / ChatGPT に近いレイアウト。<br>メイン会話とテーマ別ノートを同じサイドバーで管理する。</p>
+  <div class="pros-cons">
+    <div class="pros"><strong>メリット</strong>・セッション間の切り替えが速い<br>・一覧性が高く、全テーマを俯瞰できる<br>・PC の広い画面を有効活用</div>
+    <div class="cons"><strong>デメリット</strong>・モバイルではサイドバーが邪魔になる<br>・Gemini/ChatGPT と似すぎる印象<br>・キャラクターの表示スペースが圧迫される</div>
+  </div>
+
+  <div class="mockup-a">
+    <div class="sidebar-a">
+      <div class="sidebar-a-header">
+        <h3>セッション</h3>
+        <button class="new-btn">＋ 新規</button>
+      </div>
+      <div class="sidebar-a-list">
+        <div class="sidebar-a-item main active">
+          <div class="item-title"><span class="item-icon">💬</span>メイン会話</div>
+          <div class="item-meta">いつもの会話 — 数秒前</div>
+        </div>
+        <div class="sidebar-a-item">
+          <div class="item-title"><span class="item-icon">✈️</span>旅行計画</div>
+          <div class="item-meta">京都旅行 — 2時間前</div>
+        </div>
+        <div class="sidebar-a-item">
+          <div class="item-title"><span class="item-icon">📚</span>英語学習</div>
+          <div class="item-meta">TOEIC対策 — 昨日</div>
+        </div>
+        <div class="sidebar-a-item">
+          <div class="item-title"><span class="item-icon">🍳</span>料理レシピ</div>
+          <div class="item-meta">お菓子作り — 3日前</div>
+        </div>
+      </div>
+    </div>
+    <div class="main-area-a">
+      <div class="main-header-a">
+        <h2>💬 メイン会話</h2>
+        <span class="badge">Live</span>
+      </div>
+      <div class="main-content-a">
+        <div class="live2d-area-a">
+          <div class="live2d-placeholder">Live2D<br>キャラクター</div>
+        </div>
+        <div class="chat-area-a">
+          <div class="chat-messages">
+            <div class="chat-msg"><div class="chat-bubble ai">おはよー！今日は何する？</div></div>
+            <div class="chat-msg user"><div class="chat-bubble user">今日の予定を教えて</div></div>
+            <div class="chat-msg"><div class="chat-bubble ai">今日は特に予定ないみたいだよ！何か計画立てる？</div></div>
+          </div>
+          <div class="chat-input-area">
+            <input type="text" placeholder="メッセージを入力...">
+            <button>送信</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="mockup-label">PC 表示イメージ（1200px）</p>
+</section>
+
+<!-- ======================== 案B: タブ方式 ======================== -->
+<section id="section-b" class="section">
+  <h1 class="section-title">B. タブ方式</h1>
+  <p class="section-desc">ブラウザタブのように、ヘッダー下にセッションタブを並べる方式。<br>メイン会話は常に最左に固定、テーマ別ノートは右に追加される。</p>
+  <div class="pros-cons">
+    <div class="pros"><strong>メリット</strong>・直感的で分かりやすい<br>・画面の横幅を有効活用<br>・メイン会話が常に目立つ位置にある</div>
+    <div class="cons"><strong>デメリット</strong>・テーマが増えるとタブが溢れる<br>・モバイルではタブが狭くなる<br>・キャラクター表示スペースは変わらない</div>
+  </div>
+
+  <div class="mockup-b">
+    <div class="tabs-b">
+      <div class="tab-b active"><span class="tab-icon">💬</span>メイン会話</div>
+      <div class="tab-b"><span class="tab-icon">✈️</span>旅行計画<span class="close">✕</span></div>
+      <div class="tab-b"><span class="tab-icon">📚</span>英語学習<span class="close">✕</span></div>
+      <div class="tab-b"><span class="tab-icon">🍳</span>料理レシピ<span class="close">✕</span></div>
+      <div class="tab-b-add" title="新しいテーマ">＋</div>
+    </div>
+    <div class="main-content-b">
+      <div class="live2d-area-b">
+        <div class="live2d-placeholder">Live2D<br>キャラクター</div>
+      </div>
+      <div class="chat-area-a" style="flex:1;">
+        <div class="chat-messages">
+          <div class="chat-msg"><div class="chat-bubble ai">おはよー！今日は何する？</div></div>
+          <div class="chat-msg user"><div class="chat-bubble user">京都旅行の計画を立てたいんだけど</div></div>
+          <div class="chat-msg"><div class="chat-bubble ai">京都！いいね！「旅行計画」のテーマで話す？それともここで続ける？</div></div>
+        </div>
+        <div class="chat-input-area">
+          <input type="text" placeholder="メッセージを入力...">
+          <button>送信</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="mockup-label">PC 表示イメージ（1200px）</p>
+</section>
+
+<!-- ======================== 案C: ボトムナビ方式 ======================== -->
+<section id="section-c" class="section">
+  <h1 class="section-title">C. ボトムナビ方式</h1>
+  <p class="section-desc">モバイルアプリに最適。下部ナビゲーションでメイン会話とテーマ別ノートを切り替える。<br>既存のグループチャット（/groups）と同じナビゲーションパターン。</p>
+  <div class="pros-cons">
+    <div class="pros"><strong>メリット</strong>・モバイルファーストで使いやすい<br>・メイン会話の体験を全く変えない<br>・既存のグループチャットと統一感がある<br>・キャラクターとの「メイン」感が維持される</div>
+    <div class="cons"><strong>デメリット</strong>・PC では下部ナビが不自然<br>・画面遷移が発生する（タブ切り替えより遅い）</div>
+  </div>
+
+  <div style="display:flex; gap: 24px; justify-content: center; flex-wrap: wrap;">
+    <!-- メイン会話画面 -->
+    <div>
+      <div class="mockup-c">
+        <div class="status-bar-c"><span>9:41</span><span>📶 🔋</span></div>
+        <div class="header-c">
+          <h2>AI Assistant</h2>
+          <span style="font-size:20px; cursor:pointer;">⚙️</span>
+        </div>
+        <div class="mobile-content-c">
+          <div class="live2d-area-c">
+            <div class="live2d-placeholder-sm">Live2D<br>キャラクター</div>
+          </div>
+          <div class="chat-area-a" style="flex:1;">
+            <div class="chat-messages">
+              <div class="chat-msg"><div class="chat-bubble ai">おはよー！今日は何する？</div></div>
+              <div class="chat-msg user"><div class="chat-bubble user">今日の予定を教えて</div></div>
+              <div class="chat-msg"><div class="chat-bubble ai">今日は特に予定ないみたい！</div></div>
+            </div>
+            <div class="chat-input-area">
+              <input type="text" placeholder="メッセージを入力..." style="font-size:16px;">
+              <button>送信</button>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav-c">
+          <div class="bottom-nav-item active"><span class="nav-icon">💬</span>チャット</div>
+          <div class="bottom-nav-item"><span class="nav-icon">📝</span>ノート</div>
+          <div class="bottom-nav-item"><span class="nav-icon">👥</span>グループ</div>
+          <div class="bottom-nav-item"><span class="nav-icon">⚙️</span>設定</div>
+        </div>
+      </div>
+      <p class="mockup-label">メイン会話画面</p>
+    </div>
+
+    <!-- テーマ一覧画面 -->
+    <div>
+      <div class="mockup-c">
+        <div class="status-bar-c"><span>9:41</span><span>📶 🔋</span></div>
+        <div class="header-c">
+          <h2>テーマ別ノート</h2>
+          <span style="font-size:14px; color: #6c63ff; cursor:pointer; font-weight: 600;">＋ 新規</span>
+        </div>
+        <div class="mobile-content-c">
+          <div class="theme-list-c">
+            <div class="theme-card">
+              <div class="theme-card-title">✈️ 旅行計画</div>
+              <div class="theme-card-meta">最終更新: 2時間前 · 12件の会話</div>
+              <div class="theme-card-preview">京都旅行を計画中。清水寺、伏見稲荷、嵐山を候補に...</div>
+            </div>
+            <div class="theme-card">
+              <div class="theme-card-title">📚 英語学習</div>
+              <div class="theme-card-meta">最終更新: 昨日 · 28件の会話</div>
+              <div class="theme-card-preview">TOEIC 700点を目指して勉強中。文法の復習から...</div>
+            </div>
+            <div class="theme-card">
+              <div class="theme-card-title">🍳 料理レシピ</div>
+              <div class="theme-card-meta">最終更新: 3日前 · 8件の会話</div>
+              <div class="theme-card-preview">チョコレートケーキのレシピを教えてもらった...</div>
+            </div>
+            <div class="theme-card">
+              <div class="theme-card-title">💼 仕事の相談</div>
+              <div class="theme-card-meta">最終更新: 1週間前 · 15件の会話</div>
+              <div class="theme-card-preview">プレゼン資料の構成について相談...</div>
+            </div>
+            <button class="add-theme-btn">＋ 新しいテーマを作成</button>
+          </div>
+        </div>
+        <div class="bottom-nav-c">
+          <div class="bottom-nav-item"><span class="nav-icon">💬</span>チャット</div>
+          <div class="bottom-nav-item active"><span class="nav-icon">📝</span>ノート</div>
+          <div class="bottom-nav-item"><span class="nav-icon">👥</span>グループ</div>
+          <div class="bottom-nav-item"><span class="nav-icon">⚙️</span>設定</div>
+        </div>
+      </div>
+      <p class="mockup-label">テーマ一覧画面</p>
+    </div>
+
+    <!-- テーマ別チャット画面 -->
+    <div>
+      <div class="mockup-c">
+        <div class="status-bar-c"><span>9:41</span><span>📶 🔋</span></div>
+        <div class="header-c">
+          <span style="font-size:16px; cursor:pointer;">← </span>
+          <h2 style="flex:1;">✈️ 旅行計画</h2>
+          <span style="font-size:12px; color:#999;">30分前</span>
+        </div>
+        <div class="mobile-content-c">
+          <div class="live2d-area-c">
+            <div class="live2d-placeholder-sm">Live2D<br>キャラクター</div>
+          </div>
+          <div class="chat-area-a" style="flex:1;">
+            <div class="chat-messages">
+              <div class="chat-msg"><div class="chat-bubble ai">京都旅行の続き？何から話す？</div></div>
+              <div class="chat-msg user"><div class="chat-bubble user">おすすめの宿を探して</div></div>
+              <div class="chat-msg"><div class="chat-bubble ai">いいよ！予算とかエリアの希望ある？</div></div>
+            </div>
+            <div class="chat-input-area">
+              <input type="text" placeholder="旅行計画について質問..." style="font-size:16px;">
+              <button>送信</button>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav-c">
+          <div class="bottom-nav-item"><span class="nav-icon">💬</span>チャット</div>
+          <div class="bottom-nav-item active"><span class="nav-icon">📝</span>ノート</div>
+          <div class="bottom-nav-item"><span class="nav-icon">👥</span>グループ</div>
+          <div class="bottom-nav-item"><span class="nav-icon">⚙️</span>設定</div>
+        </div>
+      </div>
+      <p class="mockup-label">テーマ別チャット画面</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== 案D: フローティングボタン方式 ======================== -->
+<section id="section-d" class="section">
+  <h1 class="section-title">D. フローティングボタン方式</h1>
+  <p class="section-desc">メイン画面にフローティングボタンを配置。タップでテーマ一覧メニューが開く。<br>メイン画面のレイアウトを一切変えずに機能を追加できる。</p>
+  <div class="pros-cons">
+    <div class="pros"><strong>メリット</strong>・既存の UI を全く変更しない<br>・実装が最も軽い<br>・モバイル・PC 両対応</div>
+    <div class="cons"><strong>デメリット</strong>・テーマが増えるとメニューが長くなる<br>・ボタンがチャットに重なる可能性<br>・気づきにくい（ディスカバラビリティが低い）</div>
+  </div>
+
+  <div style="display:flex; gap: 24px; justify-content: center; flex-wrap: wrap;">
+    <!-- メニュー閉じた状態 -->
+    <div>
+      <div class="mockup-d">
+        <div class="status-bar-c"><span>9:41</span><span>📶 🔋</span></div>
+        <div class="header-c">
+          <h2>AI Assistant</h2>
+          <span style="font-size:20px; cursor:pointer;">⚙️</span>
+        </div>
+        <div class="mobile-content-c">
+          <div class="live2d-area-c">
+            <div class="live2d-placeholder-sm">Live2D<br>キャラクター</div>
+          </div>
+          <div class="chat-area-a" style="flex:1;">
+            <div class="chat-messages">
+              <div class="chat-msg"><div class="chat-bubble ai">おはよー！今日は何する？</div></div>
+              <div class="chat-msg user"><div class="chat-bubble user">今日の予定を教えて</div></div>
+              <div class="chat-msg"><div class="chat-bubble ai">今日は特に予定ないみたい！</div></div>
+            </div>
+            <div class="chat-input-area">
+              <input type="text" placeholder="メッセージを入力..." style="font-size:16px;">
+              <button>送信</button>
+            </div>
+          </div>
+        </div>
+        <button class="fab">📝</button>
+      </div>
+      <p class="mockup-label">ボタン表示時</p>
+    </div>
+
+    <!-- メニュー開いた状態 -->
+    <div>
+      <div class="mockup-d">
+        <div class="status-bar-c"><span>9:41</span><span>📶 🔋</span></div>
+        <div class="header-c">
+          <h2>AI Assistant</h2>
+          <span style="font-size:20px; cursor:pointer;">⚙️</span>
+        </div>
+        <div class="mobile-content-c">
+          <div class="live2d-area-c">
+            <div class="live2d-placeholder-sm">Live2D<br>キャラクター</div>
+          </div>
+          <div class="chat-area-a" style="flex:1;">
+            <div class="chat-messages">
+              <div class="chat-msg"><div class="chat-bubble ai">おはよー！今日は何する？</div></div>
+              <div class="chat-msg user"><div class="chat-bubble user">今日の予定を教えて</div></div>
+              <div class="chat-msg"><div class="chat-bubble ai">今日は特に予定ないみたい！</div></div>
+            </div>
+            <div class="chat-input-area">
+              <input type="text" placeholder="メッセージを入力..." style="font-size:16px;">
+              <button>送信</button>
+            </div>
+          </div>
+        </div>
+        <div class="fab-menu">
+          <div class="fab-menu-header">テーマ別ノート</div>
+          <div class="fab-menu-item"><span class="fm-icon">✈️</span> 旅行計画</div>
+          <div class="fab-menu-item"><span class="fm-icon">📚</span> 英語学習</div>
+          <div class="fab-menu-item"><span class="fm-icon">🍳</span> 料理レシピ</div>
+          <div class="fab-menu-item"><span class="fm-icon">💼</span> 仕事の相談</div>
+          <div class="fab-menu-item" style="color:#6c63ff; font-weight:600;"><span class="fm-icon">＋</span> 新しいテーマ</div>
+        </div>
+        <button class="fab">✕</button>
+      </div>
+      <p class="mockup-label">メニュー展開時</p>
+    </div>
+  </div>
+</section>
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('section-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>

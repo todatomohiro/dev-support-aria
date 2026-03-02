@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ハイブリッドセッション UI — PC: サイドバー / スマホ: ボトムナビ</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  /* ===== ページ切り替えナビ ===== */
+  .page-nav { display: flex; justify-content: center; gap: 12px; padding: 20px; background: #1a1a2e; position: sticky; top: 0; z-index: 200; flex-wrap: wrap; }
+  .page-nav button { padding: 10px 24px; border: 2px solid #6c63ff; background: transparent; color: #fff; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+  .page-nav button.active { background: #6c63ff; }
+  .page-nav button:hover { background: #5a52d5; color: #fff; }
+
+  .page-section { display: none; padding: 24px; }
+  .page-section.active { display: block; }
+  .page-section > h1 { font-size: 22px; font-weight: 700; text-align: center; margin-bottom: 6px; }
+  .page-section > p.desc { font-size: 13px; color: #666; text-align: center; margin-bottom: 28px; line-height: 1.6; }
+
+  /* ===== レスポンシブ切り替えラベル ===== */
+  .responsive-label { text-align: center; margin-bottom: 16px; }
+  .responsive-label span { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .responsive-label .pc { background: #e3f2fd; color: #1565c0; }
+  .responsive-label .sp { background: #fce4ec; color: #c62828; }
+
+  /* ===================================================================
+     共通パーツ
+  =================================================================== */
+  .chat-messages { flex: 1; padding: 16px; overflow-y: auto; }
+  .chat-msg { margin-bottom: 12px; display: flex; gap: 8px; }
+  .chat-msg.user { justify-content: flex-end; }
+  .chat-bubble { max-width: 70%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.6; }
+  .chat-bubble.ai { background: #f0f0f0; border-bottom-left-radius: 4px; }
+  .chat-bubble.user { background: #6c63ff; color: #fff; border-bottom-right-radius: 4px; }
+  .chat-input-area { padding: 12px 16px; border-top: 1px solid #e0e0e0; display: flex; gap: 8px; }
+  .chat-input-area input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; outline: none; }
+  .chat-input-area input:focus { border-color: #6c63ff; }
+  .chat-input-area button { padding: 10px 16px; background: #6c63ff; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .live2d-placeholder { width: 120px; height: 180px; background: rgba(108,99,255,0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #6c63ff; font-size: 13px; text-align: center; }
+  .live2d-placeholder-sm { width: 80px; height: 120px; background: rgba(108,99,255,0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #6c63ff; font-size: 11px; text-align: center; }
+
+  /* テーマカード共通 */
+  .theme-card { background: #f8f9fa; border-radius: 12px; padding: 14px; cursor: pointer; transition: all 0.15s; border: 1px solid #e8e8e8; }
+  .theme-card:hover { border-color: #6c63ff; box-shadow: 0 2px 8px rgba(108,99,255,0.1); }
+  .theme-card-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .theme-card-meta { font-size: 11px; color: #999; }
+  .theme-card-preview { font-size: 12px; color: #666; margin-top: 6px; line-height: 1.5; }
+
+  /* ===================================================================
+     PC 版：サイドバー方式（案A ベース）+ 開閉トグル
+  =================================================================== */
+  .pc-frame { max-width: 1100px; margin: 0 auto; height: 600px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); background: #fff; display: flex; }
+
+  /* サイドバー（開閉アニメーション対応） */
+  .sidebar { width: 260px; background: #f8f9fa; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; flex-shrink: 0; transition: width 0.3s ease, opacity 0.2s ease; overflow: hidden; }
+  .sidebar.collapsed { width: 0; border-right: none; opacity: 0; }
+  .sidebar-inner { width: 260px; min-width: 260px; display: flex; flex-direction: column; height: 100%; }
+  .sidebar-list { flex: 1; overflow-y: auto; }
+  .sidebar-item { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.15s; display: flex; align-items: center; gap: 10px; }
+  .sidebar-item:hover { background: #e8e8ff; }
+  .sidebar-item.active { background: #6c63ff; color: #fff; }
+  .sidebar-item.main { border-left: 3px solid #6c63ff; }
+  .sidebar-item .s-icon { font-size: 18px; flex-shrink: 0; }
+  .sidebar-item .s-text .s-title { font-size: 13px; font-weight: 600; }
+  .sidebar-item .s-text .s-meta { font-size: 11px; color: #999; margin-top: 2px; }
+  .sidebar-item.active .s-text .s-meta { color: rgba(255,255,255,0.7); }
+  .sidebar-section-label { padding: 10px 16px 4px; font-size: 10px; font-weight: 700; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: space-between; }
+  .sidebar-section-label .section-link { font-size: 10px; font-weight: 600; color: #6c63ff; border: 1px solid #6c63ff; border-radius: 4px; padding: 1px 6px; cursor: pointer; transition: all 0.15s; text-transform: none; letter-spacing: 0; }
+  .sidebar-section-label .section-link:hover { background: #6c63ff; color: #fff; }
+
+  /* メインエリア */
+  .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .main-header { padding: 14px 20px; border-bottom: 1px solid #e0e0e0; display: flex; align-items: center; gap: 12px; }
+  .main-header h2 { font-size: 16px; font-weight: 700; }
+  .main-header .header-right { margin-left: auto; }
+  .main-header .badge { background: #e8e8ff; color: #6c63ff; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .main-content { flex: 1; display: flex; overflow: hidden; }
+  .live2d-area-pc { width: 280px; background: linear-gradient(135deg, #eef2ff, #e8e0ff); display: flex; align-items: center; justify-content: center; border-right: 1px solid #e0e0e0; flex-shrink: 0; transition: width 0.3s ease; }
+  /* サイドバー閉じた時に Live2D エリアを拡大 */
+  .pc-frame.sidebar-closed .live2d-area-pc { width: 340px; }
+  .chat-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  /* トグルボタン */
+  .sidebar-toggle { width: 32px; height: 32px; border: 1px solid #ddd; background: #fff; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #666; transition: all 0.15s; flex-shrink: 0; }
+  .sidebar-toggle:hover { background: #f0f0ff; border-color: #6c63ff; color: #6c63ff; }
+
+  /* PC テーマ一覧（グリッド） */
+  .pc-theme-grid { flex: 1; padding: 24px; overflow-y: auto; }
+  .pc-theme-grid-inner { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .pc-theme-grid .theme-card { padding: 18px; }
+  .pc-theme-grid .theme-card-title { font-size: 15px; }
+  .add-theme-card { background: transparent; border: 2px dashed #ccc; border-radius: 12px; padding: 18px; cursor: pointer; text-align: center; color: #999; font-size: 14px; display: flex; align-items: center; justify-content: center; min-height: 100px; transition: all 0.15s; }
+  .add-theme-card:hover { border-color: #6c63ff; color: #6c63ff; }
+
+  /* ===================================================================
+     スマホ版：ボトムナビ方式（案C ベース）
+  =================================================================== */
+  .sp-frame { width: 375px; height: 700px; margin: 0 auto; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); background: #fff; display: flex; flex-direction: column; border: 8px solid #1a1a2e; }
+  .status-bar { background: #1a1a2e; color: #fff; padding: 8px 16px; font-size: 11px; display: flex; justify-content: space-between; }
+  .sp-header { padding: 12px 16px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+  .sp-header h2 { font-size: 16px; font-weight: 700; }
+  .sp-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .live2d-area-sp { height: 150px; background: linear-gradient(135deg, #eef2ff, #e8e0ff); display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #e0e0e0; flex-shrink: 0; }
+  .bottom-nav { display: flex; border-top: 1px solid #e0e0e0; background: #fff; flex-shrink: 0; }
+  .bottom-nav-item { flex: 1; padding: 8px 0; text-align: center; font-size: 10px; color: #999; cursor: pointer; transition: color 0.15s; }
+  .bottom-nav-item.active { color: #6c63ff; }
+  .bottom-nav-item .nav-icon { font-size: 20px; display: block; margin-bottom: 2px; }
+
+  /* スマホ テーマ一覧 */
+  .sp-theme-list { flex: 1; overflow-y: auto; padding: 12px; }
+  .sp-theme-list .theme-card { margin-bottom: 10px; }
+  .sp-add-btn { width: 100%; padding: 14px; border: 2px dashed #ccc; border-radius: 12px; background: transparent; font-size: 13px; color: #999; cursor: pointer; text-align: center; }
+  .sp-add-btn:hover { border-color: #6c63ff; color: #6c63ff; }
+
+  /* 横並び */
+  .side-by-side { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; align-items: flex-start; }
+
+  /* ラベル */
+  .frame-label { text-align: center; font-size: 12px; color: #999; margin-top: 10px; }
+
+  /* ヒントバッジ */
+  .hint { display: inline-block; background: #fff3e0; color: #e65100; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 8px; }
+</style>
+</head>
+<body>
+
+<!-- ページ切り替え -->
+<nav class="page-nav">
+  <button class="active" onclick="showPage('main')">1. メインチャット</button>
+  <button onclick="showPage('list')">2. テーマ一覧</button>
+  <button onclick="showPage('theme')">3. テーマチャット</button>
+</nav>
+
+<!-- ============================================================
+     1. メインチャット画面
+============================================================ -->
+<section id="page-main" class="page-section active">
+  <h1>メインチャット画面</h1>
+  <p class="desc">PC: サイドバーでセッション切り替え（トグルで格納可能） / スマホ: ボトムナビで画面切り替え</p>
+
+  <div class="side-by-side">
+    <!-- PC 版 -->
+    <div>
+      <div class="responsive-label"><span class="pc">PC 版 (1100px)</span><span class="hint">☰ ボタンでサイドバー開閉</span></div>
+      <div class="pc-frame" id="pc-main">
+        <div class="sidebar" id="sidebar-main">
+          <div class="sidebar-inner">
+            <div class="sidebar-list">
+              <div class="sidebar-item main active">
+                <span class="s-icon">💬</span>
+                <div class="s-text">
+                  <div class="s-title">メイン会話</div>
+                  <div class="s-meta">いつもの会話 — 数秒前</div>
+                </div>
+              </div>
+              <div class="sidebar-section-label">📝 テーマ別ノート<span class="section-link" onclick="showPage('list')">一覧へ</span></div>
+              <div class="sidebar-item">
+                <span class="s-icon">✈️</span>
+                <div class="s-text">
+                  <div class="s-title">旅行計画</div>
+                  <div class="s-meta">京都旅行 — 2時間前</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">📚</span>
+                <div class="s-text">
+                  <div class="s-title">英語学習</div>
+                  <div class="s-meta">TOEIC対策 — 昨日</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">🍳</span>
+                <div class="s-text">
+                  <div class="s-title">料理レシピ</div>
+                  <div class="s-meta">お菓子作り — 3日前</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">💼</span>
+                <div class="s-text">
+                  <div class="s-title">仕事の相談</div>
+                  <div class="s-meta">プレゼン — 1週間前</div>
+                </div>
+              </div>
+              <div class="sidebar-section-label">その他</div>
+              <div class="sidebar-item">
+                <span class="s-icon">👥</span>
+                <div class="s-text">
+                  <div class="s-title">グループチャット</div>
+                  <div class="s-meta">3つのグループ</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">⚙️</span>
+                <div class="s-text">
+                  <div class="s-title">設定</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="main-area">
+          <div class="main-header">
+            <button class="sidebar-toggle" onclick="toggleSidebar('main')" title="サイドバーを開閉">☰</button>
+            <h2>💬 メイン会話</h2>
+            <div class="header-right"><span class="badge">Live</span></div>
+          </div>
+          <div class="main-content">
+            <div class="live2d-area-pc">
+              <div class="live2d-placeholder">Live2D<br>キャラクター</div>
+            </div>
+            <div class="chat-area">
+              <div class="chat-messages">
+                <div class="chat-msg"><div class="chat-bubble ai">おはよー！今日は何する？</div></div>
+                <div class="chat-msg user"><div class="chat-bubble user">今日の予定を教えて</div></div>
+                <div class="chat-msg"><div class="chat-bubble ai">今日は特に予定ないみたいだよ！何か計画立てる？</div></div>
+                <div class="chat-msg user"><div class="chat-bubble user">京都旅行について考えたいな</div></div>
+                <div class="chat-msg"><div class="chat-bubble ai">京都！いいね！サイドバーの「旅行計画」ノートで続きを話す？</div></div>
+              </div>
+              <div class="chat-input-area">
+                <input type="text" placeholder="メッセージを入力...">
+                <button>送信</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="frame-label">サイドバーを格納するとキャラクター＆チャット領域が拡大</p>
+    </div>
+
+    <!-- スマホ版 -->
+    <div>
+      <div class="responsive-label"><span class="sp">スマホ版 (375px)</span></div>
+      <div class="sp-frame">
+        <div class="status-bar"><span>9:41</span><span>100%</span></div>
+        <div class="sp-header">
+          <h2>メイン会話</h2>
+          <span style="font-size:20px; cursor:pointer;">⚙️</span>
+        </div>
+        <div class="sp-content">
+          <div class="live2d-area-sp">
+            <div class="live2d-placeholder-sm">Live2D<br>キャラクター</div>
+          </div>
+          <div class="chat-area" style="flex:1;">
+            <div class="chat-messages">
+              <div class="chat-msg"><div class="chat-bubble ai">おはよー！今日は何する？</div></div>
+              <div class="chat-msg user"><div class="chat-bubble user">今日の予定を教えて</div></div>
+              <div class="chat-msg"><div class="chat-bubble ai">今日は特に予定ないみたい！</div></div>
+            </div>
+            <div class="chat-input-area">
+              <input type="text" placeholder="メッセージを入力..." style="font-size:16px;">
+              <button>送信</button>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="bottom-nav-item active"><span class="nav-icon">💬</span>チャット</div>
+          <div class="bottom-nav-item"><span class="nav-icon">📝</span>ノート</div>
+          <div class="bottom-nav-item"><span class="nav-icon">👥</span>グループ</div>
+          <div class="bottom-nav-item"><span class="nav-icon">⚙️</span>設定</div>
+        </div>
+      </div>
+      <p class="frame-label">ボトムナビでチャット / ノート / グループを切り替え</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     2. テーマ一覧画面
+============================================================ -->
+<section id="page-list" class="page-section">
+  <h1>テーマ一覧画面</h1>
+  <p class="desc">PC: サイドバーからも選択可能 + メインエリアにカードグリッド / スマホ: ボトムナビ「ノート」タブ</p>
+
+  <div class="side-by-side">
+    <!-- PC 版 -->
+    <div>
+      <div class="responsive-label"><span class="pc">PC 版 (1100px)</span><span class="hint">☰ ボタンでサイドバー開閉</span></div>
+      <div class="pc-frame" id="pc-list">
+        <div class="sidebar" id="sidebar-list">
+          <div class="sidebar-inner">
+            <div class="sidebar-list">
+              <div class="sidebar-item main">
+                <span class="s-icon">💬</span>
+                <div class="s-text">
+                  <div class="s-title">メイン会話</div>
+                  <div class="s-meta">いつもの会話 — 5分前</div>
+                </div>
+              </div>
+              <div class="sidebar-section-label">📝 テーマ別ノート<span class="section-link" onclick="showPage('list')">一覧へ</span></div>
+              <div class="sidebar-item">
+                <span class="s-icon">✈️</span>
+                <div class="s-text">
+                  <div class="s-title">旅行計画</div>
+                  <div class="s-meta">京都旅行 — 2時間前</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">📚</span>
+                <div class="s-text">
+                  <div class="s-title">英語学習</div>
+                  <div class="s-meta">TOEIC対策 — 昨日</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">🍳</span>
+                <div class="s-text">
+                  <div class="s-title">料理レシピ</div>
+                  <div class="s-meta">お菓子作り — 3日前</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">💼</span>
+                <div class="s-text">
+                  <div class="s-title">仕事の相談</div>
+                  <div class="s-meta">プレゼン — 1週間前</div>
+                </div>
+              </div>
+              <div class="sidebar-section-label">その他</div>
+              <div class="sidebar-item">
+                <span class="s-icon">👥</span>
+                <div class="s-text">
+                  <div class="s-title">グループチャット</div>
+                  <div class="s-meta">3つのグループ</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">⚙️</span>
+                <div class="s-text">
+                  <div class="s-title">設定</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="main-area">
+          <div class="main-header">
+            <button class="sidebar-toggle" onclick="toggleSidebar('list')" title="サイドバーを開閉">☰</button>
+            <h2>📝 テーマ別ノート</h2>
+            <div class="header-right">
+              <button style="background:#6c63ff; color:#fff; border:none; border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer; font-weight:600;">+ 新しいテーマ</button>
+            </div>
+          </div>
+          <div class="pc-theme-grid">
+            <div class="pc-theme-grid-inner">
+              <div class="theme-card">
+                <div class="theme-card-title">✈️ 旅行計画</div>
+                <div class="theme-card-meta">最終更新: 2時間前 · 12件の会話</div>
+                <div class="theme-card-preview">京都旅行を計画中。清水寺、伏見稲荷、嵐山を候補に...</div>
+              </div>
+              <div class="theme-card">
+                <div class="theme-card-title">📚 英語学習</div>
+                <div class="theme-card-meta">最終更新: 昨日 · 28件の会話</div>
+                <div class="theme-card-preview">TOEIC 700点を目指して勉強中。文法の復習から...</div>
+              </div>
+              <div class="theme-card">
+                <div class="theme-card-title">🍳 料理レシピ</div>
+                <div class="theme-card-meta">最終更新: 3日前 · 8件の会話</div>
+                <div class="theme-card-preview">チョコレートケーキのレシピを教えてもらった...</div>
+              </div>
+              <div class="theme-card">
+                <div class="theme-card-title">💼 仕事の相談</div>
+                <div class="theme-card-meta">最終更新: 1週間前 · 15件の会話</div>
+                <div class="theme-card-preview">プレゼン資料の構成について相談...</div>
+              </div>
+              <div class="add-theme-card">+ 新しいテーマを作成</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="frame-label">サイドバーを格納するとカードグリッドが広がる</p>
+    </div>
+
+    <!-- スマホ版 -->
+    <div>
+      <div class="responsive-label"><span class="sp">スマホ版 (375px)</span></div>
+      <div class="sp-frame">
+        <div class="status-bar"><span>9:41</span><span>100%</span></div>
+        <div class="sp-header">
+          <h2>テーマ別ノート</h2>
+          <span style="font-size:14px; color:#6c63ff; cursor:pointer; font-weight:600;">+ 新規</span>
+        </div>
+        <div class="sp-content">
+          <div class="sp-theme-list">
+            <div class="theme-card">
+              <div class="theme-card-title">✈️ 旅行計画</div>
+              <div class="theme-card-meta">最終更新: 2時間前 · 12件の会話</div>
+              <div class="theme-card-preview">京都旅行を計画中。清水寺、伏見稲荷、嵐山を候補に...</div>
+            </div>
+            <div class="theme-card">
+              <div class="theme-card-title">📚 英語学習</div>
+              <div class="theme-card-meta">最終更新: 昨日 · 28件の会話</div>
+              <div class="theme-card-preview">TOEIC 700点を目指して勉強中。文法の復習から...</div>
+            </div>
+            <div class="theme-card">
+              <div class="theme-card-title">🍳 料理レシピ</div>
+              <div class="theme-card-meta">最終更新: 3日前 · 8件の会話</div>
+              <div class="theme-card-preview">チョコレートケーキのレシピを教えてもらった...</div>
+            </div>
+            <div class="theme-card">
+              <div class="theme-card-title">💼 仕事の相談</div>
+              <div class="theme-card-meta">最終更新: 1週間前 · 15件の会話</div>
+              <div class="theme-card-preview">プレゼン資料の構成について相談...</div>
+            </div>
+            <button class="sp-add-btn">+ 新しいテーマを作成</button>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="bottom-nav-item"><span class="nav-icon">💬</span>チャット</div>
+          <div class="bottom-nav-item active"><span class="nav-icon">📝</span>ノート</div>
+          <div class="bottom-nav-item"><span class="nav-icon">👥</span>グループ</div>
+          <div class="bottom-nav-item"><span class="nav-icon">⚙️</span>設定</div>
+        </div>
+      </div>
+      <p class="frame-label">ノートタブでテーマ一覧をリスト表示</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     3. テーマチャット画面
+============================================================ -->
+<section id="page-theme" class="page-section">
+  <h1>テーマチャット画面</h1>
+  <p class="desc">PC: サイドバーでテーマ選択 → メインエリアにチャット表示 / スマホ: テーマカードタップで遷移</p>
+
+  <div class="side-by-side">
+    <!-- PC 版 -->
+    <div>
+      <div class="responsive-label"><span class="pc">PC 版 (1100px)</span><span class="hint">☰ ボタンでサイドバー開閉</span></div>
+      <div class="pc-frame" id="pc-theme">
+        <div class="sidebar" id="sidebar-theme">
+          <div class="sidebar-inner">
+            <div class="sidebar-list">
+              <div class="sidebar-item main">
+                <span class="s-icon">💬</span>
+                <div class="s-text">
+                  <div class="s-title">メイン会話</div>
+                  <div class="s-meta">いつもの会話 — 5分前</div>
+                </div>
+              </div>
+              <div class="sidebar-section-label">📝 テーマ別ノート<span class="section-link" onclick="showPage('list')">一覧へ</span></div>
+              <div class="sidebar-item active">
+                <span class="s-icon">✈️</span>
+                <div class="s-text">
+                  <div class="s-title">旅行計画</div>
+                  <div class="s-meta">京都旅行 — 数秒前</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">📚</span>
+                <div class="s-text">
+                  <div class="s-title">英語学習</div>
+                  <div class="s-meta">TOEIC対策 — 昨日</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">🍳</span>
+                <div class="s-text">
+                  <div class="s-title">料理レシピ</div>
+                  <div class="s-meta">お菓子作り — 3日前</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">💼</span>
+                <div class="s-text">
+                  <div class="s-title">仕事の相談</div>
+                  <div class="s-meta">プレゼン — 1週間前</div>
+                </div>
+              </div>
+              <div class="sidebar-section-label">その他</div>
+              <div class="sidebar-item">
+                <span class="s-icon">👥</span>
+                <div class="s-text">
+                  <div class="s-title">グループチャット</div>
+                  <div class="s-meta">3つのグループ</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <span class="s-icon">⚙️</span>
+                <div class="s-text">
+                  <div class="s-title">設定</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="main-area">
+          <div class="main-header">
+            <button class="sidebar-toggle" onclick="toggleSidebar('theme')" title="サイドバーを開閉">☰</button>
+            <h2>✈️ 旅行計画</h2>
+            <div class="header-right"><span style="font-size:12px; color:#999;">テーマ別ノート · 12件の会話</span></div>
+          </div>
+          <div class="main-content">
+            <div class="live2d-area-pc">
+              <div class="live2d-placeholder">Live2D<br>キャラクター</div>
+            </div>
+            <div class="chat-area">
+              <div class="chat-messages">
+                <div class="chat-msg"><div class="chat-bubble ai">京都旅行の続き？何から話す？</div></div>
+                <div class="chat-msg user"><div class="chat-bubble user">おすすめの宿を探して</div></div>
+                <div class="chat-msg"><div class="chat-bubble ai">いいよ！予算とかエリアの希望ある？清水寺周辺なら風情のある旅館が多いよ！</div></div>
+                <div class="chat-msg user"><div class="chat-bubble user">1泊2万円くらいで清水寺周辺がいいな</div></div>
+                <div class="chat-msg"><div class="chat-bubble ai">了解！その条件で調べてみるね。和室と洋室どっちがいい？</div></div>
+              </div>
+              <div class="chat-input-area">
+                <input type="text" placeholder="旅行計画について質問...">
+                <button>送信</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="frame-label">サイドバーを格納してキャラクター＆チャットに集中</p>
+    </div>
+
+    <!-- スマホ版 -->
+    <div>
+      <div class="responsive-label"><span class="sp">スマホ版 (375px)</span></div>
+      <div class="sp-frame">
+        <div class="status-bar"><span>9:41</span><span>100%</span></div>
+        <div class="sp-header">
+          <span style="font-size:16px; cursor:pointer; color:#6c63ff;">←</span>
+          <h2 style="flex:1; margin-left:8px;">✈️ 旅行計画</h2>
+          <span style="font-size:12px; color:#999;">30分前</span>
+        </div>
+        <div class="sp-content">
+          <div class="live2d-area-sp">
+            <div class="live2d-placeholder-sm">Live2D<br>キャラクター</div>
+          </div>
+          <div class="chat-area" style="flex:1;">
+            <div class="chat-messages">
+              <div class="chat-msg"><div class="chat-bubble ai">京都旅行の続き？何から話す？</div></div>
+              <div class="chat-msg user"><div class="chat-bubble user">おすすめの宿を探して</div></div>
+              <div class="chat-msg"><div class="chat-bubble ai">いいよ！予算とかエリアの希望ある？</div></div>
+            </div>
+            <div class="chat-input-area">
+              <input type="text" placeholder="旅行計画について質問..." style="font-size:16px;">
+              <button>送信</button>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="bottom-nav-item"><span class="nav-icon">💬</span>チャット</div>
+          <div class="bottom-nav-item active"><span class="nav-icon">📝</span>ノート</div>
+          <div class="bottom-nav-item"><span class="nav-icon">👥</span>グループ</div>
+          <div class="bottom-nav-item"><span class="nav-icon">⚙️</span>設定</div>
+        </div>
+      </div>
+      <p class="frame-label">← でテーマ一覧に戻る / ボトムナビは維持</p>
+    </div>
+  </div>
+</section>
+
+<script>
+function showPage(id) {
+  document.querySelectorAll('.page-section').forEach(s => s.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  // ナビボタンの active を対応するページに合わせる
+  const navButtons = document.querySelectorAll('.page-nav button');
+  const pageIndex = { main: 0, list: 1, theme: 2 };
+  navButtons.forEach((b, i) => {
+    b.classList.toggle('active', i === pageIndex[id]);
+  });
+}
+
+function toggleSidebar(frameId) {
+  const sidebar = document.getElementById('sidebar-' + frameId);
+  const frame = document.getElementById('pc-' + frameId);
+  sidebar.classList.toggle('collapsed');
+  frame.classList.toggle('sidebar-closed');
+}
+</script>
+
+</body>
+</html>

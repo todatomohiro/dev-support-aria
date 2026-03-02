@@ -9,7 +9,7 @@ if (typeof window !== 'undefined') {
 }
 
 /** モバイルレイアウト判定の高さ閾値（px） */
-const MOBILE_HEIGHT_THRESHOLD = 300
+const MOBILE_HEIGHT_THRESHOLD = 350
 /** デスクトップ時の最大スケール */
 const DESKTOP_MAX_SCALE = 0.5
 
