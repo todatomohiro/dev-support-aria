@@ -164,9 +164,26 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
     onLoadEarlier()
   }, [onLoadEarlier, isLoadingEarlier])
 
+  const isInitialScrollRef = useRef(true)
+  const [showScrollButton, setShowScrollButton] = useState(false)
+
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const behavior = isInitialScrollRef.current ? 'instant' as ScrollBehavior : 'smooth'
+    isInitialScrollRef.current = false
+    messagesEndRef.current?.scrollIntoView({ behavior })
   }
+
+  /** スクロール位置を監視して「最新へ」ボタンの表示を切り替え */
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const handleScroll = () => {
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+      setShowScrollButton(distanceFromBottom > 100)
+    }
+    container.addEventListener('scroll', handleScroll, { passive: true })
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputText(e.target.value)
@@ -195,7 +212,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
+    <div className="relative flex flex-col h-full bg-white dark:bg-gray-900">
       {/* メッセージ履歴エリア */}
       <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-2 sm:space-y-4" ref={scrollContainerRef}>
         {hasEarlierMessages && (
@@ -227,6 +244,20 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
         {/* スクロール用のアンカー */}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* 最新メッセージへ戻るボタン */}
+      {showScrollButton && (
+        <button
+          onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          className="absolute bottom-36 right-4 z-10 w-10 h-10 rounded-full bg-purple-600 text-white shadow-lg hover:bg-purple-700 transition-all flex items-center justify-center opacity-80 hover:opacity-100"
+          title="最新メッセージへ"
+          data-testid="scroll-to-bottom-button"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        </button>
+      )}
 
       {/* 入力エリア */}
       <div className="border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4">

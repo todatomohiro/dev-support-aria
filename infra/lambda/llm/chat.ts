@@ -99,9 +99,10 @@ function formatMemoryContext(records: string[]): string {
  */
 async function getSessionContext(userId: string, sessionId: string): Promise<{
   summary: string
-  recentMessages: Array<{ role: string; content: string }>
+  recentMessages: Array<{ role: string; content: string; createdAt?: string }>
   turnsSinceSummary: number
   checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }>
+  sessionCreatedAt: string
 }> {
   // セッションレコード（要約）を取得
   const sessionResult = await dynamo.send(new GetItemCommand({
@@ -114,6 +115,7 @@ async function getSessionContext(userId: string, sessionId: string): Promise<{
 
   const summary = sessionResult.Item?.summary?.S ?? ''
   const turnsSinceSummary = parseInt(sessionResult.Item?.turnsSinceSummary?.N ?? '0', 10)
+  const sessionCreatedAt = sessionResult.Item?.createdAt?.S ?? sessionResult.Item?.updatedAt?.S ?? new Date().toISOString()
 
   // 直近メッセージとチェックポイントを並列取得
   const [messagesResult, checkpointsResult] = await Promise.all([
@@ -143,6 +145,7 @@ async function getSessionContext(userId: string, sessionId: string): Promise<{
     .map((item) => ({
       role: item.role?.S ?? 'user',
       content: item.content?.S ?? '',
+      createdAt: item.createdAt?.S,
     }))
 
   const checkpoints = (checkpointsResult.Items ?? []).map((item) => ({
@@ -151,7 +154,7 @@ async function getSessionContext(userId: string, sessionId: string): Promise<{
     summary: item.summary?.S ?? '',
   }))
 
-  return { summary, recentMessages, turnsSinceSummary, checkpoints }
+  return { summary, recentMessages, turnsSinceSummary, checkpoints, sessionCreatedAt }
 }
 
 /**
@@ -225,7 +228,7 @@ async function updateSessionAndMaybeSummarize(
       PK: { S: `USER#${userId}` },
       SK: { S: `SESSION#${sessionId}` },
     },
-    UpdateExpression: 'SET turnsSinceSummary = :tss, updatedAt = :now, ttlExpiry = :ttl ADD totalTurns :one',
+    UpdateExpression: 'SET turnsSinceSummary = :tss, updatedAt = :now, ttlExpiry = :ttl, createdAt = if_not_exists(createdAt, :now) ADD totalTurns :one',
     ExpressionAttributeValues: {
       ':tss': { N: String(newTurnsSinceSummary >= SUMMARY_INTERVAL ? 0 : newTurnsSinceSummary) },
       ':now': { S: now },
@@ -273,13 +276,13 @@ async function updateSessionAndMaybeSummarize(
  * フロントエンドの会話履歴を Converse API 形式に変換
  */
 function toConverseMessages(
-  history: Array<{ role: string; content: string }>,
+  history: Array<{ role: string; content: string; createdAt?: string }>,
   message: string,
   imageBase64?: string
 ): BedrockMessage[] {
   const messages: BedrockMessage[] = history.map((m) => ({
     role: m.role as 'user' | 'assistant',
-    content: [{ text: m.content }],
+    content: [{ text: m.createdAt ? `[${toJSTDateTimeString(m.createdAt)}] ${m.content}` : m.content }],
   }))
 
   const userContent: ContentBlock[] = [{ text: message }]
@@ -329,11 +332,72 @@ async function getPermanentFacts(userId: string): Promise<string[]> {
 }
 
 /**
+ * DynamoDB から過去セッションの要約を取得（現在のセッションを除く直近3件）
+ */
+async function getRecentSessionSummaries(
+  userId: string,
+  currentSessionId: string
+): Promise<Array<{ date: string; summary: string }>> {
+  try {
+    const result = await dynamo.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+      ExpressionAttributeValues: {
+        ':pk': { S: `USER#${userId}` },
+        ':skPrefix': { S: 'SESSION#' },
+      },
+    }))
+
+    const sessions = (result.Items ?? [])
+      // 現在のセッションを除外
+      .filter((item) => item.SK?.S !== `SESSION#${currentSessionId}`)
+      // 要約があるセッションのみ
+      .filter((item) => item.summary?.S)
+      // updatedAt 降順ソート
+      .sort((a, b) => (b.updatedAt?.S ?? '').localeCompare(a.updatedAt?.S ?? ''))
+      // 直近3件
+      .slice(0, 3)
+
+    return sessions.map((item) => {
+      const dateSource = item.createdAt?.S ?? item.updatedAt?.S ?? new Date().toISOString()
+      return {
+        date: toJSTDateString(dateSource),
+        summary: item.summary!.S!,
+      }
+    })
+  } catch (error) {
+    console.warn('[LLM] 過去セッション要約取得エラー（スキップ）:', error)
+    return []
+  }
+}
+
+/**
  * JST の HH:MM 文字列に変換
  */
 function toJSTTimeString(isoTimestamp: string): string {
   const date = new Date(isoTimestamp)
   return date.toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' })
+}
+
+/**
+ * JST の MM/DD HH:MM 文字列に変換（メッセージ・チェックポイント用）
+ */
+function toJSTDateTimeString(isoTimestamp: string): string {
+  const date = new Date(isoTimestamp)
+  const month = String(date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric' })).padStart(2, '0')
+  const day = String(date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', day: 'numeric' })).padStart(2, '0')
+  const time = toJSTTimeString(isoTimestamp)
+  return `${month}/${day} ${time}`
+}
+
+/**
+ * JST の MM/DD 文字列に変換（セッション日付用）
+ */
+function toJSTDateString(isoTimestamp: string): string {
+  const date = new Date(isoTimestamp)
+  const month = String(date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric' })).padStart(2, '0')
+  const day = String(date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', day: 'numeric' })).padStart(2, '0')
+  return `${month}/${day}`
 }
 
 /**
@@ -344,7 +408,9 @@ function buildEnhancedSystemPrompt(
   permanentFacts: string[],
   memoryContext: string,
   sessionSummary: string,
-  checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }> = []
+  checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }> = [],
+  sessionDate?: string,
+  pastSessions?: Array<{ date: string; summary: string }>
 ): string {
   let enhanced = systemPrompt
 
@@ -359,17 +425,26 @@ function buildEnhancedSystemPrompt(
     enhanced += `\n\n<user_context>\n${memoryContext}\n</user_context>`
   }
 
+  // 過去セッション要約
+  if (pastSessions && pastSessions.length > 0) {
+    const lines = pastSessions.map((s) => `[${s.date}] ${s.summary}`)
+    enhanced += `\n\n<past_sessions>\n過去のセッション要約：\n${lines.join('\n\n')}\n</past_sessions>`
+  }
+
   // セッション要約 + チェックポイント（短期記憶）
   if (sessionSummary || checkpoints.length > 0) {
     let sessionBlock = ''
+    if (sessionDate) {
+      sessionBlock += `[${sessionDate} のセッション]\n`
+    }
     if (sessionSummary) {
       sessionBlock += sessionSummary
     }
     if (checkpoints.length > 0) {
       const lines = checkpoints.map((cp) => {
-        const time = toJSTTimeString(cp.timestamp)
+        const dateTime = toJSTDateTimeString(cp.timestamp)
         const kw = cp.keywords.join('・')
-        return `[${time} ${kw}] ${cp.summary}`
+        return `[${dateTime} ${kw}] ${cp.summary}`
       })
       sessionBlock += `\n\n<session_checkpoints>\n${lines.join('\n')}\n</session_checkpoints>`
     }
@@ -437,22 +512,32 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let sessionSummary = ''
 
   if (sessionId) {
-    // 新フロー: DynamoDB からセッションコンテキストを構築
+    // 新フロー: DynamoDB からセッションコンテキストを構築（並列取得）
     console.log(`[LLM] セッションモード: sessionId=${sessionId}`)
-    const sessionContext = await getSessionContext(userId, sessionId)
+    const [sessionContext, pastSessions] = await Promise.all([
+      getSessionContext(userId, sessionId),
+      getRecentSessionSummaries(userId, sessionId),
+    ])
     sessionTurnsSinceSummary = sessionContext.turnsSinceSummary
     sessionSummary = sessionContext.summary
+
+    const sessionDate = toJSTDateString(sessionContext.sessionCreatedAt)
 
     enhancedSystemPrompt = buildEnhancedSystemPrompt(
       systemPrompt,
       permanentFacts,
       memoryContext,
       sessionSummary,
-      sessionContext.checkpoints
+      sessionContext.checkpoints,
+      sessionDate,
+      pastSessions
     )
 
     if (sessionContext.checkpoints.length > 0) {
       console.log(`[LLM] チェックポイント ${sessionContext.checkpoints.length} 件をプロンプトに注入`)
+    }
+    if (pastSessions.length > 0) {
+      console.log(`[LLM] 過去セッション ${pastSessions.length} 件をプロンプトに注入`)
     }
 
     // セッションの直近メッセージ + 今回のメッセージで会話構築
@@ -481,7 +566,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     for (let iteration = 0; iteration < MAX_TOOL_USE_ITERATIONS; iteration++) {
       const result = await bedrock.send(new ConverseCommand({
-        modelId: 'jp.anthropic.claude-sonnet-4-6',
+        modelId: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0',
         messages: currentMessages,
         system,
         inferenceConfig: {
