@@ -331,13 +331,20 @@ async function getPermanentFacts(userId: string): Promise<string[]> {
   }
 }
 
+/** 過去セッション要約の日付グループ型 */
+interface PastSessionGroup {
+  date: string
+  label: string
+  sessions: string[]
+}
+
 /**
- * DynamoDB から過去セッションの要約を取得（現在のセッションを除く直近3件）
+ * DynamoDB から過去セッションの要約を取得し、日付ごとにグループ化（直近7日間）
  */
 async function getRecentSessionSummaries(
   userId: string,
   currentSessionId: string
-): Promise<Array<{ date: string; summary: string }>> {
+): Promise<PastSessionGroup[]> {
   try {
     const result = await dynamo.send(new QueryCommand({
       TableName: TABLE_NAME,
@@ -348,23 +355,45 @@ async function getRecentSessionSummaries(
       },
     }))
 
-    const sessions = (result.Items ?? [])
-      // 現在のセッションを除外
-      .filter((item) => item.SK?.S !== `SESSION#${currentSessionId}`)
-      // 要約があるセッションのみ
-      .filter((item) => item.summary?.S)
-      // updatedAt 降順ソート
-      .sort((a, b) => (b.updatedAt?.S ?? '').localeCompare(a.updatedAt?.S ?? ''))
-      // 直近3件
-      .slice(0, 3)
+    const now = new Date()
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const todayKey = toJSTDateKey(now.toISOString())
+    // 昨日の日付キーを計算
+    const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    const yesterdayKey = toJSTDateKey(yesterdayDate.toISOString())
 
-    return sessions.map((item) => {
-      const dateSource = item.createdAt?.S ?? item.updatedAt?.S ?? new Date().toISOString()
-      return {
-        date: toJSTDateString(dateSource),
-        summary: item.summary!.S!,
+    const sessions = (result.Items ?? [])
+      .filter((item) => item.SK?.S !== `SESSION#${currentSessionId}`)
+      .filter((item) => item.summary?.S)
+      .filter((item) => (item.updatedAt?.S ?? '') >= sevenDaysAgo)
+
+    // 日付キーでグループ化（Map で順序保持）
+    const groupMap = new Map<string, { createdAt: string; summary: string }[]>()
+    for (const item of sessions) {
+      const dateSource = item.createdAt?.S ?? item.updatedAt?.S ?? now.toISOString()
+      const dateKey = toJSTDateKey(dateSource)
+      if (!groupMap.has(dateKey)) {
+        groupMap.set(dateKey, [])
       }
-    })
+      groupMap.get(dateKey)!.push({
+        createdAt: dateSource,
+        summary: item.summary!.S!,
+      })
+    }
+
+    // 各日内は createdAt 昇順（時系列順）にソート
+    for (const entries of groupMap.values()) {
+      entries.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    }
+
+    // 日付降順でソートして返却
+    return Array.from(groupMap.entries())
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([dateKey, entries]) => ({
+        date: toJSTDateString(entries[0].createdAt),
+        label: getJSTDateLabel(dateKey, todayKey, yesterdayKey),
+        sessions: entries.map((e) => e.summary),
+      }))
   } catch (error) {
     console.warn('[LLM] 過去セッション要約取得エラー（スキップ）:', error)
     return []
@@ -401,6 +430,35 @@ function toJSTDateString(isoTimestamp: string): string {
 }
 
 /**
+ * ISO タイムスタンプを JST の YYYY-MM-DD 日付キーに変換（グループ化用）
+ */
+function toJSTDateKey(isoTimestamp: string): string {
+  const date = new Date(isoTimestamp)
+  const year = date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric' }).replace(/[^0-9]/g, '')
+  const month = String(date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric' })).padStart(2, '0')
+  const day = String(date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', day: 'numeric' })).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** 曜日ラベル（日〜土） */
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'] as const
+
+/**
+ * 日付キーから表示ラベルを生成（今日/昨日/一昨日/MM/DD(曜日)）
+ */
+function getJSTDateLabel(dateKey: string, todayKey: string, yesterdayKey: string): string {
+  if (dateKey === todayKey) return '今日'
+  if (dateKey === yesterdayKey) return '昨日'
+
+  // MM/DD(曜日) 形式
+  const date = new Date(dateKey + 'T00:00:00+09:00')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const weekday = WEEKDAY_LABELS[date.getDay()]
+  return `${month}/${day}(${weekday})`
+}
+
+/**
  * システムプロンプトを構築（永久記憶 + メモリ + セッション要約 + チェックポイントを注入）
  */
 function buildEnhancedSystemPrompt(
@@ -410,7 +468,7 @@ function buildEnhancedSystemPrompt(
   sessionSummary: string,
   checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }> = [],
   sessionDate?: string,
-  pastSessions?: Array<{ date: string; summary: string }>
+  pastSessions?: PastSessionGroup[]
 ): string {
   let enhanced = systemPrompt
 
@@ -425,10 +483,13 @@ function buildEnhancedSystemPrompt(
     enhanced += `\n\n<user_context>\n${memoryContext}\n</user_context>`
   }
 
-  // 過去セッション要約
+  // 過去セッション要約（日付グループ化）
   if (pastSessions && pastSessions.length > 0) {
-    const lines = pastSessions.map((s) => `[${s.date}] ${s.summary}`)
-    enhanced += `\n\n<past_sessions>\n過去のセッション要約：\n${lines.join('\n\n')}\n</past_sessions>`
+    const groups = pastSessions.map((g) => {
+      const lines = g.sessions.map((s) => `・${s}`)
+      return `【${g.date}（${g.label}）】\n${lines.join('\n')}`
+    })
+    enhanced += `\n\n<past_sessions>\n過去のセッション要約：\n\n${groups.join('\n\n')}\n</past_sessions>`
   }
 
   // セッション要約 + チェックポイント（短期記憶）
@@ -537,7 +598,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.log(`[LLM] チェックポイント ${sessionContext.checkpoints.length} 件をプロンプトに注入`)
     }
     if (pastSessions.length > 0) {
-      console.log(`[LLM] 過去セッション ${pastSessions.length} 件をプロンプトに注入`)
+      const totalSessions = pastSessions.reduce((sum, g) => sum + g.sessions.length, 0)
+      console.log(`[LLM] 過去セッション ${totalSessions} 件（${pastSessions.length} 日分）をプロンプトに注入`)
     }
 
     // セッションの直近メッセージ + 今回のメッセージで会話構築
