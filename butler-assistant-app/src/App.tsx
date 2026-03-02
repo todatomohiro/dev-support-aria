@@ -341,8 +341,8 @@ function App() {
               /* 認証済み or ゲストモード: 通常コンテンツ */
               <>
                 {/* Live2Dキャラクター表示エリア */}
-                <div className="h-[25vh] md:h-auto md:w-1/3 md:min-w-[280px] md:max-w-[400px] bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0 overflow-hidden">
-                  <div className="flex items-start justify-center min-h-0 h-[40vh] md:h-full md:flex-1 shrink-0">
+                <div className="h-[35vh] md:h-auto md:w-1/3 md:min-w-[280px] md:max-w-[400px] bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0 overflow-hidden">
+                  <div className="relative min-h-0 flex-1 overflow-hidden">
                     <Live2DCanvas
                       ref={live2dRef}
                       modelPath={config.model.currentModelId}

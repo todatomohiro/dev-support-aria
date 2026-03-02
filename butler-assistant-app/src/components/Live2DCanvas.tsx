@@ -8,6 +8,42 @@ if (typeof window !== 'undefined') {
   ;(window as any).PIXI = PIXI
 }
 
+/** モバイルレイアウト判定の高さ閾値（px） */
+const MOBILE_HEIGHT_THRESHOLD = 300
+/** デスクトップ時の最大スケール */
+const DESKTOP_MAX_SCALE = 0.5
+
+/**
+ * コンテナサイズに応じてモデルのスケールと位置を設定
+ *
+ * - モバイル（高さ < 300px）: 幅に合わせて拡大し、上半身をクローズアップ表示
+ * - デスクトップ: コンテナ内に全身を収める
+ */
+function applyModelLayout(
+  model: Live2DModel,
+  containerW: number,
+  containerH: number,
+  originalW: number,
+  originalH: number
+): void {
+  if (containerH < MOBILE_HEIGHT_THRESHOLD) {
+    // モバイル: 上半身クローズアップ（幅基準でスケール、下半身はクリップ）
+    const widthScale = containerW / originalW
+    const scale = Math.min(widthScale * 0.8, 1.0)
+    model.scale.set(scale)
+    model.x = containerW / 2
+    // モデル上部を表示エリア上方に配置（上半身〜腰が見える位置）
+    model.y = originalH * scale * 0.4
+  } else {
+    // デスクトップ: コンテナ内に全身を収める
+    const fitScale = Math.min(containerW / originalW, containerH / originalH)
+    const scale = Math.min(fitScale, DESKTOP_MAX_SCALE)
+    model.scale.set(scale)
+    model.x = containerW / 2
+    model.y = containerH / 2
+  }
+}
+
 interface Live2DCanvasProps {
   modelPath: string
   currentMotion: string | null
@@ -92,16 +128,24 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
           ? Math.min(window.devicePixelRatio, 1.5)
           : window.devicePixelRatio
 
-        // PixiJS アプリケーションを作成
+        // PixiJS アプリケーションを作成（resizeTo は使わず手動管理）
+        const initWidth = container.clientWidth || 1
+        const initHeight = container.clientHeight || 1
         app = new PIXI.Application({
           backgroundAlpha: 0,
-          resizeTo: container,
+          width: initWidth,
+          height: initHeight,
           antialias: true,
           resolution,
         })
 
         // @ts-expect-error - PixiJS v7 の型との互換性
         container.appendChild(app.view)
+        // Canvas をコンテナ全体に収める
+        const canvas = app.view as HTMLCanvasElement
+        canvas.style.width = '100%'
+        canvas.style.height = '100%'
+        canvas.style.display = 'block'
         appRef.current = app
 
         // DEV モード: FPS 計測ログ
@@ -142,18 +186,9 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
               height: model.height,
             }
 
-            // モデルのサイズと位置を調整（最大スケールを制限）
-            const MAX_SCALE = 0.5  // 最大スケール
-            const fitScale = Math.min(
-              container.clientWidth / model.width,
-              container.clientHeight / model.height
-            )
-            const scale = Math.min(fitScale, MAX_SCALE)
-
-            model.scale.set(scale)
-            model.x = container.clientWidth / 2
-            model.y = container.clientHeight / 2
+            // モデルのサイズと位置を調整
             model.anchor.set(0.5, 0.5)
+            applyModelLayout(model, container.clientWidth, container.clientHeight, model.width, model.height)
 
             // リップシンク: 毎フレーム口の開きを反映
             // beforeModelUpdate イベント（モーション適用後・描画前）を優先し、
@@ -271,21 +306,23 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
   // リサイズ対応
   const handleResize = useCallback(() => {
     const container = containerRef.current
+    const app = appRef.current
     const model = modelRef.current
     const originalSize = originalSizeRef.current
-    if (!container || !model || !originalSize) return
+    if (!container) return
 
-    // 最大スケールを制限（元のサイズを基準に計算）
-    const MAX_SCALE = 0.5
-    const fitScale = Math.min(
-      container.clientWidth / originalSize.width,
-      container.clientHeight / originalSize.height
-    )
-    const scale = Math.min(fitScale, MAX_SCALE)
+    const w = container.clientWidth
+    const h = container.clientHeight
+    if (w === 0 || h === 0) return
 
-    model.scale.set(scale)
-    model.x = container.clientWidth / 2
-    model.y = container.clientHeight / 2
+    // レンダラーのバッファサイズを更新
+    if (app) {
+      app.renderer.resize(w, h)
+    }
+
+    if (!model || !originalSize) return
+
+    applyModelLayout(model, w, h, originalSize.width, originalSize.height)
   }, [])
 
   // ResizeObserver でコンテナサイズの変更を監視（スロットル付き）
@@ -422,10 +459,10 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
   }, [])
 
   return (
-    <div className={`relative w-full h-full ${className}`}>
+    <div className={`relative w-full h-full overflow-hidden ${className}`}>
       <div
         ref={containerRef}
-        className="absolute inset-0"
+        className="w-full h-full"
         data-testid="live2d-canvas"
       />
 
