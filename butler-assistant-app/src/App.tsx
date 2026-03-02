@@ -223,7 +223,7 @@ function App() {
         <div className="flex items-center justify-between px-2 sm:px-4 py-2 sm:py-3 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))]">
           <div className="flex items-center gap-1 sm:gap-2">
             <h1 className="text-base sm:text-xl font-semibold text-gray-900 dark:text-gray-100">
-              Butler Assistant
+              AI Assistant
             </h1>
             <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded hidden sm:inline">
               {currentPlatform}
