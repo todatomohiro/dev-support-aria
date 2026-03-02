@@ -332,6 +332,11 @@ class ChatControllerImpl {
         mapData: structuredResponse.mapData,
       }
 
+      // トピック自動命名: レスポンスに themeName があれば store を更新
+      if (structuredResponse.themeName) {
+        store.updateThemeName(themeId, structuredResponse.themeName)
+      }
+
       // ストアにアシスタントメッセージを追加
       store.addMessage(assistantMessage)
 

@@ -43,7 +43,7 @@ butler-assistant-app/
 │   ├── components/         # React コンポーネント（PascalCase.tsx）
 │   ├── hooks/              # カスタムフック（useSpeechRecognition, useCamera, useWebSocket, useGroupPolling）
 │   ├── services/           # ビジネスロジック（camelCase.ts）
-│   ├── stores/             # Zustand 状態管理（appStore, groupChatStore）
+│   ├── stores/             # Zustand 状態管理（appStore, themeStore, groupChatStore）
 │   ├── types/              # 型定義・エラークラス・サービスインターフェース
 │   ├── platform/           # プラットフォーム抽象化（Web/Tauri/Capacitor）
 │   ├── lib/live2d/         # Live2D Cubism SDK ラッパー
@@ -61,6 +61,7 @@ infra/
     │   ├── summarize.ts    #   ローリング要約（Haiku 4.5）
     │   ├── extractFacts.ts #   永久事実抽出（Haiku 4.5）
     │   └── sessionFinalizer.ts # セッション終了検出（EventBridge 15分ルール）
+    ├── themes/             # トピック管理（create, list, delete, update, messages）
     ├── friends/            # フレンド管理（generateCode, getCode, link, list, unfriend）
     ├── groups/             # グループ管理（create, addMember, leave, members）
     ├── conversations/      # グループチャット会話（list, messagesList, messagesSend, messagesPoll, messagesRead）
@@ -117,7 +118,7 @@ export const responseParser = new ResponseParserImpl()
 
 ## テスト
 
-- **Vitest** + **jsdom** 環境
+- **Vitest** + **jsdom** 環境（621テスト / 42ファイル）
 - セットアップ: `src/__tests__/setup.ts`（Live2D SDK・PixiJS のモック定義済み）
 - プロパティベーステスト: `fast-check`（`@fast-check/vitest`）、最低100回実行
 
@@ -152,7 +153,7 @@ test.prop([fc.string()])(
   │   ↓ Bedrock Claude Haiku 4.5（Converse API + Tool Use）
   │   ↓ ツール実行: list_events / create_event / search_places / web_search
   │   ↓ メッセージ保存 + 5ターンごとに要約 Lambda 非同期起動
-  │   → レスポンス返却（text, motion, emotion, mapData?, permanentFacts?, sessionSummary?）
+  │   → レスポンス返却（text, motion, emotion, mapData?, permanentFacts?, sessionSummary?, themeName?)
   ├→ fire-and-forget: /memory/events → AgentCore Memory
   └→ EventBridge rate(15min) → sessionFinalizer → extractFacts（永久事実抽出）
 ```
@@ -162,6 +163,22 @@ test.prop([fc.string()])(
 - スキル定義: `infra/lambda/llm/skills/toolDefinitions.ts`
 - スキルルーティング: `infra/lambda/llm/skills/index.ts`（`executeSkill()`）
 - トークン管理: `infra/lambda/llm/skills/tokenManager.ts`（Google OAuth）
+
+### トピック（テーマ）管理
+
+```
+トピック作成 → themeService.createTheme("新規トピック") → Lambda /themes
+トピックチャット → chatController.sendThemeMessage → Lambda /llm/chat（themeId 付き）
+  ↓ 新規トピック時: LLM が topicName 生成 or ユーザー発言先頭15文字をフォールバック
+  ↓ DynamoDB THEME_SESSION#{themeId} の themeName を更新
+  → レスポンスに themeName 付与 → themeStore.updateThemeName で UI 即反映
+手動リネーム → themeService.renameTheme → Lambda PATCH /themes/{themeId}
+メッセージ履歴 → themeService.listMessages → Lambda GET /themes/{themeId}/messages
+```
+
+- DynamoDB PK: `USER#userId#THEME#themeId` + SK: `MSG#timestamp#role`
+- トピック一覧は `THEME_SESSION#{themeId}` (PK=`USER#userId`)
+- メッセージ取得時: アシスタント JSON から `text` のみ抽出、時系列 + role 順でソート
 
 ### 3層記憶モデル
 
@@ -183,6 +200,7 @@ Cognito + Amplify（SRP 認証フロー）。`src/auth/` に集約。
 ### 状態管理（Zustand）
 
 - **appStore.ts**: メッセージ、モーション、設定（persist あり）
+- **themeStore.ts**: トピック一覧、アクティブトピック、テーマメッセージ（persist なし、サーバーが信頼元）
 - **groupChatStore.ts**: フレンド、グループ、WS ステータス（persist なし、サーバーが信頼元）
 
 ### AWS インフラ
@@ -192,7 +210,7 @@ Cognito + Amplify（SRP 認証フロー）。`src/auth/` に集約。
 | DynamoDB | `butler-assistant`（PK/SK + GSI1/GSI2、ポイントインタイム復旧、TTL） |
 | Cognito | ユーザープール + SPA クライアント（SRP 認証） |
 | API Gateway | REST（Cognito 認可）+ WebSocket（JWT 認証） |
-| Lambda × 30 | Node.js 22.x / ARM_64（デフォルト 10秒、LLM: 90秒） |
+| Lambda × 35 | Node.js 22.x / ARM_64（デフォルト 10秒、LLM: 90秒） |
 | EventBridge | `rate(15 minutes)` → sessionFinalizer |
 | AgentCore Memory | 中期記憶（SEMANTIC + USER_PREFERENCE ストラテジー） |
 

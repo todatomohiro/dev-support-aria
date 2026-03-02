@@ -36,7 +36,7 @@ export function Sidebar({ activeTab, onOpenSettings }: SidebarProps) {
       <div className="border-t border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between px-4 py-2">
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-            テーマ別ノート
+            トピック
           </span>
           <button
             onClick={() => navigate('/themes')}
@@ -69,24 +69,6 @@ export function Sidebar({ activeTab, onOpenSettings }: SidebarProps) {
             )
           })}
         </div>
-      </div>
-
-      {/* グループチャット */}
-      <div className="border-t border-gray-200 dark:border-gray-700">
-        <button
-          onClick={() => navigate('/groups')}
-          className={`w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium transition-colors ${
-            activeTab === 'groups'
-              ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-          }`}
-          data-testid="sidebar-groups"
-        >
-          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          グループチャット
-        </button>
       </div>
 
       {/* スペーサー */}

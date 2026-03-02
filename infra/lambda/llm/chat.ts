@@ -576,7 +576,11 @@ function buildEnhancedSystemPrompt(
 
   // テーマコンテキスト
   if (themeContext) {
-    enhanced += `\n\n<theme_context>\nテーマ: ${themeContext.themeName}\nこのセッションでは「${themeContext.themeName}」について会話しています。\nテーマに関連する回答を心がけてください。\n</theme_context>`
+    if (themeContext.themeName === '新規トピック') {
+      enhanced += `\n\n<theme_context>\nこれは新しく作成されたトピックです。\nユーザーの最初の発言内容から、このトピックにふさわしい短いタイトル（15文字以内）を考えて、レスポンスJSONの "topicName" フィールドに含めてください。\n</theme_context>`
+    } else {
+      enhanced += `\n\n<theme_context>\nテーマ: ${themeContext.themeName}\nこのセッションでは「${themeContext.themeName}」について会話しています。\nテーマに関連する回答を心がけてください。\n</theme_context>`
+    }
   }
 
   // セッション要約 + チェックポイント（短期記憶）
@@ -660,6 +664,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let enhancedSystemPrompt: string
   let sessionTurnsSinceSummary = 0
   let sessionSummary = ''
+  let themeContext: { themeName: string } | null = null
 
   if (sessionId) {
     // テーマセッションかメインセッションかを判定
@@ -673,7 +678,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.log(`[LLM] セッションモード: sessionId=${sessionId}${themeId ? `, themeId=${themeId}` : ''}`)
 
     // テーマコンテキストを取得（themeId がある場合のみ）
-    const themeContext = themeId ? await getThemeContext(userId, themeId) : null
+    themeContext = themeId ? await getThemeContext(userId, themeId) : null
 
     // 新フロー: DynamoDB からセッションコンテキストを構築（並列取得）
     // メイン会話の場合はテーマ要約も取得
@@ -827,10 +832,47 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
       }
 
+      // 新規トピックの自動命名
+      let generatedThemeName: string | undefined
+      if (themeId && themeContext?.themeName === '新規トピック') {
+        try {
+          // 1. LLM レスポンスの topicName を試行
+          const jsonMatch = content.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0])
+            if (typeof parsed.topicName === 'string' && parsed.topicName.trim()) {
+              generatedThemeName = parsed.topicName.trim().slice(0, 15)
+            }
+          }
+          // 2. フォールバック: ユーザーメッセージから生成
+          if (!generatedThemeName) {
+            const trimmed = message.trim().replace(/\n/g, ' ')
+            generatedThemeName = trimmed.length > 15
+              ? trimmed.slice(0, 15) + '…'
+              : trimmed
+          }
+          console.log(`[LLM] トピック自動命名: "${generatedThemeName}"`)
+          await dynamo.send(new UpdateItemCommand({
+            TableName: TABLE_NAME,
+            Key: {
+              PK: { S: `USER#${userId}` },
+              SK: { S: `THEME_SESSION#${themeId}` },
+            },
+            UpdateExpression: 'SET themeName = :name',
+            ExpressionAttributeValues: {
+              ':name': { S: generatedThemeName },
+            },
+          }))
+        } catch (err) {
+          console.warn('[LLM] トピック自動命名エラー（スキップ）:', err)
+        }
+      }
+
       return response(200, {
         content,
         ...(sessionSummary ? { sessionSummary } : {}),
         ...(permanentFacts.length > 0 ? { permanentFacts } : {}),
+        ...(generatedThemeName ? { themeName: generatedThemeName } : {}),
       })
     }
 

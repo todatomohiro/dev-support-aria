@@ -36,6 +36,12 @@ function App() {
   // 認証が必要かつ未認証かを判定
   const requiresAuth = isAuthConfigured() && authStatus !== 'authenticated'
 
+  // Live2D を表示するルート: メイン会話 or テーマチャット（themeId あり）
+  const showLive2D = !requiresAuth && !isPocPage && (
+    location.pathname === '/' ||
+    (location.pathname.startsWith('/themes/') && location.pathname !== '/themes')
+  )
+
   // Zustand store
   const messages = useAppStore((state) => state.messages)
   const isLoading = useAppStore((state) => state.isLoading)
@@ -56,9 +62,9 @@ function App() {
 
   // 現在のセッション名を判定（設計書: ヘッダーにはセッション名のみ表示）
   const currentSessionName = location.pathname.startsWith('/themes') && activeThemeId
-    ? themeThemes.find(t => t.themeId === activeThemeId)?.themeName ?? 'テーマ別ノート'
+    ? themeThemes.find(t => t.themeId === activeThemeId)?.themeName ?? 'トピック'
     : location.pathname.startsWith('/themes')
-      ? 'テーマ別ノート'
+      ? 'トピック'
       : location.pathname.startsWith('/groups')
         ? 'グループチャット'
         : 'メイン会話'
@@ -169,6 +175,18 @@ function App() {
     })
   }, [updateConfig])
 
+  // テーマ名リネームハンドラー
+  const handleRenameTheme = useCallback(async (newName: string) => {
+    if (!activeThemeId) return
+    try {
+      await themeService.renameTheme(activeThemeId, newName)
+      const store = useThemeStore.getState()
+      store.updateThemeName(activeThemeId, newName)
+    } catch (error) {
+      console.error('[App] テーマ名更新エラー:', error)
+    }
+  }, [activeThemeId])
+
   // テーマ提案から作成ハンドラー
   const handleCreateThemeFromSuggestion = useCallback(async (themeName: string) => {
     try {
@@ -249,6 +267,7 @@ function App() {
       <AppLayout
         currentSessionName={currentSessionName}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onRenameSession={activeThemeId ? handleRenameTheme : undefined}
         headerRight={
           <>
             {isAuthConfigured() && authStatus !== 'authenticated' && authStatus !== 'loading' && (
@@ -304,86 +323,90 @@ function App() {
           </>
         }
       >
-        <Routes>
-          <Route path="/oauth/callback" element={<OAuthCallback />} />
-          <Route path="/poc/polly" element={<PollyPoc />} />
-          <Route path="/poc/stt" element={<SttPoc />} />
-          <Route path="/groups/:groupId" element={<GroupChatScreen />} />
-          <Route path="/groups" element={<GroupChatScreen />} />
-          <Route path="/themes/:themeId" element={<ThemeScreen />} />
-          <Route path="/themes" element={<ThemeScreen />} />
-          <Route path="*" element={
-            requiresAuth ? (
-              /* 未認証時: ログイン促進画面 */
-              <div className="flex-1 flex items-center justify-center" data-testid="login-prompt">
-                <div className="text-center px-6">
-                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    ログインが必要です
-                  </h2>
-                  <p className="text-gray-500 dark:text-gray-400 mb-6">
-                    アシスタント機能を利用するにはログインしてください
-                  </p>
-                  <button
-                    onClick={() => setIsAuthModalOpen(true)}
-                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
-                    data-testid="login-prompt-button"
-                  >
-                    ログイン
-                  </button>
-                </div>
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+          {/* Live2Dキャラクター表示エリア — メイン会話 or テーマチャット時に表示 */}
+          {showLive2D && (
+            <div className="h-[25vh] md:h-auto md:w-1/3 md:min-w-[280px] md:max-w-[400px] bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0 overflow-hidden">
+              <div className="relative min-h-0 flex-1 overflow-hidden">
+                <Live2DCanvas
+                  ref={live2dRef}
+                  modelPath={config.model.currentModelId}
+                  currentMotion={currentMotion}
+                  onMotionComplete={handleMotionComplete}
+                />
               </div>
-            ) : (
-              /* 認証済み or ゲストモード: 通常コンテンツ */
-              <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-                {/* Live2Dキャラクター表示エリア */}
-                <div className="h-[25vh] md:h-auto md:w-1/3 md:min-w-[280px] md:max-w-[400px] bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0 overflow-hidden">
-                  <div className="relative min-h-0 flex-1 overflow-hidden">
-                    <Live2DCanvas
-                      ref={live2dRef}
-                      modelPath={config.model.currentModelId}
-                      currentMotion={currentMotion}
-                      onMotionComplete={handleMotionComplete}
-                    />
-                  </div>
-                  <p className="text-center text-xs text-gray-500 dark:text-gray-400 py-1 shrink-0"
-                     data-testid="character-nickname">
-                    {config.profile.nickname || 'ゲスト'}
-                  </p>
-                  {/* モーションコントロールパネル（開発者モードのみ） */}
-                  {config.ui.developerMode && (
-                    <div className="p-1 md:p-2 border-t border-gray-200 dark:border-gray-700 overflow-x-auto">
-                      <MotionPanel
-                        onPlayMotion={handlePlayMotion}
-                        onPlayExpression={handlePlayExpression}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* チャットエリア */}
-                <div className="flex-1 flex flex-col min-h-0" style={{ fontSize: `${config.ui.fontSize}px` }}>
-                  <ChatUI
-                    messages={messages}
-                    isLoading={isLoading}
-                    onSendMessage={handleSendMessage}
-                    ttsEnabled={config.ui.ttsEnabled}
-                    onToggleTts={(enabled) => updateConfig({ ui: { ...config.ui, ttsEnabled: enabled } })}
-                    cameraEnabled={config.ui.cameraEnabled}
-                    onToggleCamera={(enabled) => updateConfig({ ui: { ...config.ui, cameraEnabled: enabled } })}
-                    developerMode={config.ui.developerMode}
-                    hasEarlierMessages={hasEarlierMessages}
-                    isLoadingEarlier={isLoadingEarlier}
-                    onLoadEarlier={handleLoadEarlier}
-                    onCreateTheme={handleCreateThemeFromSuggestion}
+              <p className="text-center text-xs text-gray-500 dark:text-gray-400 py-1 shrink-0"
+                 data-testid="character-nickname">
+                {config.profile.nickname || 'ゲスト'}
+              </p>
+              {/* モーションコントロールパネル（開発者モードのみ） */}
+              {config.ui.developerMode && (
+                <div className="p-1 md:p-2 border-t border-gray-200 dark:border-gray-700 overflow-x-auto">
+                  <MotionPanel
+                    onPlayMotion={handlePlayMotion}
+                    onPlayExpression={handlePlayExpression}
                   />
                 </div>
-              </div>
-            )
-          } />
-        </Routes>
+              )}
+            </div>
+          )}
+
+          {/* ルーティング */}
+          <div className="flex-1 flex flex-col min-h-0">
+            <Routes>
+              <Route path="/oauth/callback" element={<OAuthCallback />} />
+              <Route path="/poc/polly" element={<PollyPoc />} />
+              <Route path="/poc/stt" element={<SttPoc />} />
+              <Route path="/groups/:groupId" element={<GroupChatScreen />} />
+              <Route path="/groups" element={<GroupChatScreen />} />
+              <Route path="/themes/:themeId" element={<ThemeScreen />} />
+              <Route path="/themes" element={<ThemeScreen />} />
+              <Route path="*" element={
+                requiresAuth ? (
+                  /* 未認証時: ログイン促進画面 */
+                  <div className="flex-1 flex items-center justify-center" data-testid="login-prompt">
+                    <div className="text-center px-6">
+                      <svg className="w-16 h-16 mx-auto mb-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        ログインが必要です
+                      </h2>
+                      <p className="text-gray-500 dark:text-gray-400 mb-6">
+                        アシスタント機能を利用するにはログインしてください
+                      </p>
+                      <button
+                        onClick={() => setIsAuthModalOpen(true)}
+                        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                        data-testid="login-prompt-button"
+                      >
+                        ログイン
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* 認証済み or ゲストモード: チャットエリア */
+                  <div className="flex-1 flex flex-col min-h-0" style={{ fontSize: `${config.ui.fontSize}px` }}>
+                    <ChatUI
+                      messages={messages}
+                      isLoading={isLoading}
+                      onSendMessage={handleSendMessage}
+                      ttsEnabled={config.ui.ttsEnabled}
+                      onToggleTts={(enabled) => updateConfig({ ui: { ...config.ui, ttsEnabled: enabled } })}
+                      cameraEnabled={config.ui.cameraEnabled}
+                      onToggleCamera={(enabled) => updateConfig({ ui: { ...config.ui, cameraEnabled: enabled } })}
+                      developerMode={config.ui.developerMode}
+                      hasEarlierMessages={hasEarlierMessages}
+                      isLoadingEarlier={isLoadingEarlier}
+                      onLoadEarlier={handleLoadEarlier}
+                      onCreateTheme={handleCreateThemeFromSuggestion}
+                    />
+                  </div>
+                )
+              } />
+            </Routes>
+          </div>
+        </div>
       </AppLayout>
 
       {/* 設定モーダル */}

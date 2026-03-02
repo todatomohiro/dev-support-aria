@@ -1,7 +1,8 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useThemeStore } from '@/stores/themeStore'
 import { useAppStore } from '@/stores'
 import { chatController } from '@/services/chatController'
+import { themeService } from '@/services/themeService'
 import { ChatUI } from './ChatUI'
 
 interface ThemeChatProps {
@@ -13,10 +14,25 @@ interface ThemeChatProps {
 /**
  * テーマ別チャット画面
  */
-export function ThemeChat({ themeId, themeName, onBack }: ThemeChatProps) {
+export function ThemeChat({ themeId }: ThemeChatProps) {
   const messages = useThemeStore((s) => s.activeMessages)
   const isSending = useThemeStore((s) => s.isSending)
   const config = useAppStore((s) => s.config)
+
+  // テーマ切り替え時にサーバーからメッセージを読み込む
+  useEffect(() => {
+    const store = useThemeStore.getState()
+    // 既にメッセージがある場合はスキップ（送信中の再レンダリング防止）
+    if (store.activeMessages.length > 0) return
+
+    themeService.listMessages(themeId).then((serverMessages) => {
+      if (serverMessages.length > 0) {
+        store.setActiveMessages(serverMessages)
+      }
+    }).catch((err) => {
+      console.warn('[ThemeChat] メッセージ読み込みエラー:', err)
+    })
+  }, [themeId])
 
   const handleSendMessage = useCallback(async (text: string, imageBase64?: string) => {
     await chatController.sendThemeMessage(text, themeId, imageBase64)
@@ -24,20 +40,6 @@ export function ThemeChat({ themeId, themeName, onBack }: ThemeChatProps) {
 
   return (
     <div className="flex flex-col h-full" data-testid="theme-chat">
-      {/* スマホ用ヘッダー */}
-      <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0">
-        <button
-          onClick={onBack}
-          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-          data-testid="theme-chat-back"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{themeName}</h3>
-      </div>
-
       {/* チャットエリア */}
       <div className="flex-1 flex flex-col min-h-0" style={{ fontSize: `${config.ui.fontSize}px` }}>
         <ChatUI

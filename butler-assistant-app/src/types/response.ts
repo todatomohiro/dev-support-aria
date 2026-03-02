@@ -33,6 +33,8 @@ export interface StructuredResponse {
   sessionSummary?: string
   /** Lambda から返された永久記憶（開発者モード表示用） */
   permanentFacts?: string[]
+  /** Lambda から返されたトピック自動命名（新規トピック時） */
+  themeName?: string
 }
 
 /**

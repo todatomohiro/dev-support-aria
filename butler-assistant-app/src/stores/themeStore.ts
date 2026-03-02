@@ -32,6 +32,8 @@ export interface ThemeState {
   setError: (error: string | null) => void
   /** テーマセッションをリセット（新しい sessionId 生成） */
   resetSession: () => void
+  /** テーマ名を更新（トピック自動命名） */
+  updateThemeName: (themeId: string, themeName: string) => void
   /** 状態を完全リセット */
   reset: () => void
 }
@@ -73,6 +75,13 @@ export const useThemeStore = create<ThemeState>()((set) => ({
   setSending: (sending: boolean) => set({ isSending: sending }),
 
   setError: (error: string | null) => set({ error }),
+
+  updateThemeName: (themeId: string, themeName: string) =>
+    set((state) => ({
+      themes: state.themes.map((t) =>
+        t.themeId === themeId ? { ...t, themeName } : t
+      ),
+    })),
 
   resetSession: () => set({
     activeMessages: [],

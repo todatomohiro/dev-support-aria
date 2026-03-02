@@ -1,11 +1,10 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { ThemeSession } from '@/types'
-import { CreateThemeModal } from './CreateThemeModal'
 
 interface ThemeListProps {
   themes: ThemeSession[]
   onSelectTheme: (themeId: string) => void
-  onCreate: (themeName: string) => Promise<void>
+  onCreate: () => Promise<void>
   onDelete: (themeId: string) => Promise<void>
   isLoading: boolean
   error: string | null
@@ -15,7 +14,6 @@ interface ThemeListProps {
  * テーマ一覧画面
  */
 export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading, error }: ThemeListProps) {
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -28,7 +26,7 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
 
   const handleDelete = useCallback(async (e: React.MouseEvent, themeId: string) => {
     e.stopPropagation()
-    if (!confirm('このテーマを削除しますか？')) return
+    if (!confirm('このトピックを削除しますか？')) return
     setDeletingId(themeId)
     try {
       await onDelete(themeId)
@@ -46,9 +44,9 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
     <div className="flex flex-col h-full" data-testid="theme-list">
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">テーマ別ノート</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">トピック</h2>
         <button
-          onClick={() => setIsCreateOpen(true)}
+          onClick={() => onCreate()}
           className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
           data-testid="create-theme-button"
         >
@@ -70,7 +68,7 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="テーマを検索..."
+              placeholder="トピックを検索..."
               className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               data-testid="theme-search-input"
             />
@@ -102,12 +100,12 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
             <svg className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <p className="text-gray-500 dark:text-gray-400 mb-2">テーマがありません</p>
-            <p className="text-sm text-gray-400 dark:text-gray-500">「新規」ボタンでテーマを作成しましょう</p>
+            <p className="text-gray-500 dark:text-gray-400 mb-2">トピックがありません</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">「新規」ボタンでトピックを作成しましょう</p>
           </div>
         ) : filteredThemes.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-500 dark:text-gray-400">「{searchQuery}」に一致するテーマはありません</p>
+            <p className="text-gray-500 dark:text-gray-400">「{searchQuery}」に一致するトピックはありません</p>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -143,12 +141,6 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
         )}
       </div>
 
-      {/* テーマ作成モーダル */}
-      <CreateThemeModal
-        isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
-        onCreate={onCreate}
-      />
     </div>
   )
 }

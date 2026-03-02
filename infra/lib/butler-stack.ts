@@ -184,6 +184,18 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-themes-delete',
     })
 
+    const themesUpdateFn = new lambdaNode.NodejsFunction(this, 'ThemesUpdateFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'themes', 'update.ts'),
+      functionName: 'butler-themes-update',
+    })
+
+    const themesMessagesFn = new lambdaNode.NodejsFunction(this, 'ThemesMessagesFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'themes', 'messages.ts'),
+      functionName: 'butler-themes-messages',
+    })
+
     // ── Conversations Lambda 関数（/groups ルートで利用）──
     const conversationsListFn = new lambdaNode.NodejsFunction(this, 'ConversationsListFn', {
       ...lambdaDefaults,
@@ -551,6 +563,8 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadWriteData(themesCreateFn)
     table.grantReadData(themesListFn)
     table.grantReadWriteData(themesDeleteFn)
+    table.grantReadWriteData(themesUpdateFn)
+    table.grantReadData(themesMessagesFn)
 
     // Conversations（/groups ルート）— DynamoDB 権限
     table.grantReadData(conversationsListFn)
@@ -672,6 +686,11 @@ export class ButlerStack extends cdk.Stack {
     // /themes/{themeId}
     const themeByIdResource = themesResource.addResource('{themeId}')
     themeByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(themesDeleteFn), authMethodOptions)
+    themeByIdResource.addMethod('PATCH', new apigateway.LambdaIntegration(themesUpdateFn), authMethodOptions)
+
+    // /themes/{themeId}/messages
+    const themeMessagesResource = themeByIdResource.addResource('messages')
+    themeMessagesResource.addMethod('GET', new apigateway.LambdaIntegration(themesMessagesFn), authMethodOptions)
 
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {
