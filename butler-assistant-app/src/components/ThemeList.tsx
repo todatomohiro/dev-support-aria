@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { ThemeSession } from '@/types'
 import { CreateThemeModal } from './CreateThemeModal'
 
@@ -17,6 +17,14 @@ interface ThemeListProps {
 export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading, error }: ThemeListProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  /** 検索クエリでフィルタリングされたテーマ一覧 */
+  const filteredThemes = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return themes
+    return themes.filter((t) => t.themeName.toLowerCase().includes(q))
+  }, [themes, searchQuery])
 
   const handleDelete = useCallback(async (e: React.MouseEvent, themeId: string) => {
     e.stopPropagation()
@@ -51,6 +59,36 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
         </button>
       </div>
 
+      {/* 検索バー（テーマが2件以上ある場合のみ表示） */}
+      {themes.length >= 2 && (
+        <div className="px-4 pt-3 shrink-0">
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="テーマを検索..."
+              className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              data-testid="theme-search-input"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                data-testid="theme-search-clear"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* コンテンツ */}
       <div className="flex-1 overflow-y-auto p-4">
         {isLoading ? (
@@ -67,9 +105,13 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
             <p className="text-gray-500 dark:text-gray-400 mb-2">テーマがありません</p>
             <p className="text-sm text-gray-400 dark:text-gray-500">「新規」ボタンでテーマを作成しましょう</p>
           </div>
+        ) : filteredThemes.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500 dark:text-gray-400">「{searchQuery}」に一致するテーマはありません</p>
+          </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {themes.map((theme) => (
+            {filteredThemes.map((theme) => (
               <button
                 key={theme.themeId}
                 onClick={() => onSelectTheme(theme.themeId)}

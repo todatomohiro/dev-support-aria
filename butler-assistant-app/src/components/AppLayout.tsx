@@ -29,9 +29,7 @@ export function AppLayout({ children, currentSessionName, onOpenSettings, header
     ? 'themes'
     : location.pathname.startsWith('/groups')
       ? 'groups'
-      : location.pathname.startsWith('/settings')
-        ? 'settings'
-        : 'chat'
+      : 'chat'
 
   return (
     <div className="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
@@ -84,7 +82,7 @@ export function AppLayout({ children, currentSessionName, onOpenSettings, header
 
       {/* スマホ: ボトムナビ */}
       <div className="md:hidden">
-        <BottomNav activeTab={activeTab} />
+        <BottomNav activeTab={activeTab} onOpenSettings={onOpenSettings} />
       </div>
     </div>
   )
