@@ -338,6 +338,35 @@ function extractTextFromOutput(output: { message?: BedrockMessage }): string {
 }
 
 /**
+ * LLM レスポンス（JSON 文字列）から text フィールドを抽出
+ *
+ * LLM が複数テキストブロック（平文 + JSON）を返した場合に
+ * DynamoDB へ保存する内容をクリーンなテキストにする。
+ */
+function extractTextFieldFromJson(content: string): string {
+  try {
+    const parsed = JSON.parse(content)
+    if (typeof parsed.text === 'string') return parsed.text
+  } catch { /* 全体が JSON ではない */ }
+
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0])
+      if (typeof parsed.text === 'string') return parsed.text
+    }
+  } catch { /* JSON パース失敗 */ }
+
+  // フォールバック: 末尾の {"text" パターンを除去
+  const idx = content.indexOf('{"text"')
+  if (idx > 0) {
+    return content.slice(0, idx).trim()
+  }
+
+  return content
+}
+
+/**
  * DynamoDB から永久記憶（PERMANENT_FACTS）を取得
  */
 async function getPermanentFacts(userId: string): Promise<string[]> {
@@ -900,6 +929,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       const content = extractTextFromOutput(result.output ?? {})
       console.log(`[LLM] Final response (${content.length} chars):`, content.slice(0, 200))
 
+      // DynamoDB にはテキスト部分のみ保存（JSON 構造体を除去）
+      const textForStorage = extractTextFieldFromJson(content)
+
       // セッションモードの場合: メッセージ保存 + 要約トリガー
       if (sessionId) {
         try {
@@ -911,7 +943,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             sessionId,
             sessionTurnsSinceSummary,
             message,
-            content,
+            textForStorage,
             sessionOverrides
           )
         } catch (error) {

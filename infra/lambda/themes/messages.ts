@@ -8,17 +8,27 @@ const TABLE_NAME = process.env.TABLE_NAME!
  * アシスタントメッセージの JSON content から text を抽出
  */
 function extractTextFromContent(content: string): string {
+  // 1. 全体を JSON として解析
+  try {
+    const parsed = JSON.parse(content)
+    if (typeof parsed.text === 'string') return parsed.text
+  } catch { /* 全体が JSON ではない */ }
+
+  // 2. 正規表現で JSON ブロックを抽出
   try {
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0])
-      if (typeof parsed.text === 'string') {
-        return parsed.text
-      }
+      if (typeof parsed.text === 'string') return parsed.text
     }
-  } catch {
-    // パース失敗時はそのまま返す
+  } catch { /* JSON パース失敗 */ }
+
+  // 3. フォールバック: 末尾の {"text" パターンを除去（テキスト + JSON 混在対策）
+  const idx = content.indexOf('{"text"')
+  if (idx > 0) {
+    return content.slice(0, idx).trim()
   }
+
   return content
 }
 
