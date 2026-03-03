@@ -5,6 +5,8 @@ import { useAppStore } from '@/stores'
 import { chatController } from '@/services/chatController'
 import { themeService } from '@/services/themeService'
 import { workService } from '@/services/workService'
+import { ttsService } from '@/services/ttsService'
+import { motionController } from '@/services/motionController'
 import { ChatUI } from './ChatUI'
 import { WorkBadge } from './WorkBadge'
 
@@ -55,6 +57,42 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
       store.clearWorkConnection()
     })
   }, [themeId])
+
+  // ワーク初回アクセス時の greeting 表示 + TTS発話
+  const greetingShownRef = useRef(false)
+  useEffect(() => {
+    if (greetingShownRef.current) return
+    if (!workConnection?.active || !workConnection.greeting) return
+
+    const store = useThemeStore.getState()
+    if (store.activeMessages.length > 0) return
+
+    greetingShownRef.current = true
+
+    // greeting メッセージを追加
+    store.addMessage({
+      id: uuidv4(),
+      role: 'assistant',
+      content: workConnection.greeting,
+      timestamp: Date.now(),
+      motion: 'smile',
+    })
+
+    // description があれば2つ目のメッセージとして追加
+    if (workConnection.description) {
+      store.addMessage({
+        id: uuidv4(),
+        role: 'assistant',
+        content: workConnection.description,
+        timestamp: Date.now() + 1,
+        motion: 'idle',
+      })
+    }
+
+    // TTS で greeting を発話 + モーション再生
+    ttsService.synthesizeAndPlay(workConnection.greeting)
+    motionController.playMotion('smile')
+  }, [workConnection?.active, workConnection?.greeting])
 
   // ワーク有効期限のチェック（10秒間隔）
   useEffect(() => {

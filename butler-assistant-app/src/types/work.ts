@@ -20,6 +20,8 @@ export interface WorkConnection {
   expiresAt: string
   tools: MCPToolInfo[]
   serverUrl: string
+  greeting?: string
+  description?: string
 }
 
 /** LLMレスポンスに含まれるワーク状態 */

@@ -14,6 +14,7 @@ export interface RegistryEntry {
   transport: string
   displayName: string
   description?: string
+  greeting?: string
   defaultTtlMinutes: number
   config?: string
   script?: string

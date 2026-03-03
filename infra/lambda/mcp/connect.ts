@@ -50,6 +50,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
       return await createConnectionAndTheme({
         userId, serverUrl, ttlMinutes, themeName, registryCode, metadata, tools,
+        greeting: entry.greeting, description: entry.description,
       })
     } else if (body.serverUrl && typeof body.serverUrl === 'string' && body.serverUrl.startsWith('https://')) {
       // URL直接指定（後方互換）
@@ -94,8 +95,10 @@ async function createConnectionAndTheme(params: {
   registryCode?: string
   metadata?: Record<string, unknown>
   tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>
+  greeting?: string
+  description?: string
 }): Promise<APIGatewayProxyResult> {
-  const { userId, serverUrl, ttlMinutes, themeName, registryCode, metadata, tools } = params
+  const { userId, serverUrl, ttlMinutes, themeName, registryCode, metadata, tools, greeting, description } = params
 
   // アクティブ接続数チェック
   const existingConnections = await client.send(new QueryCommand({
@@ -146,6 +149,8 @@ async function createConnectionAndTheme(params: {
       toolDefinitions: JSON.stringify(tools),
       ...(registryCode ? { registryCode } : {}),
       ...(metadata ? { metadata: JSON.stringify(metadata) } : {}),
+      ...(greeting ? { greeting } : {}),
+      ...(description ? { description } : {}),
       connectedAt: nowIso,
       expiresAt,
       ttlExpiry,
@@ -157,6 +162,8 @@ async function createConnectionAndTheme(params: {
     themeName,
     tools: tools.map((t) => ({ name: t.name, description: t.description })),
     expiresAt,
+    ...(greeting ? { greeting } : {}),
+    ...(description ? { description } : {}),
   })
 }
 

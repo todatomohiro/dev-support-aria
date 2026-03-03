@@ -47,6 +47,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       tools: tools.map((t) => ({ name: t.name, description: t.description })),
       expiresAt: record.expiresAt,
       serverUrl: record.serverUrl,
+      ...(record.greeting ? { greeting: record.greeting } : {}),
+      ...(record.description ? { description: record.description } : {}),
     })
   } catch (error) {
     console.error('MCP接続ステータス取得エラー:', error)
