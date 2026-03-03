@@ -131,7 +131,7 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
                   <button
                     onClick={(e) => handleDelete(e, theme.themeId)}
                     disabled={deletingId === theme.themeId}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors shrink-0"
                     title="削除"
                     data-testid={`theme-delete-${theme.themeId}`}
                   >
