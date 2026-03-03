@@ -1,4 +1,4 @@
-import { DynamoDBClient, PutItemCommand, QueryCommand } from '@aws-sdk/client-dynamodb'
+import { DynamoDBClient, DeleteItemCommand, PutItemCommand, QueryCommand } from '@aws-sdk/client-dynamodb'
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import * as crypto from 'crypto'
@@ -111,9 +111,21 @@ async function createConnectionAndTheme(params: {
   }))
 
   const now = new Date()
-  const activeConnections = (existingConnections.Items ?? [])
-    .map((item) => unmarshall(item))
-    .filter((record) => record.expiresAt > now.toISOString())
+  const nowIsoForFilter = now.toISOString()
+  const allConnections = (existingConnections.Items ?? []).map((item) => unmarshall(item))
+  const activeConnections = allConnections.filter((record) => record.expiresAt > nowIsoForFilter)
+  const expiredConnections = allConnections.filter((record) => record.expiresAt <= nowIsoForFilter)
+
+  // 期限切れレコードをバックグラウンドで削除（TTL 削除は最大48時間遅延するため）
+  if (expiredConnections.length > 0) {
+    const deletePromises = expiredConnections.map((record) =>
+      client.send(new DeleteItemCommand({
+        TableName: TABLE_NAME,
+        Key: { PK: { S: `USER#${userId}` }, SK: { S: `MCP_CONNECTION#${record.themeId}` } },
+      })).catch(() => { /* 削除失敗は無視 */ })
+    )
+    Promise.all(deletePromises).catch(() => {})
+  }
 
   if (activeConnections.length >= MAX_CONNECTIONS_PER_USER) {
     return response(409, { error: `Maximum ${MAX_CONNECTIONS_PER_USER} active connections allowed` })
