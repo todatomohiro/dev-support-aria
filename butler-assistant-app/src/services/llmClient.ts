@@ -2,6 +2,7 @@ import type {
   LLMClientService,
   StructuredResponse,
   UserProfile,
+  UserLocation,
 } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
 import { getIdToken } from '@/auth'
@@ -164,7 +165,7 @@ class LLMClientImpl implements LLMClientService {
   /**
    * Lambda /llm/chat を経由して Bedrock Claude にメッセージを送信
    */
-  async sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string): Promise<StructuredResponse> {
+  async sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation): Promise<StructuredResponse> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     const accessToken = await getIdToken()
 
@@ -197,7 +198,7 @@ class LLMClientImpl implements LLMClientService {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ message, sessionId, systemPrompt, ...(imageBase64 ? { imageBase64 } : {}), ...(themeId ? { themeId } : {}) }),
+        body: JSON.stringify({ message, sessionId, systemPrompt, ...(imageBase64 ? { imageBase64 } : {}), ...(themeId ? { themeId } : {}), ...(userLocation ? { userLocation } : {}) }),
       })
 
       if (!res.ok) {
@@ -229,6 +230,9 @@ class LLMClientImpl implements LLMClientService {
 
       try {
         const parsed = JSON.parse(jsonStr) as StructuredResponse
+        // motion / emotion が欠落している場合のデフォルト値
+        if (!parsed.motion) parsed.motion = 'idle'
+        if (!parsed.emotion) parsed.emotion = 'neutral'
         if (data.enhancedSystemPrompt) {
           parsed.enhancedSystemPrompt = data.enhancedSystemPrompt
         }

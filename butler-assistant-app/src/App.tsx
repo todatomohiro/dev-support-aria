@@ -8,6 +8,7 @@ import { chatController } from './services/chatController'
 import { syncService } from './services/syncService'
 import { llmClient } from './services/llmClient'
 import { themeService } from './services/themeService'
+import { useGeolocation } from './hooks/useGeolocation'
 import { logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
 import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
@@ -57,6 +58,10 @@ function App() {
   const setError = useAppStore((state) => state.setError)
   const setCurrentExpression = useAppStore((state) => state.setCurrentExpression)
   const expressionVersion = useAppStore((state) => state.expressionVersion)
+
+  // 位置情報フック
+  const { location: geoLocation, loading: geoLoading, error: geoError, requestLocation, clearLocation } = useGeolocation()
+  const setCurrentLocation = useAppStore((state) => state.setCurrentLocation)
 
   // Theme store
   const activeThemeId = useThemeStore((s) => s.activeThemeId)
@@ -223,6 +228,30 @@ function App() {
       document.documentElement.classList.remove('dark')
     }
   }, [config.ui.theme])
+
+  // 位置情報の取得/クリア（geolocationEnabled の切り替えに連動）
+  useEffect(() => {
+    console.log(`[App] geolocationEnabled changed: ${config.ui.geolocationEnabled}`)
+    if (config.ui.geolocationEnabled) {
+      requestLocation()
+    } else {
+      clearLocation()
+      setCurrentLocation(null)
+    }
+  }, [config.ui.geolocationEnabled, requestLocation, clearLocation, setCurrentLocation])
+
+  // 取得した位置情報を appStore に同期
+  useEffect(() => {
+    console.log(`[App] geoLocation changed:`, geoLocation)
+    setCurrentLocation(geoLocation)
+  }, [geoLocation, setCurrentLocation])
+
+  // 位置情報エラーをログ出力
+  useEffect(() => {
+    if (geoError) {
+      console.warn(`[App] 位置情報エラー: ${geoError}`)
+    }
+  }, [geoError])
 
   // プロフィールをLLMクライアントに反映
   useEffect(() => {
@@ -423,6 +452,7 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         config={{ ui: config.ui }}
         onSave={handleSaveSettings}
+        geolocationStatus={{ location: geoLocation, loading: geoLoading, error: geoError }}
       />
 
       {/* スキル連携モーダル */}

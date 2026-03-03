@@ -75,6 +75,8 @@ describe('チャットフロー統合テスト', () => {
         expect(llmClient.sendMessage).toHaveBeenCalledWith(
           'こんにちは',
           expect.any(String),
+          undefined,
+          undefined,
           undefined
         )
       })

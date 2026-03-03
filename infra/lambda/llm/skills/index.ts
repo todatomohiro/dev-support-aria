@@ -19,7 +19,8 @@ export async function executeSkill(
   input: Record<string, unknown>,
   toolUseId: string,
   userId: string,
-  mcpConnection?: MCPConnectionInfo
+  mcpConnection?: MCPConnectionInfo,
+  userLocation?: { lat: number; lng: number }
 ): Promise<ToolResultContentBlock> {
   try {
     let resultText: string
@@ -59,9 +60,15 @@ export async function executeSkill(
       case 'create_event':
         resultText = await createEvent(userId, input)
         break
-      case 'search_places':
-        resultText = await searchPlaces(input)
+      case 'search_places': {
+        // LLM が locationBias を指定していなければ userLocation を自動注入
+        const placesInput = { ...input }
+        if (!placesInput.locationBias && userLocation) {
+          placesInput.locationBias = userLocation
+        }
+        resultText = await searchPlaces(placesInput)
         break
+      }
       case 'web_search':
         resultText = await webSearch(input)
         break

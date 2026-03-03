@@ -206,6 +206,36 @@ describe('LLMClient', () => {
       expect(body.imageBase64).toBeUndefined()
     })
 
+    it('userLocation が指定された場合リクエストボディに含まれる', async () => {
+      const mockResponse = { content: '{"text": "近くのカフェだよ！", "motion": "smile", "emotion": "happy"}' }
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      await llmClient.sendMessage('近くのカフェ教えて', 'test-session-id', undefined, undefined, { lat: 35.6812, lng: 139.7671 })
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      const body = JSON.parse(fetchCall[1].body)
+      expect(body.userLocation).toEqual({ lat: 35.6812, lng: 139.7671 })
+    })
+
+    it('userLocation が未指定の場合リクエストボディに含まれない', async () => {
+      const mockResponse = { content: '{"text": "はい！", "motion": "nod", "emotion": "neutral"}' }
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      await llmClient.sendMessage('こんにちは', 'test-session-id')
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      const body = JSON.parse(fetchCall[1].body)
+      expect(body.userLocation).toBeUndefined()
+    })
+
     it('401 エラー時は認証エラーメッセージを返す', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,

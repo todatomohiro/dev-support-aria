@@ -56,7 +56,7 @@ class ChatControllerImpl {
       // LLMにメッセージを送信（sessionId でサーバー側コンテキスト構築）
       const structuredResponse = await measurePerformanceAsync(
         'LLM送信→レスポンス受信',
-        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64)
+        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined)
       )
 
       // アシスタントメッセージを作成
@@ -316,9 +316,10 @@ class ChatControllerImpl {
 
     try {
       // LLMにメッセージを送信（themeId でテーマコンテキスト注入）
+      const appStore = useAppStore.getState()
       const structuredResponse = await measurePerformanceAsync(
         'LLM送信→テーマレスポンス受信',
-        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, themeId)
+        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, themeId, appStore.currentLocation ?? undefined)
       )
 
       // アシスタントメッセージを作成
@@ -356,7 +357,6 @@ class ChatControllerImpl {
       store.addMessage(assistantMessage)
 
       // TTS 自動再生（fire-and-forget）
-      const appStore = useAppStore.getState()
       if (appStore.config.ui.ttsEnabled) {
         ttsService.synthesizeAndPlay(assistantMessage.content)
       }

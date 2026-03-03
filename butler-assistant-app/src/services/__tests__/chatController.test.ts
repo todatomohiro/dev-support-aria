@@ -127,12 +127,52 @@ describe('ChatController', () => {
       expect(mockLLMClient.sendMessage).toHaveBeenCalledWith(
         'これ何？',
         expect.any(String),
-        'aW1hZ2VkYXRh'
+        'aW1hZ2VkYXRh',
+        undefined,
+        undefined
       )
 
       const state = useAppStore.getState()
       expect(state.messages).toHaveLength(2)
       expect(state.messages[1].content).toBe('猫の写真だね！')
+    })
+
+    it('currentLocation がある場合 llmClient.sendMessage に渡される', async () => {
+      useAppStore.setState({ currentLocation: { lat: 35.6812, lng: 139.7671 } })
+
+      mockLLMClient.sendMessage.mockResolvedValue({
+        text: '近くのカフェだよ！',
+        motion: 'smile',
+      })
+
+      await chatController.sendMessage('近くのカフェ教えて')
+
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledWith(
+        '近くのカフェ教えて',
+        expect.any(String),
+        undefined,
+        undefined,
+        { lat: 35.6812, lng: 139.7671 }
+      )
+    })
+
+    it('currentLocation が null の場合 llmClient.sendMessage に undefined が渡される', async () => {
+      useAppStore.setState({ currentLocation: null })
+
+      mockLLMClient.sendMessage.mockResolvedValue({
+        text: 'こんにちは！',
+        motion: 'smile',
+      })
+
+      await chatController.sendMessage('こんにちは')
+
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledWith(
+        'こんにちは',
+        expect.any(String),
+        undefined,
+        undefined,
+        undefined
+      )
     })
 
     it('mapData がない通常レスポンスでは Message.mapData が undefined', async () => {

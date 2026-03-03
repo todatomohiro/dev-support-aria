@@ -14,7 +14,16 @@ export interface UIConfig {
   characterSize: number
   ttsEnabled: boolean
   cameraEnabled: boolean
+  geolocationEnabled: boolean
   developerMode: boolean
+}
+
+/**
+ * ユーザーの現在地
+ */
+export interface UserLocation {
+  lat: number
+  lng: number
 }
 
 /**
@@ -59,6 +68,7 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   characterSize: 100,
   ttsEnabled: false,
   cameraEnabled: false,
+  geolocationEnabled: false,
   developerMode: false,
 }
 

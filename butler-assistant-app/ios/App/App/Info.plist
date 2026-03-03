@@ -56,6 +56,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>現在地の情報をAIアシスタントに送信して、近くの場所を検索します</string>
 	<key>NSCameraUsageDescription</key>
 	<string>カメラで撮影した画像をAIアシスタントに送信します</string>
 	<key>NSMicrophoneUsageDescription</key>

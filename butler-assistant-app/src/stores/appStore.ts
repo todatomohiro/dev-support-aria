@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
-import type { Message, AppConfig, AppError } from '@/types'
+import type { Message, AppConfig, AppError, UserLocation } from '@/types'
 import { DEFAULT_UI_CONFIG, DEFAULT_USER_PROFILE } from '@/types'
 import { MAX_MESSAGE_HISTORY } from '@/utils/performance'
 
@@ -29,6 +29,9 @@ export interface AppState {
   isMotionPlaying: boolean
   motionQueue: string[]
 
+  // 位置情報関連
+  currentLocation: UserLocation | null
+
   // 設定関連
   config: AppConfig
 
@@ -47,6 +50,7 @@ export interface AppState {
   setMotionPlaying: (isPlaying: boolean) => void
   enqueueMotion: (motion: string) => void
   dequeueMotion: () => string | null
+  setCurrentLocation: (location: UserLocation | null) => void
   updateConfig: (config: Partial<AppConfig>) => void
   setError: (error: AppError | null) => void
   clearMessages: () => void
@@ -82,6 +86,7 @@ export const useAppStore = create<AppState>()(
       expressionVersion: 0,
       isMotionPlaying: false,
       motionQueue: [],
+      currentLocation: null,
       config: defaultConfig,
       lastError: null,
 
@@ -138,6 +143,9 @@ export const useAppStore = create<AppState>()(
         set({ motionQueue: rest })
         return first
       },
+
+      // 位置情報アクション
+      setCurrentLocation: (location: UserLocation | null) => set({ currentLocation: location }),
 
       // 設定アクション
       updateConfig: (configUpdate: Partial<AppConfig>) =>

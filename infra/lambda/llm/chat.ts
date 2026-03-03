@@ -605,9 +605,15 @@ function buildEnhancedSystemPrompt(
   sessionDate?: string,
   pastSessions?: PastSessionGroup[],
   themeContext?: { themeName: string },
-  workContext?: { tools: Array<{ name: string; description: string }>; expiresAt: string }
+  workContext?: { tools: Array<{ name: string; description: string }>; expiresAt: string },
+  userLocation?: { lat: number; lng: number }
 ): string {
   let enhanced = systemPrompt
+
+  // ユーザーの現在地
+  if (userLocation) {
+    enhanced += `\n\n<user_location>\nユーザーの現在地: 緯度 ${userLocation.lat}, 経度 ${userLocation.lng}\n「近くの〜」と聞かれたら search_places の locationBias にこの座標を使ってください\n</user_location>`
+  }
 
   // 永久記憶（最優先）
   if (permanentFacts.length > 0) {
@@ -687,6 +693,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let imageBase64: string | undefined
   let sessionId: string | undefined
   let themeId: string | undefined
+  let userLocation: { lat: number; lng: number } | undefined
 
   try {
     const body = JSON.parse(event.body)
@@ -696,6 +703,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     imageBase64 = typeof body.imageBase64 === 'string' ? body.imageBase64 : undefined
     sessionId = typeof body.sessionId === 'string' ? body.sessionId : undefined
     themeId = typeof body.themeId === 'string' ? body.themeId : undefined
+
+    // userLocation のバリデーション
+    if (body.userLocation && typeof body.userLocation === 'object'
+      && typeof body.userLocation.lat === 'number' && typeof body.userLocation.lng === 'number') {
+      userLocation = { lat: body.userLocation.lat, lng: body.userLocation.lng }
+    }
 
     if (!message || typeof message !== 'string') {
       return response(400, { error: 'message is required' })
@@ -776,7 +789,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       sessionDate,
       pastSessions,
       themeContext ?? undefined,
-      workContext
+      workContext,
+      userLocation
     )
 
     if (sessionContext.checkpoints.length > 0) {
@@ -795,7 +809,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       systemPrompt,
       permanentFacts,
       memoryContext,
-      ''
+      '',
+      [],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      userLocation
     )
     messages = toConverseMessages(history, message, imageBase64)
   }
@@ -872,7 +892,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         for (const block of toolUseBlocks) {
           const { toolUseId, name, input } = block
           console.log(`[LLM] Tool use: ${name}`, JSON.stringify(input))
-          const toolResult = await executeSkill(name, input, toolUseId, userId, mcpConn ?? undefined)
+          const toolResult = await executeSkill(name, input, toolUseId, userId, mcpConn ?? undefined, userLocation)
           console.log(`[LLM] Tool result:`, JSON.stringify(toolResult))
           toolResults.push(toolResult)
         }
