@@ -127,8 +127,16 @@ async function createConnectionAndTheme(params: {
     Promise.all(deletePromises).catch(() => {})
   }
 
+  // 同じレジストリコードの重複接続チェック
+  if (registryCode) {
+    const duplicate = activeConnections.find((record) => record.registryCode === registryCode)
+    if (duplicate) {
+      return response(409, { error: 'このワークには既に接続中です' })
+    }
+  }
+
   if (activeConnections.length >= MAX_CONNECTIONS_PER_USER) {
-    return response(409, { error: `Maximum ${MAX_CONNECTIONS_PER_USER} active connections allowed` })
+    return response(409, { error: `同時に接続できるワークは最大${MAX_CONNECTIONS_PER_USER}件です` })
   }
 
   // テーマを作成

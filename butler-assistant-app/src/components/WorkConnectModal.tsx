@@ -4,7 +4,25 @@ import { useQRScanner } from '@/hooks/useQRScanner'
 import { workService } from '@/services/workService'
 import { useThemeStore } from '@/stores/themeStore'
 import { isRegistryCode, normalizeRegistryCode } from '@/utils/registryCode'
+import { APIError } from '@/types'
 import type { MCPQRPayload } from '@/types/work'
+
+/** APIError の message からユーザー向けメッセージを抽出 */
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof APIError) {
+    // message 形式: "API エラー (409): {"error":"..."}"
+    const jsonMatch = err.message.match(/:\s*(\{.+\})\s*$/)
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[1])
+        if (parsed.error) return parsed.error
+      } catch { /* フォールバック */ }
+    }
+    return err.message
+  }
+  if (err instanceof Error) return err.message
+  return '接続に失敗しました'
+}
 
 interface WorkConnectModalProps {
   isOpen: boolean
@@ -91,7 +109,7 @@ export function WorkConnectModal({ isOpen, onClose }: WorkConnectModalProps) {
       navigate(`/themes/${conn.themeId}`)
     } catch (err) {
       console.error('[WorkConnect] 接続エラー:', err)
-      setError(err instanceof Error ? err.message : '接続に失敗しました')
+      setError(extractErrorMessage(err))
     } finally {
       setIsConnecting(false)
     }
