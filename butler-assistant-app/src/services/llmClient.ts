@@ -106,6 +106,46 @@ export function buildSystemPrompt(profile?: UserProfile): string {
 }
 
 /**
+ * 文字列から最初のバランスの取れた JSON オブジェクトを抽出
+ *
+ * 貪欲な正規表現 `/\{[\s\S]*\}/` と異なり、ネストされた `{}` を正しくカウントし
+ * 最初の完全な JSON オブジェクトのみを返す。文字列リテラル内の `{}` も考慮する。
+ */
+function extractBalancedJson(text: string): string | null {
+  const start = text.indexOf('{')
+  if (start === -1) return null
+
+  let depth = 0
+  let inString = false
+  let escape = false
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (escape) {
+      escape = false
+      continue
+    }
+    if (ch === '\\' && inString) {
+      escape = true
+      continue
+    }
+    if (ch === '"') {
+      inString = !inString
+      continue
+    }
+    if (inString) continue
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) {
+        return text.slice(start, i + 1)
+      }
+    }
+  }
+  return null
+}
+
+/**
  * LLM Client Service 実装（Bedrock Lambda プロキシ経由）
  */
 class LLMClientImpl implements LLMClientService {
@@ -130,7 +170,12 @@ class LLMClientImpl implements LLMClientService {
     }
 
     // システムプロンプト構築（JSON 形式指示含む）
-    const jsonInstruction = '\n\n必ず以下のJSON形式で回答してください：\n{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedTheme": {"themeName": "テーマ名"}}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。'
+    // トピックチャットでは suggestedTheme をフォーマット例から除外
+    const jsonFormat = themeId
+      ? '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}'
+      : '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "motion": "モーションタグ(idle/bow/smile/think/nod)", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedTheme": {"themeName": "テーマ名"}}'
+
+    const jsonInstruction = `\n\n必ず以下のJSON形式で回答してください：\n${jsonFormat}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。`
 
     // メイン会話の場合のみテーマ提案指示を追加
     const themeSuggestionInstruction = themeId ? '' : `
@@ -157,7 +202,7 @@ class LLMClientImpl implements LLMClientService {
         throw await this.handleAPIError(res, errorBody)
       }
 
-      const data = (await res.json()) as { content: string; sessionSummary?: string; permanentFacts?: string[]; themeName?: string; workStatus?: { active: boolean; expiresAt: string; toolCount: number } }
+      const data = (await res.json()) as { content: string; enhancedSystemPrompt?: string; sessionSummary?: string; permanentFacts?: string[]; themeName?: string; workStatus?: { active: boolean; expiresAt: string; toolCount: number } }
 
       // JSON を抽出（マークダウンコードブロック対応）
       let cleanJson = data.content.trim()
@@ -171,15 +216,19 @@ class LLMClientImpl implements LLMClientService {
       }
       cleanJson = cleanJson.trim()
 
-      const jsonMatch = cleanJson.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
+      // バランスの取れた JSON オブジェクトを抽出（ネストされた {} に対応）
+      const jsonStr = extractBalancedJson(cleanJson)
+      if (!jsonStr) {
         // JSON が返らなかった場合、テキストをそのまま使用
         console.warn('[LLM] JSON形式でない応答をフォールバック処理:', cleanJson.slice(0, 100))
-        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral', sessionSummary: data.sessionSummary, permanentFacts: data.permanentFacts, themeName: data.themeName, workStatus: data.workStatus } as StructuredResponse
+        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral', enhancedSystemPrompt: data.enhancedSystemPrompt, sessionSummary: data.sessionSummary, permanentFacts: data.permanentFacts, themeName: data.themeName, workStatus: data.workStatus } as StructuredResponse
       }
 
       try {
-        const parsed = JSON.parse(jsonMatch[0]) as StructuredResponse
+        const parsed = JSON.parse(jsonStr) as StructuredResponse
+        if (data.enhancedSystemPrompt) {
+          parsed.enhancedSystemPrompt = data.enhancedSystemPrompt
+        }
         if (data.sessionSummary) {
           parsed.sessionSummary = data.sessionSummary
         }
@@ -196,7 +245,7 @@ class LLMClientImpl implements LLMClientService {
       } catch {
         // JSON パースに失敗した場合もフォールバック
         console.warn('[LLM] JSONパース失敗、フォールバック処理')
-        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral', sessionSummary: data.sessionSummary, permanentFacts: data.permanentFacts, themeName: data.themeName, workStatus: data.workStatus } as StructuredResponse
+        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral', enhancedSystemPrompt: data.enhancedSystemPrompt, sessionSummary: data.sessionSummary, permanentFacts: data.permanentFacts, themeName: data.themeName, workStatus: data.workStatus } as StructuredResponse
       }
     } catch (error) {
       if (

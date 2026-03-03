@@ -515,32 +515,6 @@ function getJSTDateLabel(dateKey: string, todayKey: string, yesterdayKey: string
 }
 
 /**
- * DynamoDB からユーザーのテーマセッション要約一覧を取得（メイン会話用）
- */
-async function getThemeSessionSummaries(userId: string): Promise<Array<{ themeName: string; summary: string }>> {
-  try {
-    const result = await dynamo.send(new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
-      ExpressionAttributeValues: {
-        ':pk': { S: `USER#${userId}` },
-        ':skPrefix': { S: 'THEME_SESSION#' },
-      },
-    }))
-
-    return (result.Items ?? [])
-      .filter((item) => item.summary?.S && item.themeName?.S)
-      .map((item) => ({
-        themeName: item.themeName!.S!,
-        summary: item.summary!.S!,
-      }))
-  } catch (error) {
-    console.warn('[LLM] テーマ要約一覧取得エラー（スキップ）:', error)
-    return []
-  }
-}
-
-/**
  * DynamoDB からテーマセッション情報を取得
  */
 async function getThemeContext(userId: string, themeId: string): Promise<{ themeName: string } | null> {
@@ -631,7 +605,6 @@ function buildEnhancedSystemPrompt(
   sessionDate?: string,
   pastSessions?: PastSessionGroup[],
   themeContext?: { themeName: string },
-  themeSummaries?: Array<{ themeName: string; summary: string }>,
   workContext?: { tools: Array<{ name: string; description: string }>; expiresAt: string }
 ): string {
   let enhanced = systemPrompt
@@ -654,12 +627,6 @@ function buildEnhancedSystemPrompt(
       return `【${g.date}（${g.label}）】\n${lines.join('\n')}`
     })
     enhanced += `\n\n<past_sessions>\n過去のセッション要約：\n\n${groups.join('\n\n')}\n</past_sessions>`
-  }
-
-  // テーマ別ノートの要約（メイン会話から参照）
-  if (themeSummaries && themeSummaries.length > 0) {
-    const lines = themeSummaries.map((ts) => `【${ts.themeName}】${ts.summary}`)
-    enhanced += `\n\n<theme_summaries>\nユーザーがテーマ別ノートで話している内容：\n${lines.join('\n')}\n必要に応じてこれらの話題に自然に言及してください。\n</theme_summaries>`
   }
 
   // テーマコンテキスト
@@ -782,11 +749,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     mcpConn = mcpConnResult
 
     // 新フロー: DynamoDB からセッションコンテキストを構築（並列取得）
-    // メイン会話の場合はテーマ要約も取得
-    const [sessionContext, pastSessions, themeSummaries] = await Promise.all([
+    const [sessionContext, pastSessions] = await Promise.all([
       getSessionContext(userId, sessionId, { msgPK, sessionSK: sessionRecordSK }),
       getRecentSessionSummaries(userId, sessionId),
-      themeId ? Promise.resolve([]) : getThemeSessionSummaries(userId),
     ])
     sessionTurnsSinceSummary = sessionContext.turnsSinceSummary
     sessionSummary = sessionContext.summary
@@ -811,7 +776,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       sessionDate,
       pastSessions,
       themeContext ?? undefined,
-      themeSummaries.length > 0 ? themeSummaries : undefined,
       workContext
     )
 
@@ -821,9 +785,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (pastSessions.length > 0) {
       const totalSessions = pastSessions.reduce((sum, g) => sum + g.sessions.length, 0)
       console.log(`[LLM] 過去セッション ${totalSessions} 件（${pastSessions.length} 日分）をプロンプトに注入`)
-    }
-    if (themeSummaries.length > 0) {
-      console.log(`[LLM] テーマ要約 ${themeSummaries.length} 件をプロンプトに注入`)
     }
 
     // セッションの直近メッセージ + 今回のメッセージで会話構築
@@ -994,6 +955,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
       return response(200, {
         content,
+        enhancedSystemPrompt,
         ...(sessionSummary ? { sessionSummary } : {}),
         ...(permanentFacts.length > 0 ? { permanentFacts } : {}),
         ...(generatedThemeName ? { themeName: generatedThemeName } : {}),
