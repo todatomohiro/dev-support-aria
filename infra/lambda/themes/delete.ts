@@ -20,13 +20,23 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   try {
-    await client.send(new DeleteItemCommand({
-      TableName: TABLE_NAME,
-      Key: marshall({
-        PK: `USER#${userId}`,
-        SK: `THEME_SESSION#${themeId}`,
-      }),
-    }))
+    // テーマセッションと関連する MCP 接続を同時に削除
+    await Promise.all([
+      client.send(new DeleteItemCommand({
+        TableName: TABLE_NAME,
+        Key: marshall({
+          PK: `USER#${userId}`,
+          SK: `THEME_SESSION#${themeId}`,
+        }),
+      })),
+      client.send(new DeleteItemCommand({
+        TableName: TABLE_NAME,
+        Key: marshall({
+          PK: `USER#${userId}`,
+          SK: `MCP_CONNECTION#${themeId}`,
+        }),
+      })),
+    ])
 
     return response(200, { success: true })
   } catch (error) {
