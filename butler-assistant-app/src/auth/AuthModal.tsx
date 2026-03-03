@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useAuthStore } from './authStore'
 import {
   login,
@@ -16,9 +16,12 @@ import type { AuthView } from './types'
 export function AuthModal({
   isOpen,
   onClose,
+  initialView,
 }: {
   isOpen: boolean
   onClose: () => void
+  /** モーダルを開いた時の初期ビュー（省略時は login） */
+  initialView?: AuthView
 }) {
   const [view, setView] = useState<AuthView>('login')
   const [email, setEmail] = useState('')
@@ -41,6 +44,13 @@ export function AuthModal({
     setError(null)
     setIsSubmitting(false)
   }, [])
+
+  /** モーダルが開かれた時に initialView を反映 */
+  useEffect(() => {
+    if (isOpen && initialView) {
+      setView(initialView)
+    }
+  }, [isOpen, initialView])
 
   /** ビュー切替時にエラーをクリア */
   const switchView = useCallback(
