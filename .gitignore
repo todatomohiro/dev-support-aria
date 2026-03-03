@@ -39,6 +39,7 @@ butler-assistant-app/src-tauri/target
 
 # Capacitor
 butler-assistant-app/ios/App/Pods
+butler-assistant-app/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
 butler-assistant-app/android/.gradle
 butler-assistant-app/android/app/build
 butler-assistant-app/android/build
