@@ -79,12 +79,27 @@ export function useCamera(): UseCameraResult {
         try {
           await videoRef.current.play()
         } catch (playErr) {
-          // AbortError は Strict Mode 二重マウント等で発生する無害なエラー
           if (playErr instanceof DOMException && playErr.name === 'AbortError') {
-            console.debug('[Camera] play() interrupted (ignored)')
-          } else {
-            throw playErr
+            // Strict Mode 二重マウント等で発生 — 次の start() に委ねる
+            console.debug('[Camera] play() interrupted')
+            return
           }
+          throw playErr
+        }
+
+        // iOS WKWebView では play() 解決後も映像フレームが未準備の場合がある
+        // readyState >= HAVE_CURRENT_DATA になるまで待機
+        if (videoRef.current.readyState < 2) {
+          await new Promise<void>((resolve) => {
+            const video = videoRef.current
+            if (!video) { resolve(); return }
+            const onReady = () => { clearTimeout(timer); resolve() }
+            const timer = setTimeout(() => {
+              video.removeEventListener('loadeddata', onReady)
+              resolve() // タイムアウトでもフォールバックで active にする
+            }, 3000)
+            video.addEventListener('loadeddata', onReady, { once: true })
+          })
         }
       }
 

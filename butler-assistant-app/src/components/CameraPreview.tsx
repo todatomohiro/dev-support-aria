@@ -29,6 +29,7 @@ export const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>
       } else {
         stop()
       }
+      return () => stop()
     }, [enabled, start, stop])
 
     // 親に captureFrame を公開
