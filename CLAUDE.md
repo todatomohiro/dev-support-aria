@@ -20,6 +20,7 @@ pnpm test:coverage    # カバレッジ計測
 ```bash
 pnpm build && npx cap sync ios   # ビルド → iOS に同期
 pnpm cap:ios                     # Xcode を開く → Run(▶) で実機デプロイ
+
 ```
 
 ### インフラデプロイ

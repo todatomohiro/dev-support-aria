@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { useThemeStore } from '@/stores/themeStore'
+import { themeService } from '@/services'
 
 interface SidebarProps {
   activeTab: string
@@ -13,6 +15,12 @@ export function Sidebar({ activeTab, onOpenSettings }: SidebarProps) {
   const navigate = useNavigate()
   const themes = useThemeStore((s) => s.themes)
   const activeThemeId = useThemeStore((s) => s.activeThemeId)
+  const setThemes = useThemeStore((s) => s.setThemes)
+
+  /** マウント時にトピック一覧を取得 */
+  useEffect(() => {
+    themeService.listThemes().then(setThemes).catch(() => {})
+  }, [setThemes])
 
   return (
     <div className="h-full w-[260px] flex flex-col bg-white dark:bg-gray-800" data-testid="sidebar">
