@@ -6,8 +6,8 @@ import { getIdToken } from '@/auth'
  * ワーク（MCP）サービスのインターフェース
  */
 export interface WorkServiceType {
-  /** MCP サーバーに接続 */
-  connect(payload: { serverUrl: string; ttlMinutes: number; metadata?: Record<string, unknown> }): Promise<WorkConnection>
+  /** MCP サーバーに接続（コードまたはURL） */
+  connect(payload: { code?: string; serverUrl?: string; ttlMinutes?: number; metadata?: Record<string, unknown> }): Promise<WorkConnection>
   /** ワーク接続の状態を取得 */
   getStatus(themeId: string): Promise<WorkConnection>
   /** ワーク接続を切断 */
@@ -19,9 +19,9 @@ export interface WorkServiceType {
  */
 export class WorkServiceImpl implements WorkServiceType {
   /**
-   * MCP サーバーに接続
+   * MCP サーバーに接続（コードまたはURL）
    */
-  async connect(payload: { serverUrl: string; ttlMinutes: number; metadata?: Record<string, unknown> }): Promise<WorkConnection> {
+  async connect(payload: { code?: string; serverUrl?: string; ttlMinutes?: number; metadata?: Record<string, unknown> }): Promise<WorkConnection> {
     const data = await this.fetchAPI('/mcp/connect', {
       method: 'POST',
       body: JSON.stringify(payload),

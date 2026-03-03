@@ -29,6 +29,16 @@ export class ButlerStack extends cdk.Stack {
       timeToLiveAttribute: 'ttlExpiry',
     })
 
+    // ── ワークレジストリテーブル ──
+    const registryTable = new dynamodb.Table(this, 'WorkRegistryTable', {
+      tableName: 'butler-work-registry',
+      partitionKey: { name: 'code', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+      timeToLiveAttribute: 'ttlExpiry',
+    })
+
     // ── GSI（フレンドコード逆引き、会話一覧ソート）──
     table.addGlobalSecondaryIndex({
       indexName: 'GSI1',
@@ -698,6 +708,20 @@ export class ButlerStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(15),
       entry: path.join(__dirname, '..', 'lambda', 'mcp', 'connect.ts'),
       functionName: 'butler-mcp-connect',
+      environment: {
+        TABLE_NAME: table.tableName,
+        REGISTRY_TABLE_NAME: registryTable.tableName,
+      },
+    })
+
+    const mcpRegistryManageFn = new lambdaNode.NodejsFunction(this, 'McpRegistryManageFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'mcp', 'registryManage.ts'),
+      functionName: 'butler-mcp-registry-manage',
+      environment: {
+        TABLE_NAME: table.tableName,
+        REGISTRY_TABLE_NAME: registryTable.tableName,
+      },
     })
 
     const mcpStatusFn = new lambdaNode.NodejsFunction(this, 'McpStatusFn', {
@@ -716,6 +740,8 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadWriteData(mcpConnectFn)
     table.grantReadData(mcpStatusFn)
     table.grantReadWriteData(mcpDisconnectFn)
+    registryTable.grantReadData(mcpConnectFn)
+    registryTable.grantReadWriteData(mcpRegistryManageFn)
 
     // /mcp/connect
     const mcpResource = api.root.addResource('mcp')
@@ -725,6 +751,13 @@ export class ButlerStack extends cdk.Stack {
     // /mcp/status
     const mcpStatusResource = mcpResource.addResource('status')
     mcpStatusResource.addMethod('GET', new apigateway.LambdaIntegration(mcpStatusFn), authMethodOptions)
+
+    // /mcp/registry
+    const mcpRegistryResource = mcpResource.addResource('registry')
+    mcpRegistryResource.addMethod('POST', new apigateway.LambdaIntegration(mcpRegistryManageFn), authMethodOptions)
+    mcpRegistryResource.addMethod('GET', new apigateway.LambdaIntegration(mcpRegistryManageFn), authMethodOptions)
+    mcpRegistryResource.addMethod('PATCH', new apigateway.LambdaIntegration(mcpRegistryManageFn), authMethodOptions)
+    mcpRegistryResource.addMethod('DELETE', new apigateway.LambdaIntegration(mcpRegistryManageFn), authMethodOptions)
 
     // /mcp/{themeId}
     const mcpByThemeIdResource = mcpResource.addResource('{themeId}')

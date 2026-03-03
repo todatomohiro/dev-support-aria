@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { useQRScanner } from '@/hooks/useQRScanner'
 import { workService } from '@/services/workService'
 import { useThemeStore } from '@/stores/themeStore'
+import { isRegistryCode, normalizeRegistryCode } from '@/utils/registryCode'
 import type { MCPQRPayload } from '@/types/work'
 
 interface WorkConnectModalProps {
@@ -16,12 +17,12 @@ type TabId = 'qr' | 'code'
 /**
  * ワーク（MCP）接続モーダル
  *
- * QRコード読み取り or URL直接入力で MCP サーバーに接続し、
+ * QRコード読み取り / ワークコード入力 / URL直接入力で MCP サーバーに接続し、
  * 新規トピックを作成してナビゲートする。
  */
 export function WorkConnectModal({ isOpen, onClose }: WorkConnectModalProps) {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<TabId>('qr')
+  const [activeTab, setActiveTab] = useState<TabId>('code')
   const [codeInput, setCodeInput] = useState('')
   const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -33,19 +34,25 @@ export function WorkConnectModal({ isOpen, onClose }: WorkConnectModalProps) {
     // JSON 形式の場合（QRコード）
     try {
       const parsed = JSON.parse(raw)
-      if (parsed.type === 'mcp' && parsed.serverUrl) {
+      if (parsed.type === 'mcp' && (parsed.serverUrl || parsed.code)) {
         return {
           type: 'mcp',
+          code: parsed.code,
           serverUrl: parsed.serverUrl,
           ttlMinutes: parsed.ttlMinutes ?? 30,
           metadata: parsed.metadata,
         }
       }
     } catch {
-      // JSON でない場合は URL として扱う
+      // JSON でない場合はコードまたは URL として扱う
     }
 
-    // URL 直接入力の場合
+    // レジストリコード形式
+    if (isRegistryCode(raw.trim())) {
+      return { type: 'mcp', code: raw.trim() }
+    }
+
+    // URL 直接入力の場合（後方互換）
     if (raw.startsWith('https://')) {
       return {
         type: 'mcp',
@@ -64,6 +71,7 @@ export function WorkConnectModal({ isOpen, onClose }: WorkConnectModalProps) {
 
     try {
       const conn = await workService.connect({
+        code: payload.code,
         serverUrl: payload.serverUrl,
         ttlMinutes: payload.ttlMinutes,
         metadata: payload.metadata,
@@ -108,11 +116,28 @@ export function WorkConnectModal({ isOpen, onClose }: WorkConnectModalProps) {
     handleQRDetected()
   }
 
+  /** コード入力の変更ハンドラー（自動ハイフン挿入） */
+  const handleCodeInputChange = useCallback((value: string) => {
+    setError(null)
+    // URL入力の場合はそのまま
+    if (value.startsWith('https://') || value.startsWith('http')) {
+      setCodeInput(value)
+      return
+    }
+    // コード入力: 正規化（a-z以外除去 + 3文字ごとハイフン）
+    setCodeInput(normalizeRegistryCode(value))
+  }, [])
+
   /** コード入力タブからの接続 */
   const handleCodeSubmit = useCallback(async () => {
-    const payload = parsePayload(codeInput.trim())
+    const trimmed = codeInput.trim()
+    const payload = parsePayload(trimmed)
     if (!payload) {
-      setError('無効なURLです。https:// で始まるURLを入力してください。')
+      if (trimmed && !trimmed.startsWith('https://')) {
+        setError('無効なコードです。xxx-xxx-xxx 形式で入力してください。')
+      } else {
+        setError('無効なURLです。https:// で始まるURLを入力してください。')
+      }
       return
     }
     await connectToWork(payload)
@@ -159,16 +184,6 @@ export function WorkConnectModal({ isOpen, onClose }: WorkConnectModalProps) {
         {/* タブ */}
         <div className="flex border-b border-gray-200 dark:border-gray-700">
           <button
-            onClick={() => handleTabChange('qr')}
-            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-              activeTab === 'qr'
-                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600'
-                : 'text-gray-500 dark:text-gray-400'
-            }`}
-          >
-            QRコード
-          </button>
-          <button
             onClick={() => handleTabChange('code')}
             className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
               activeTab === 'code'
@@ -178,11 +193,49 @@ export function WorkConnectModal({ isOpen, onClose }: WorkConnectModalProps) {
           >
             コード入力
           </button>
+          <button
+            onClick={() => handleTabChange('qr')}
+            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+              activeTab === 'qr'
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600'
+                : 'text-gray-500 dark:text-gray-400'
+            }`}
+          >
+            QRコード
+          </button>
         </div>
 
         {/* コンテンツ */}
         <div className="p-4">
-          {activeTab === 'qr' ? (
+          {activeTab === 'code' ? (
+            <div className="space-y-3">
+              <label className="block text-sm text-gray-700 dark:text-gray-300">
+                ワークコード
+              </label>
+              <input
+                type="text"
+                value={codeInput}
+                onChange={(e) => handleCodeInputChange(e.target.value)}
+                placeholder="abc-def-ghi"
+                className="w-full px-3 py-2.5 text-sm font-mono rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                data-testid="work-code-input"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+              />
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                ワークコード（xxx-xxx-xxx）またはURLを入力
+              </p>
+              <button
+                onClick={handleCodeSubmit}
+                disabled={!codeInput.trim() || isConnecting}
+                className="w-full py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-lg transition-colors"
+                data-testid="work-connect-button"
+              >
+                {isConnecting ? '接続中...' : '接続'}
+              </button>
+            </div>
+          ) : (
             <div className="space-y-3">
               {/* カメラビューファインダー */}
               <div className="relative aspect-square bg-black rounded-lg overflow-hidden">
@@ -208,28 +261,6 @@ export function WorkConnectModal({ isOpen, onClose }: WorkConnectModalProps) {
               <p className="text-xs text-center text-gray-500 dark:text-gray-400">
                 QRコードをカメラに映してください
               </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <label className="block text-sm text-gray-700 dark:text-gray-300">
-                MCPサーバーURL
-              </label>
-              <input
-                type="url"
-                value={codeInput}
-                onChange={(e) => { setCodeInput(e.target.value); setError(null) }}
-                placeholder="https://..."
-                className="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                data-testid="work-url-input"
-              />
-              <button
-                onClick={handleCodeSubmit}
-                disabled={!codeInput.trim() || isConnecting}
-                className="w-full py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-lg transition-colors"
-                data-testid="work-connect-button"
-              >
-                {isConnecting ? '接続中...' : '接続'}
-              </button>
             </div>
           )}
 

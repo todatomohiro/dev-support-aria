@@ -1,8 +1,9 @@
-/** QRコードから読み取るMCPペイロード */
+/** QRコードまたはコード入力から生成するMCPペイロード */
 export interface MCPQRPayload {
   type: 'mcp'
-  serverUrl: string
-  ttlMinutes: number
+  code?: string
+  serverUrl?: string
+  ttlMinutes?: number
   metadata?: Record<string, unknown>
 }
 
