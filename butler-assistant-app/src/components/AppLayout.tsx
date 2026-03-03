@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { Sidebar } from './Sidebar'
 import { BottomNav } from './BottomNav'
+import { WorkConnectModal } from './WorkConnectModal'
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -20,6 +21,7 @@ interface AppLayoutProps {
  */
 export function AppLayout({ children, currentSessionName, onOpenSettings, headerRight, onRenameSession }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [isWorkModalOpen, setIsWorkModalOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -160,6 +162,7 @@ export function AppLayout({ children, currentSessionName, onOpenSettings, header
           <Sidebar
             activeTab={activeTab}
             onOpenSettings={onOpenSettings}
+            onOpenWork={() => setIsWorkModalOpen(true)}
           />
         </div>
 
@@ -171,8 +174,11 @@ export function AppLayout({ children, currentSessionName, onOpenSettings, header
 
       {/* スマホ: ボトムナビ */}
       <div className="md:hidden">
-        <BottomNav activeTab={activeTab} onOpenSettings={onOpenSettings} />
+        <BottomNav activeTab={activeTab} onOpenSettings={onOpenSettings} onOpenWork={() => setIsWorkModalOpen(true)} />
       </div>
+
+      {/* ワーク接続モーダル */}
+      <WorkConnectModal isOpen={isWorkModalOpen} onClose={() => setIsWorkModalOpen(false)} />
     </div>
   )
 }

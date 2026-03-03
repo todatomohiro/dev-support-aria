@@ -157,7 +157,7 @@ class LLMClientImpl implements LLMClientService {
         throw await this.handleAPIError(res, errorBody)
       }
 
-      const data = (await res.json()) as { content: string; sessionSummary?: string; permanentFacts?: string[]; themeName?: string }
+      const data = (await res.json()) as { content: string; sessionSummary?: string; permanentFacts?: string[]; themeName?: string; workStatus?: { active: boolean; expiresAt: string; toolCount: number } }
 
       // JSON を抽出（マークダウンコードブロック対応）
       let cleanJson = data.content.trim()
@@ -175,7 +175,7 @@ class LLMClientImpl implements LLMClientService {
       if (!jsonMatch) {
         // JSON が返らなかった場合、テキストをそのまま使用
         console.warn('[LLM] JSON形式でない応答をフォールバック処理:', cleanJson.slice(0, 100))
-        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral', sessionSummary: data.sessionSummary, permanentFacts: data.permanentFacts, themeName: data.themeName } as StructuredResponse
+        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral', sessionSummary: data.sessionSummary, permanentFacts: data.permanentFacts, themeName: data.themeName, workStatus: data.workStatus } as StructuredResponse
       }
 
       try {
@@ -189,11 +189,14 @@ class LLMClientImpl implements LLMClientService {
         if (data.themeName) {
           parsed.themeName = data.themeName
         }
+        if (data.workStatus) {
+          parsed.workStatus = data.workStatus
+        }
         return parsed
       } catch {
         // JSON パースに失敗した場合もフォールバック
         console.warn('[LLM] JSONパース失敗、フォールバック処理')
-        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral', sessionSummary: data.sessionSummary, permanentFacts: data.permanentFacts, themeName: data.themeName } as StructuredResponse
+        return { text: data.content.trim(), motion: 'idle', emotion: 'neutral', sessionSummary: data.sessionSummary, permanentFacts: data.permanentFacts, themeName: data.themeName, workStatus: data.workStatus } as StructuredResponse
       }
     } catch (error) {
       if (

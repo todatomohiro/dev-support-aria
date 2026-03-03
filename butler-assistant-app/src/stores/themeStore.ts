@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import type { ThemeSession, Message } from '@/types'
+import type { WorkConnection } from '@/types/work'
 
 /**
  * テーマストアの状態管理インターフェース
@@ -14,6 +15,7 @@ export interface ThemeState {
   isSending: boolean
   error: string | null
   sessionId: string
+  activeWorkConnection: WorkConnection | null
 
   // アクション
   /** テーマ一覧を設定 */
@@ -34,6 +36,10 @@ export interface ThemeState {
   resetSession: () => void
   /** テーマ名を更新（トピック自動命名） */
   updateThemeName: (themeId: string, themeName: string) => void
+  /** ワーク接続を設定 */
+  setWorkConnection: (conn: WorkConnection | null) => void
+  /** ワーク接続をクリア */
+  clearWorkConnection: () => void
   /** 状態を完全リセット */
   reset: () => void
 }
@@ -47,6 +53,7 @@ const initialState = {
   isSending: false,
   error: null as string | null,
   sessionId: uuidv4(),
+  activeWorkConnection: null as WorkConnection | null,
 }
 
 /**
@@ -82,6 +89,10 @@ export const useThemeStore = create<ThemeState>()((set) => ({
         t.themeId === themeId ? { ...t, themeName } : t
       ),
     })),
+
+  setWorkConnection: (conn: WorkConnection | null) => set({ activeWorkConnection: conn }),
+
+  clearWorkConnection: () => set({ activeWorkConnection: null }),
 
   resetSession: () => set({
     activeMessages: [],

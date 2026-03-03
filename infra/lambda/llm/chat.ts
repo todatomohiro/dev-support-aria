@@ -21,6 +21,7 @@ import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import { executeSkill } from './skills'
 import { TOOL_DEFINITIONS } from './skills/toolDefinitions'
+import type { MCPToolDefinition } from '../mcp/mcpClient'
 
 const bedrock = new BedrockRuntimeClient({})
 const agentCore = new BedrockAgentCoreClient({})
@@ -532,6 +533,63 @@ async function getThemeContext(userId: string, themeId: string): Promise<{ theme
   }
 }
 
+/** MCP接続情報 */
+interface MCPConnection {
+  serverUrl: string
+  themeId: string
+  tools: MCPToolDefinition[]
+  expiresAt: string
+  isExpired: boolean
+}
+
+/**
+ * DynamoDB から MCP_CONNECTION レコードを取得
+ */
+async function getMCPConnection(userId: string, themeId: string): Promise<MCPConnection | null> {
+  try {
+    const result = await dynamo.send(new GetItemCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        PK: { S: `USER#${userId}` },
+        SK: { S: `MCP_CONNECTION#${themeId}` },
+      },
+    }))
+    if (!result.Item) return null
+
+    const expiresAt = result.Item.expiresAt?.S ?? ''
+    const isExpired = new Date(expiresAt).getTime() < Date.now()
+    const toolDefinitions: MCPToolDefinition[] = result.Item.toolDefinitions?.S
+      ? JSON.parse(result.Item.toolDefinitions.S)
+      : []
+
+    return {
+      serverUrl: result.Item.serverUrl?.S ?? '',
+      themeId,
+      tools: toolDefinitions,
+      expiresAt,
+      isExpired,
+    }
+  } catch (error) {
+    console.warn('[LLM] MCP接続情報取得エラー（スキップ）:', error)
+    return null
+  }
+}
+
+/**
+ * MCP ツール定義を Bedrock Tool 形式に変換（mcp_ プレフィックス付与）
+ */
+function convertMCPToolToBedrock(mcpTool: MCPToolDefinition): { toolSpec: { name: string; description: string; inputSchema: { json: Record<string, unknown> } } } {
+  return {
+    toolSpec: {
+      name: `mcp_${mcpTool.name}`,
+      description: mcpTool.description ?? mcpTool.name,
+      inputSchema: {
+        json: mcpTool.inputSchema ?? { type: 'object', properties: {} },
+      },
+    },
+  }
+}
+
 /**
  * システムプロンプトを構築（永久記憶 + メモリ + セッション要約 + チェックポイントを注入）
  */
@@ -544,7 +602,8 @@ function buildEnhancedSystemPrompt(
   sessionDate?: string,
   pastSessions?: PastSessionGroup[],
   themeContext?: { themeName: string },
-  themeSummaries?: Array<{ themeName: string; summary: string }>
+  themeSummaries?: Array<{ themeName: string; summary: string }>,
+  workContext?: { tools: Array<{ name: string; description: string }>; expiresAt: string }
 ): string {
   let enhanced = systemPrompt
 
@@ -581,6 +640,13 @@ function buildEnhancedSystemPrompt(
     } else {
       enhanced += `\n\n<theme_context>\nテーマ: ${themeContext.themeName}\nこのセッションでは「${themeContext.themeName}」について会話しています。\nテーマに関連する回答を心がけてください。\n</theme_context>`
     }
+  }
+
+  // ワーク（MCP接続）コンテキスト
+  if (workContext) {
+    const toolDescriptions = workContext.tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
+    const expiresTime = new Date(workContext.expiresAt).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' })
+    enhanced += `\n\n<work_context>\n【重要】このトピックには外部データソースと接続する「ワーク」機能が有効です。\nユーザーの質問には、まず以下のワークツールを使って回答してください。web_search より優先して使用すること。\n\n利用可能なワークツール:\n${toolDescriptions}\n\n有効期限: ${expiresTime}\n</work_context>`
   }
 
   // セッション要約 + チェックポイント（短期記憶）
@@ -665,6 +731,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let sessionTurnsSinceSummary = 0
   let sessionSummary = ''
   let themeContext: { themeName: string } | null = null
+  let mcpConn: MCPConnection | null = null
 
   if (sessionId) {
     // テーマセッションかメインセッションかを判定
@@ -677,8 +744,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`[LLM] セッションモード: sessionId=${sessionId}${themeId ? `, themeId=${themeId}` : ''}`)
 
-    // テーマコンテキストを取得（themeId がある場合のみ）
-    themeContext = themeId ? await getThemeContext(userId, themeId) : null
+    // テーマコンテキストとMCP接続を並列取得（themeId がある場合のみ）
+    const [themeCtx, mcpConnResult] = await Promise.all([
+      themeId ? getThemeContext(userId, themeId) : Promise.resolve(null),
+      themeId ? getMCPConnection(userId, themeId) : Promise.resolve(null),
+    ])
+    themeContext = themeCtx
+    mcpConn = mcpConnResult
 
     // 新フロー: DynamoDB からセッションコンテキストを構築（並列取得）
     // メイン会話の場合はテーマ要約も取得
@@ -692,6 +764,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const sessionDate = toJSTDateString(sessionContext.sessionCreatedAt)
 
+    // ワークコンテキスト（MCP接続が有効な場合）
+    const workContext = mcpConn && !mcpConn.isExpired
+      ? { tools: mcpConn.tools.map((t) => ({ name: `mcp_${t.name}`, description: t.description })), expiresAt: mcpConn.expiresAt }
+      : undefined
+
+    if (mcpConn) {
+      console.log(`[LLM] MCP接続: serverUrl=${mcpConn.serverUrl}, expired=${mcpConn.isExpired}, tools=${mcpConn.tools.length}`)
+    }
+
     enhancedSystemPrompt = buildEnhancedSystemPrompt(
       systemPrompt,
       permanentFacts,
@@ -701,7 +782,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       sessionDate,
       pastSessions,
       themeContext ?? undefined,
-      themeSummaries.length > 0 ? themeSummaries : undefined
+      themeSummaries.length > 0 ? themeSummaries : undefined,
+      workContext
     )
 
     if (sessionContext.checkpoints.length > 0) {
@@ -732,8 +814,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     ? [{ text: enhancedSystemPrompt }]
     : []
 
+  // MCP ツールを動的注入（接続が有効な場合のみ）
+  const mcpTools = mcpConn && !mcpConn.isExpired
+    ? mcpConn.tools.map((t) => convertMCPToolToBedrock(t))
+    : []
+
   const toolConfig: ToolConfiguration = {
-    tools: TOOL_DEFINITIONS,
+    tools: [...TOOL_DEFINITIONS, ...mcpTools],
   }
 
   try {
@@ -795,7 +882,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         for (const block of toolUseBlocks) {
           const { toolUseId, name, input } = block
           console.log(`[LLM] Tool use: ${name}`, JSON.stringify(input))
-          const toolResult = await executeSkill(name, input, toolUseId, userId)
+          const toolResult = await executeSkill(name, input, toolUseId, userId, mcpConn ?? undefined)
           console.log(`[LLM] Tool result:`, JSON.stringify(toolResult))
           toolResults.push(toolResult)
         }
@@ -868,11 +955,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
       }
 
+      // ワーク状態をレスポンスに含める
+      const workStatus = mcpConn
+        ? { active: !mcpConn.isExpired, expiresAt: mcpConn.expiresAt, toolCount: mcpConn.tools.length }
+        : undefined
+
       return response(200, {
         content,
         ...(sessionSummary ? { sessionSummary } : {}),
         ...(permanentFacts.length > 0 ? { permanentFacts } : {}),
         ...(generatedThemeName ? { themeName: generatedThemeName } : {}),
+        ...(workStatus ? { workStatus } : {}),
       })
     }
 

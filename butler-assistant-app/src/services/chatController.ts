@@ -337,6 +337,21 @@ class ChatControllerImpl {
         store.updateThemeName(themeId, structuredResponse.themeName)
       }
 
+      // ワーク（MCP）接続状態を更新
+      if (structuredResponse.workStatus) {
+        if (structuredResponse.workStatus.active) {
+          store.setWorkConnection({
+            themeId,
+            active: true,
+            expiresAt: structuredResponse.workStatus.expiresAt,
+            tools: [], // ツール情報は初回接続時に取得済み
+            serverUrl: '', // サーバーURLは初回接続時に取得済み
+          })
+        } else {
+          store.clearWorkConnection()
+        }
+      }
+
       // ストアにアシスタントメッセージを追加
       store.addMessage(assistantMessage)
 

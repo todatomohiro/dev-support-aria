@@ -35,6 +35,8 @@ export interface StructuredResponse {
   permanentFacts?: string[]
   /** Lambda から返されたトピック自動命名（新規トピック時） */
   themeName?: string
+  /** Lambda から返されたワーク（MCP）接続状態 */
+  workStatus?: { active: boolean; expiresAt: string; toolCount: number }
 }
 
 /**

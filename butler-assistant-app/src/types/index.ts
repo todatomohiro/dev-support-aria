@@ -52,5 +52,8 @@ export type {
 export { AVAILABLE_SKILLS } from './skill'
 export type { SkillConnection, SkillDefinition } from './skill'
 
+// Work (MCP) types
+export type { MCPQRPayload, MCPToolInfo, WorkConnection, WorkStatus } from './work'
+
 // Conversation / Group types
 export type { FriendCode, FriendLink, ConversationSummary, ConversationMessage, GroupSummary, GroupMessage, GroupMember, WsStatus } from './conversation'

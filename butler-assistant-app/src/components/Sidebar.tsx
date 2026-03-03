@@ -6,12 +6,13 @@ import { themeService } from '@/services'
 interface SidebarProps {
   activeTab: string
   onOpenSettings: () => void
+  onOpenWork: () => void
 }
 
 /**
  * PC 版サイドバー
  */
-export function Sidebar({ activeTab, onOpenSettings }: SidebarProps) {
+export function Sidebar({ activeTab, onOpenSettings, onOpenWork }: SidebarProps) {
   const navigate = useNavigate()
   const themes = useThemeStore((s) => s.themes)
   const activeThemeId = useThemeStore((s) => s.activeThemeId)
@@ -81,6 +82,20 @@ export function Sidebar({ activeTab, onOpenSettings }: SidebarProps) {
 
       {/* スペーサー */}
       <div className="flex-1" />
+
+      {/* ワーク */}
+      <div className="border-t border-gray-200 dark:border-gray-700">
+        <button
+          onClick={onOpenWork}
+          className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          data-testid="sidebar-work"
+        >
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          ワーク
+        </button>
+      </div>
 
       {/* 設定 */}
       <div className="border-t border-gray-200 dark:border-gray-700">

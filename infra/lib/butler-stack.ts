@@ -692,6 +692,44 @@ export class ButlerStack extends cdk.Stack {
     const themeMessagesResource = themeByIdResource.addResource('messages')
     themeMessagesResource.addMethod('GET', new apigateway.LambdaIntegration(themesMessagesFn), authMethodOptions)
 
+    // ── MCP Lambda 関数（ワーク機能）──
+    const mcpConnectFn = new lambdaNode.NodejsFunction(this, 'McpConnectFn', {
+      ...lambdaDefaults,
+      timeout: cdk.Duration.seconds(15),
+      entry: path.join(__dirname, '..', 'lambda', 'mcp', 'connect.ts'),
+      functionName: 'butler-mcp-connect',
+    })
+
+    const mcpStatusFn = new lambdaNode.NodejsFunction(this, 'McpStatusFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'mcp', 'status.ts'),
+      functionName: 'butler-mcp-status',
+    })
+
+    const mcpDisconnectFn = new lambdaNode.NodejsFunction(this, 'McpDisconnectFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'mcp', 'disconnect.ts'),
+      functionName: 'butler-mcp-disconnect',
+    })
+
+    // MCP — DynamoDB 権限
+    table.grantReadWriteData(mcpConnectFn)
+    table.grantReadData(mcpStatusFn)
+    table.grantReadWriteData(mcpDisconnectFn)
+
+    // /mcp/connect
+    const mcpResource = api.root.addResource('mcp')
+    const mcpConnectResource = mcpResource.addResource('connect')
+    mcpConnectResource.addMethod('POST', new apigateway.LambdaIntegration(mcpConnectFn), authMethodOptions)
+
+    // /mcp/status
+    const mcpStatusResource = mcpResource.addResource('status')
+    mcpStatusResource.addMethod('GET', new apigateway.LambdaIntegration(mcpStatusFn), authMethodOptions)
+
+    // /mcp/{themeId}
+    const mcpByThemeIdResource = mcpResource.addResource('{themeId}')
+    mcpByThemeIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(mcpDisconnectFn), authMethodOptions)
+
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {
       value: userPool.userPoolId,
