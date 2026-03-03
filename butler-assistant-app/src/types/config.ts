@@ -44,6 +44,10 @@ export interface ThemeSession {
   themeName: string
   createdAt: string
   updatedAt: string
+  /** ワーク（MCP接続）がアクティブか */
+  workActive?: boolean
+  /** ワーク有効期限 */
+  workExpiresAt?: string
 }
 
 /**

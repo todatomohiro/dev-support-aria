@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { ThemeSession } from '@/types'
-import { useThemeStore } from '@/stores/themeStore'
 import { WorkBadge } from './WorkBadge'
 
 interface ThemeListProps {
@@ -18,7 +17,6 @@ interface ThemeListProps {
 export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading, error }: ThemeListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const workConnection = useThemeStore((s) => s.activeWorkConnection)
 
   /** 検索クエリでフィルタリングされたテーマ一覧 */
   const filteredThemes = useMemo(() => {
@@ -124,8 +122,8 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
                     <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                       {theme.themeName}
                     </h3>
-                    {workConnection?.themeId === theme.themeId && (
-                      <WorkBadge active={workConnection.active} expiresAt={workConnection.expiresAt} compact />
+                    {theme.workActive && theme.workExpiresAt && (
+                      <WorkBadge active expiresAt={theme.workExpiresAt} compact />
                     )}
                   </div>
                   <button
