@@ -9,6 +9,7 @@ import { syncService } from './services/syncService'
 import { llmClient } from './services/llmClient'
 import { themeService } from './services/themeService'
 import { greetingService } from './services/greetingService'
+import { sentimentService } from './services/sentimentService'
 import { useGeolocation } from './hooks/useGeolocation'
 import { logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
@@ -34,6 +35,7 @@ function App() {
   const [isInitialized, setIsInitialized] = useState(false)
   const [greetingMessage, setGreetingMessage] = useState<string | null>(null)
   const greetingTriggeredRef = useRef(false)
+  const prevSentimentRef = useRef<string>('neutral')
   const live2dRef = useRef<Live2DCanvasHandle>(null)
 
   // Auth store
@@ -161,6 +163,27 @@ function App() {
 
     return () => clearInterval(intervalId)
   }, [])
+
+  // 入力テキスト感情分析ハンドラー（メインチャットのみ）
+  const handleInputSentimentChange = useCallback((text: string) => {
+    if (!config.ui.sentimentEnabled) return // 設定でOFFの場合はスキップ
+    if (isLoading) return // LLM応答待ち中はスキップ（応答の emotion が優先）
+
+    if (!text.trim()) {
+      // テキストが空 → neutral に戻す
+      if (prevSentimentRef.current !== 'neutral') {
+        prevSentimentRef.current = 'neutral'
+        setCurrentExpression('exp_01')
+      }
+      return
+    }
+
+    const result = sentimentService.analyzeSentiment(text)
+    if (result.emotion !== prevSentimentRef.current) {
+      prevSentimentRef.current = result.emotion
+      setCurrentExpression(result.expression)
+    }
+  }, [config.ui.sentimentEnabled, isLoading, setCurrentExpression])
 
   // メッセージ送信ハンドラー
   const handleSendMessage = useCallback(async (text: string, imageBase64?: string) => {
@@ -497,6 +520,7 @@ function App() {
                       isLoadingEarlier={isLoadingEarlier}
                       onLoadEarlier={handleLoadEarlier}
                       onCreateTheme={handleCreateThemeFromSuggestion}
+                      onInputSentimentChange={handleInputSentimentChange}
                     />
                   </div>
                 } />

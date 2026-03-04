@@ -27,6 +27,7 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
   const [fontSize, setFontSize] = useState(config.ui.fontSize)
   const [characterSize, setCharacterSize] = useState(config.ui.characterSize)
   const [geolocationEnabled, setGeolocationEnabled] = useState(config.ui.geolocationEnabled)
+  const [sentimentEnabled, setSentimentEnabled] = useState(config.ui.sentimentEnabled)
   const [developerMode, setDeveloperMode] = useState(config.ui.developerMode)
 
   const [isSaving, setIsSaving] = useState(false)
@@ -37,6 +38,7 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
     setFontSize(config.ui.fontSize)
     setCharacterSize(config.ui.characterSize)
     setGeolocationEnabled(config.ui.geolocationEnabled)
+    setSentimentEnabled(config.ui.sentimentEnabled)
     setDeveloperMode(config.ui.developerMode)
   }, [config])
 
@@ -49,6 +51,7 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
           fontSize,
           characterSize,
           geolocationEnabled,
+          sentimentEnabled,
           developerMode,
         },
       })
@@ -67,6 +70,7 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
     setFontSize(config.ui.fontSize)
     setCharacterSize(config.ui.characterSize)
     setGeolocationEnabled(config.ui.geolocationEnabled)
+    setSentimentEnabled(config.ui.sentimentEnabled)
     setDeveloperMode(config.ui.developerMode)
     onClose()
   }
@@ -231,6 +235,23 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
                     </div>
                   )}
                 </div>
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      入力中の表情変化
+                    </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      テキスト入力中にキャラクターの表情がリアルタイムで変化します
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={sentimentEnabled}
+                    onChange={(e) => setSentimentEnabled(e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    data-testid="sentiment-toggle"
+                  />
+                </label>
                 <label className="flex items-center justify-between cursor-pointer">
                   <div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">

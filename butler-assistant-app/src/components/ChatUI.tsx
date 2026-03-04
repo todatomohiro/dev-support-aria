@@ -59,6 +59,8 @@ interface ChatUIProps {
   isLoadingEarlier?: boolean
   onLoadEarlier?: () => void
   onCreateTheme?: (themeName: string) => void
+  /** テキスト入力時の感情分析コールバック */
+  onInputSentimentChange?: (text: string) => void
   /** 入力エリアに追加表示する要素（モデルセレクタ等） */
   inputExtra?: React.ReactNode
 }
@@ -66,7 +68,7 @@ interface ChatUIProps {
 /**
  * チャットUI コンポーネント
  */
-export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme, inputExtra }: ChatUIProps) {
+export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme, onInputSentimentChange, inputExtra }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
   const [autoSendEnabled, setAutoSendEnabled] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -192,6 +194,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputText(e.target.value)
+    onInputSentimentChange?.(e.target.value)
   }
 
   const handleSendClick = () => {

@@ -99,6 +99,7 @@ export interface UIConfig {
   ttsEnabled: boolean
   cameraEnabled: boolean
   geolocationEnabled: boolean
+  sentimentEnabled: boolean
   developerMode: boolean
 }
 
@@ -159,6 +160,7 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   ttsEnabled: false,
   cameraEnabled: false,
   geolocationEnabled: false,
+  sentimentEnabled: true,
   developerMode: false,
 }
 
