@@ -159,6 +159,18 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
     return () => clearInterval(timer)
   }, [workConnection?.active, workConnection?.expiresAt])
 
+  /** 壁打ちモード開始ハンドラー */
+  const handleSocraticStart = useCallback(async () => {
+    try {
+      useThemeStore.getState().updateThemeCategory(themeId, 'free', currentModelKey, 'socratic')
+      await themeService.updateThemeCategory(themeId, 'free', currentModelKey, 'socratic')
+        .catch((err) => console.warn('[ThemeChat] 壁打ちモード保存エラー:', err))
+      await chatController.sendThemeMessage('壁打ち相手になって。私の考えを深掘りしてほしい。', themeId)
+    } catch (error) {
+      console.error('[ThemeChat] 壁打ちモード開始エラー:', error)
+    }
+  }, [themeId, currentModelKey])
+
   const handleSendMessage = useCallback(async (text: string, imageBase64?: string) => {
     await chatController.sendThemeMessage(text, themeId, imageBase64)
   }, [themeId])
@@ -174,7 +186,18 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
 
       {/* カテゴリ選択（メッセージなし＆カテゴリ未設定時） */}
       {messages.length === 0 && !hasCategory && !workConnection && (
-        <CategorySelect onSelect={handleCategorySelect} developerMode={config.ui.developerMode} />
+        <div className="flex flex-col">
+          <CategorySelect onSelect={handleCategorySelect} developerMode={config.ui.developerMode} />
+          <div className="px-4 pb-3">
+            <button
+              type="button"
+              className="w-full py-2.5 px-4 rounded-xl border border-purple-300 dark:border-purple-600 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors text-sm font-medium"
+              onClick={handleSocraticStart}
+            >
+              壁打ち相手になって
+            </button>
+          </div>
+        </div>
       )}
 
       {/* チャットエリア */}
@@ -191,7 +214,16 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
           hasEarlierMessages={false}
           isLoadingEarlier={false}
           onLoadEarlier={() => {}}
-          inputExtra={<ModelSelector modelKey={currentModelKey} onChange={handleModelChange} />}
+          inputExtra={
+            <div className="flex items-center gap-2">
+              {currentTheme?.subcategory === 'socratic' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                  壁打ちモード
+                </span>
+              )}
+              <ModelSelector modelKey={currentModelKey} onChange={handleModelChange} />
+            </div>
+          }
         />
       </div>
     </div>

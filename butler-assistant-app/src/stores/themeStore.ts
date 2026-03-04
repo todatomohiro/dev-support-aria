@@ -104,7 +104,7 @@ export const useThemeStore = create<ThemeState>()((set) => ({
   updateThemeCategory: (themeId: string, category: string, modelKey: ModelKey, subcategory?: string) =>
     set((state) => ({
       themes: state.themes.map((t) =>
-        t.themeId === themeId ? { ...t, category, modelKey, ...(subcategory ? { subcategory } : {}) } : t
+        t.themeId === themeId ? { ...t, category, modelKey, subcategory } : t
       ),
     })),
 
