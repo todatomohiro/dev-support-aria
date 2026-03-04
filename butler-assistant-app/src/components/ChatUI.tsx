@@ -254,8 +254,8 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
           </div>
         ))}
 
-        {/* ローディングインジケーター */}
-        {isLoading && <LoadingIndicator />}
+        {/* スケルトンメッセージ（ローディング中） */}
+        {isLoading && <SkeletonMessage />}
 
         {/* スクロール用のアンカー */}
         <div ref={messagesEndRef} />
@@ -594,17 +594,15 @@ function ThemeSuggestionCard({ themeName, onCreateTheme }: { themeName: string; 
 }
 
 /**
- * ローディングインジケーター コンポーネント
+ * スケルトンメッセージ コンポーネント（アシスタント吹き出し風ローディング）
  */
-function LoadingIndicator() {
+function SkeletonMessage() {
   return (
     <div className="flex justify-start" data-testid="loading-indicator">
-      <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-        <div className="flex space-x-2">
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-        </div>
+      <div className="max-w-[85%] sm:max-w-[70%] rounded-lg p-3 bg-gray-100 dark:bg-gray-800 space-y-2">
+        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded animate-pulse w-3/4" />
+        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded animate-pulse w-1/2" />
+        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded animate-pulse w-2/3" />
       </div>
     </div>
   )

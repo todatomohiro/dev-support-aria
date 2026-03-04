@@ -187,8 +187,15 @@ function App() {
 
   // メッセージ送信ハンドラー
   const handleSendMessage = useCallback(async (text: string, imageBase64?: string) => {
+    // 送信時に即座にキャラクターの表情を変える
+    if (config.ui.sentimentEnabled) {
+      const result = sentimentService.analyzeSentiment(text)
+      prevSentimentRef.current = result.emotion
+      setCurrentExpression(result.expression)
+    }
+
     await chatController.sendMessage(text, imageBase64)
-  }, [])
+  }, [config.ui.sentimentEnabled, setCurrentExpression])
 
   // 過去メッセージ読み込みハンドラー
   const handleLoadEarlier = useCallback(async () => {
