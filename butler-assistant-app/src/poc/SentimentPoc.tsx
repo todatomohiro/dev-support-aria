@@ -1,5 +1,8 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router'
+import { Live2DCanvas } from '@/components'
+import type { Live2DCanvasHandle } from '@/components'
+import { useAppStore } from '@/stores'
 
 /** 感情カテゴリ */
 type EmotionKey = 'happy' | 'sad' | 'surprised' | 'angry' | 'troubled' | 'embarrassed' | 'thinking' | 'neutral'
@@ -211,15 +214,28 @@ function analyzeSentiment(text: string): SentimentResult {
  * テキスト感情分析 PoC ページ
  *
  * ユーザーの入力テキストをキーワードベースでリアルタイム感情分析し、
- * 対応するキャラクター表情・リアクションをプレビューする。
+ * Live2D キャラクターの表情をリアルタイムで変化させる。
  */
 export function SentimentPoc() {
   const navigate = useNavigate()
   const [text, setText] = useState('')
   const [history, setHistory] = useState<Array<{ text: string; result: SentimentResult }>>([])
+  const live2dRef = useRef<Live2DCanvasHandle>(null)
+  const prevEmotionRef = useRef<EmotionKey>('neutral')
+
+  // appStore からモデルパスを取得
+  const modelPath = useAppStore((s) => s.config.model.currentModelId)
 
   /** 分析結果（リアルタイム） */
   const result = useMemo(() => analyzeSentiment(text), [text])
+
+  /** 感情変化時に Live2D 表情を更新 */
+  useEffect(() => {
+    if (result.emotion !== prevEmotionRef.current) {
+      prevEmotionRef.current = result.emotion
+      live2dRef.current?.playExpression(result.expression)
+    }
+  }, [result.emotion, result.expression])
 
   /** テキスト内のマッチ箇所をハイライトしたHTML */
   const highlightedText = useMemo(() => {
@@ -247,6 +263,11 @@ export function SentimentPoc() {
     setText(presetText)
   }, [])
 
+  /** モーション完了ハンドラー */
+  const handleMotionComplete = useCallback(() => {
+    // idle に戻す（PoC では特に何もしない）
+  }, [])
+
   return (
     <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* ヘッダー */}
@@ -271,14 +292,33 @@ export function SentimentPoc() {
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="max-w-2xl mx-auto space-y-6">
 
+          {/* Live2D キャラクター + リアクション吹き出し */}
+          <section className="bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="relative h-[280px] sm:h-[350px]">
+              <Live2DCanvas
+                ref={live2dRef}
+                modelPath={modelPath}
+                currentMotion={null}
+                onMotionComplete={handleMotionComplete}
+              />
+              {/* リアクション吹き出し */}
+              <div
+                className={`absolute bottom-3 left-1/2 -translate-x-1/2 max-w-[85%] px-4 py-2 rounded-xl shadow-lg text-sm text-center transition-all duration-300 ${EMOTION_DEFS[result.emotion].color} border`}
+                data-testid="live2d-reaction"
+              >
+                <span className="mr-1">{EMOTION_DEFS[result.emotion].icon}</span>
+                {result.characterReaction}
+              </div>
+            </div>
+          </section>
+
           {/* 説明 */}
           <section className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
             <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
               概要
             </h3>
             <p className="text-sm text-blue-700 dark:text-blue-300">
-              ユーザーの入力テキストをキーワードベースでリアルタイム感情分析し、
-              対応する Live2D 表情とキャラクターリアクションをプレビューします。
+              テキスト入力に応じてキャラクターの表情がリアルタイムで変化します。
               LLM 応答を待たずにキャラクターが反応する「聞いてくれてる感」の検証用です。
             </p>
           </section>
@@ -292,7 +332,7 @@ export function SentimentPoc() {
               onChange={(e) => setText(e.target.value)}
               rows={3}
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm resize-y focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="テキストを入力すると、リアルタイムで感情を分析します..."
+              placeholder="テキストを入力すると、キャラクターの表情がリアルタイムで変化します..."
               data-testid="sentiment-input"
             />
 
@@ -356,15 +396,6 @@ export function SentimentPoc() {
               </div>
             </div>
 
-            {/* キャラクターリアクション */}
-            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3">
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">キャラクターリアクション</div>
-              <div className="text-gray-900 dark:text-gray-100 flex items-center gap-2" data-testid="character-reaction">
-                <span className="text-lg">{EMOTION_DEFS[result.emotion].icon}</span>
-                {result.characterReaction}
-              </div>
-            </div>
-
             {/* マッチしたキーワード */}
             {result.matchedKeywords.length > 0 && (
               <div>
@@ -402,18 +433,15 @@ export function SentimentPoc() {
               {(Object.entries(EMOTION_DEFS) as Array<[EmotionKey, EmotionDef]>)
                 .filter(([key]) => key !== 'neutral')
                 .map(([key, def]) => {
-                  const emotionResult = analyzeSentiment(text)
-                  // 個別にスコアを再計算（表示用）
+                  // 個別にスコアを計算（表示用）
                   let score = 0
-                  const matched: string[] = []
                   const lowerText = text.toLowerCase()
                   for (const keyword of def.keywords) {
                     if (lowerText.includes(keyword.toLowerCase())) {
                       score += keyword.length
-                      matched.push(keyword)
                     }
                   }
-                  const isActive = emotionResult.emotion === key
+                  const isActive = result.emotion === key
                   return (
                     <div key={key} className="flex items-center gap-3">
                       <span className="text-base w-6 text-center">{def.icon}</span>
