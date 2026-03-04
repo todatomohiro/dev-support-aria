@@ -35,6 +35,9 @@ export interface AppState {
   // 設定関連
   config: AppConfig
 
+  // 最終アクティブ時刻（挨拶の不在期間判定用）
+  lastActiveTimestamp: number | null
+
   // エラー関連
   lastError: AppError | null
 
@@ -52,6 +55,7 @@ export interface AppState {
   dequeueMotion: () => string | null
   setCurrentLocation: (location: UserLocation | null) => void
   updateConfig: (config: Partial<AppConfig>) => void
+  updateLastActive: () => void
   setError: (error: AppError | null) => void
   clearMessages: () => void
   resetSession: () => void
@@ -87,6 +91,7 @@ export const useAppStore = create<AppState>()(
       isMotionPlaying: false,
       motionQueue: [],
       currentLocation: null,
+      lastActiveTimestamp: null,
       config: defaultConfig,
       lastError: null,
 
@@ -168,6 +173,9 @@ export const useAppStore = create<AppState>()(
           },
         })),
 
+      // 最終アクティブ時刻を更新
+      updateLastActive: () => set({ lastActiveTimestamp: Date.now() }),
+
       // エラーアクション
       setError: (error: AppError | null) => set({ lastError: error }),
     }),
@@ -176,6 +184,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         messages: state.messages,
         config: state.config,
+        lastActiveTimestamp: state.lastActiveTimestamp,
         // messagesCursor, hasEarlierMessages, isLoadingEarlier は永続化不要（毎回サーバーから取得）
       }),
     }

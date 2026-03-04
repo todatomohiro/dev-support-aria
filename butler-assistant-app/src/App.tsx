@@ -8,6 +8,7 @@ import { chatController } from './services/chatController'
 import { syncService } from './services/syncService'
 import { llmClient } from './services/llmClient'
 import { themeService } from './services/themeService'
+import { greetingService } from './services/greetingService'
 import { useGeolocation } from './hooks/useGeolocation'
 import { logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
@@ -31,6 +32,8 @@ function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [authModalInitialView, setAuthModalInitialView] = useState<AuthView>('login')
   const [isInitialized, setIsInitialized] = useState(false)
+  const [greetingMessage, setGreetingMessage] = useState<string | null>(null)
+  const greetingTriggeredRef = useRef(false)
   const live2dRef = useRef<Live2DCanvasHandle>(null)
 
   // Auth store
@@ -57,6 +60,7 @@ function App() {
   const updateConfig = useAppStore((state) => state.updateConfig)
   const setError = useAppStore((state) => state.setError)
   const setCurrentExpression = useAppStore((state) => state.setCurrentExpression)
+  const setCurrentMotion = useAppStore((state) => state.setCurrentMotion)
   const expressionVersion = useAppStore((state) => state.expressionVersion)
 
   // 位置情報フック
@@ -89,6 +93,50 @@ function App() {
       console.error('初期化エラー:', error)
       setIsInitialized(true)
     }
+  }, [])
+
+  // 挨拶トリガー: メインAIチャット画面で1回だけ発火
+  useEffect(() => {
+    if (!isInitialized || requiresAuth || location.pathname !== '/' || greetingTriggeredRef.current) return
+    greetingTriggeredRef.current = true
+
+    if (greetingService.hasGreetedToday()) return
+
+    const { lastActiveTimestamp } = useAppStore.getState()
+    const greeting = greetingService.getGreeting(lastActiveTimestamp)
+
+    // モーション・表情を再生
+    setCurrentMotion(greeting.motion)
+    const emotionMap: Record<string, string> = {
+      neutral: 'exp_01', happy: 'exp_02', thinking: 'exp_03',
+      surprised: 'exp_04', sad: 'exp_05', embarrassed: 'exp_06',
+      troubled: 'exp_07', angry: 'exp_08',
+    }
+    setCurrentExpression(emotionMap[greeting.emotion] || 'exp_01')
+
+    // TTS 発話（fire-and-forget）
+    if (useAppStore.getState().config.ui.ttsEnabled) {
+      ttsService.synthesizeAndPlay(greeting.message)
+    }
+
+    // 吹き出し表示 → 6秒後に消える
+    setGreetingMessage(greeting.message)
+    const timer = setTimeout(() => setGreetingMessage(null), 6000)
+
+    greetingService.markGreeted()
+
+    return () => clearTimeout(timer)
+  }, [isInitialized, requiresAuth, location.pathname, setCurrentMotion, setCurrentExpression])
+
+  // ページ非表示時に lastActiveTimestamp を更新
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        useAppStore.getState().updateLastActive()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
   // DEV モード: メモリ使用量を定期的にログ出力
@@ -395,6 +443,15 @@ function App() {
                     currentMotion={currentMotion}
                     onMotionComplete={handleMotionComplete}
                   />
+                  {/* 挨拶吹き出し */}
+                  {greetingMessage && location.pathname === '/' && (
+                    <div
+                      className="animate-greeting pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[90%] px-4 py-2 bg-white/90 dark:bg-gray-800/90 rounded-xl shadow-lg text-sm text-gray-800 dark:text-gray-100 text-center"
+                      data-testid="greeting-bubble"
+                    >
+                      {greetingMessage}
+                    </div>
+                  )}
                 </div>
                 <p className="text-center text-xs text-gray-500 dark:text-gray-400 py-1 shrink-0"
                    data-testid="character-nickname">
