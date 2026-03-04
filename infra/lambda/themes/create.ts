@@ -31,7 +31,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const resolvedModelKey = typeof modelKey === 'string' && validModelKeys.includes(modelKey) ? modelKey : 'haiku'
 
     // category のバリデーション
-    const validCategories = ['free', 'life', 'dev']
+    const validCategories = ['free', 'life', 'dev', 'aiapp']
     const resolvedCategory = typeof category === 'string' && validCategories.includes(category) ? category : undefined
 
     const themeId = crypto.randomUUID()

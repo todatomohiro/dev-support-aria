@@ -4,12 +4,14 @@ import { TOPIC_CATEGORIES } from '@/types'
 
 interface CategorySelectProps {
   onSelect: (category: TopicCategory, subcategory?: TopicSubcategory) => void
+  developerMode?: boolean
 }
 
 /**
- * チャット画面内の2段階カテゴリ選択カード（横スクロール）
+ * チャット画面内の2段階カテゴリ選択カード
  */
-export function CategorySelect({ onSelect }: CategorySelectProps) {
+export function CategorySelect({ onSelect, developerMode }: CategorySelectProps) {
+  const categories = TOPIC_CATEGORIES.filter((cat) => !cat.developerOnly || developerMode)
   const [selectedCategory, setSelectedCategory] = useState<TopicCategory | null>(null)
 
   /** 親カテゴリクリック */
@@ -49,12 +51,12 @@ export function CategorySelect({ onSelect }: CategorySelectProps) {
             {selectedCategory.label}
           </h2>
         </div>
-        <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
+        <div className="flex flex-wrap gap-3">
           {selectedCategory.subcategories!.map((sub) => (
             <button
               key={sub.key}
               onClick={() => handleSubcategoryClick(sub)}
-              className="shrink-0 w-44 px-5 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-full hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm transition-all snap-start"
+              className="px-5 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-full hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm transition-all"
               data-testid={`subcategory-card-${sub.key}`}
             >
               {sub.label}
@@ -71,12 +73,12 @@ export function CategorySelect({ onSelect }: CategorySelectProps) {
       <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">
         何から会話をはじめますか？
       </h2>
-      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
-        {TOPIC_CATEGORIES.map((cat) => (
+      <div className="flex flex-wrap gap-3">
+        {categories.map((cat) => (
           <button
             key={cat.key}
             onClick={() => handleCategoryClick(cat)}
-            className="shrink-0 w-44 px-5 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-full hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm transition-all snap-start"
+            className="px-5 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-full hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm transition-all"
             data-testid={`category-card-${cat.key}`}
           >
             {cat.label}

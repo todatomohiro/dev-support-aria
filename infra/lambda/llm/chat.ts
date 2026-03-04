@@ -57,6 +57,10 @@ const SUBCATEGORY_LABELS: Record<string, string> = {
   development: '開発',
   design: '設計',
   technology: '技術',
+  new_feature: '新規機能',
+  modify_feature: '既存機能改修',
+  ui_display: '画面表示',
+  ai_technology: '技術',
 }
 
 /** カテゴリ別専用システムプロンプト */
@@ -73,6 +77,20 @@ const CATEGORY_PROMPTS: Record<string, string> = {
 - コード例を示す際は実用的で正確なものを提供してください
 - ベストプラクティスやセキュリティの観点も含めて回答してください
 </category_context>`,
+  aiapp: `<category_context>
+あなたはLive2D + LLM（Bedrock Claude）+ Amazon Polly TTSを活用したAIアシスタントアプリの開発支援専門アシスタントです。
+技術スタック: React + Vite + TypeScript + Zustand（フロントエンド）、AWS CDK + Lambda + DynamoDB + API Gateway + Cognito + Bedrock + AgentCore Memory（バックエンド）、Capacitor（iOS）+ Tauri（デスクトップ）。
+- アプリのアーキテクチャ・実装パターンに精通した立場で、具体的で実用的なアドバイスを提供してください
+- 既存のコーディング規約（サービスパターン、Zustandストア設計、Lambda構成）に沿った提案を心がけてください
+</category_context>`,
+}
+
+/** サブカテゴリキー → カスタムプロンプトのマッピング */
+const SUBCATEGORY_PROMPTS: Record<string, string> = {
+  new_feature: 'ユーザーはAIアシスタントアプリの新規機能開発について相談しています。\nフロントエンド（React + Vite + TypeScript + Zustand）とバックエンド（AWS CDK + Lambda + DynamoDB + API Gateway）の両面から、実装方針・アーキテクチャ設計・ユーザー体験の観点で具体的なアドバイスを提供してください。\n既存のサービスパターン（インターフェース定義 → Implクラス → シングルトンエクスポート）やコーディング規約に沿った提案を心がけてください。',
+  modify_feature: 'ユーザーはAIアシスタントアプリの既存機能の改修・改善について相談しています。\n現在の実装（3層記憶モデル、トピック管理、スキル連携、フレンド・グループチャット等）を踏まえて、既存コードへの影響範囲を最小化しつつ改修する方法を提案してください。\nバグ修正・リファクタリング・パフォーマンス改善など、具体的なコード変更案を含めて回答してください。',
+  ui_display: 'ユーザーはAIアシスタントアプリのUI・画面表示について相談しています。\nReact + Tailwind CSSによるコンポーネント設計、レスポンシブ対応（スマホ・デスクトップ）、ダークモード、アニメーション、Live2Dキャラクター表示との共存など、ユーザー体験を重視した具体的なUI改善案を提供してください。\nCapacitor（iOS）とTauri（デスクトップ）のクロスプラットフォーム対応も考慮してください。',
+  ai_technology: 'ユーザーはAIアシスタントアプリで使用している技術について相談しています。\nBedrock Converse API・Tool Use、AgentCore Memory、DynamoDB設計、Cognito認証、WebSocket、Lambda最適化、CDKインフラ構成など、AWSサービスやAI技術に関する深い知見をもとに具体的なアドバイスを提供してください。\nベストプラクティスやコスト最適化の観点も含めて回答してください。',
 }
 
 /** imageBase64 の最大サイズ（5MB = 約 6.67MB の base64 文字列） */
@@ -693,10 +711,15 @@ function buildEnhancedSystemPrompt(
       enhanced += `\n\n${CATEGORY_PROMPTS[themeContext.category]}`
     }
 
-    // サブカテゴリ別コンテキストを注入
+    // サブカテゴリ別コンテキストを注入（カスタムプロンプト優先）
     if (themeContext.subcategory) {
-      const subcategoryLabel = SUBCATEGORY_LABELS[themeContext.subcategory] ?? themeContext.subcategory
-      enhanced += `\n\n<subcategory_context>\nユーザーは特に「${subcategoryLabel}」に関する相談を希望しています。\nこの分野に特化した具体的で実用的なアドバイスを心がけてください。\n</subcategory_context>`
+      const customPrompt = SUBCATEGORY_PROMPTS[themeContext.subcategory]
+      if (customPrompt) {
+        enhanced += `\n\n<subcategory_context>\n${customPrompt}\n</subcategory_context>`
+      } else {
+        const subcategoryLabel = SUBCATEGORY_LABELS[themeContext.subcategory] ?? themeContext.subcategory
+        enhanced += `\n\n<subcategory_context>\nユーザーは特に「${subcategoryLabel}」に関する相談を希望しています。\nこの分野に特化した具体的で実用的なアドバイスを心がけてください。\n</subcategory_context>`
+      }
     }
   }
 

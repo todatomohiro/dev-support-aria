@@ -48,8 +48,12 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
   /** カテゴリ選択ハンドラー（サブカテゴリ選択後にAI自動挨拶） */
   const handleCategorySelect = useCallback(async (category: TopicCategory, subcategory?: TopicSubcategory) => {
     try {
-      await themeService.updateThemeCategory(themeId, category.key, category.modelKey, subcategory?.key)
+      // 先にUI状態を更新（楽観的更新）
       useThemeStore.getState().updateThemeCategory(themeId, category.key, category.modelKey, subcategory?.key)
+
+      // バックエンドに保存（完了を待ってからLLM呼出、エラーでもUI遷移は維持）
+      await themeService.updateThemeCategory(themeId, category.key, category.modelKey, subcategory?.key)
+        .catch((err) => console.warn('[ThemeChat] カテゴリ保存エラー:', err))
 
       // AI自動挨拶をトリガー
       const triggerText = subcategory
@@ -170,7 +174,7 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
 
       {/* カテゴリ選択（メッセージなし＆カテゴリ未設定時） */}
       {messages.length === 0 && !hasCategory && !workConnection && (
-        <CategorySelect onSelect={handleCategorySelect} />
+        <CategorySelect onSelect={handleCategorySelect} developerMode={config.ui.developerMode} />
       )}
 
       {/* チャットエリア */}

@@ -47,7 +47,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // category のバリデーション（オプション）
-    const validCategories = ['free', 'life', 'dev']
+    const validCategories = ['free', 'life', 'dev', 'aiapp']
     if (body.category !== undefined) {
       if (typeof body.category !== 'string' || !validCategories.includes(body.category)) {
         return response(400, { error: 'category must be one of: free, life, dev' })

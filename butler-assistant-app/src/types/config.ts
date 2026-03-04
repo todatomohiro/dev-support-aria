@@ -5,6 +5,8 @@ export type ModelKey = 'haiku' | 'sonnet' | 'opus'
 export interface TopicSubcategory {
   key: string
   label: string
+  /** LLM に注入するカスタムプロンプト（省略時はデフォルト生成） */
+  prompt?: string
 }
 
 /** トピックカテゴリ定義 */
@@ -15,6 +17,8 @@ export interface TopicCategory {
   icon: string
   modelKey: ModelKey
   subcategories?: readonly TopicSubcategory[]
+  /** 開発者モード（PoC）のみ表示 */
+  developerOnly?: boolean
 }
 
 /** トピックカテゴリプリセット */
@@ -37,6 +41,28 @@ export const TOPIC_CATEGORIES: readonly TopicCategory[] = [
       { key: 'development', label: '開発について' },
       { key: 'design', label: '設計について' },
       { key: 'technology', label: '技術について' },
+    ],
+  },
+  {
+    key: 'aiapp', label: 'AIアプリ開発について', description: 'AIアシスタントアプリの開発相談', icon: '🤖', modelKey: 'sonnet',
+    developerOnly: true,
+    subcategories: [
+      {
+        key: 'new_feature', label: '新規機能について',
+        prompt: 'ユーザーはLive2D + LLM（Bedrock Claude）+ Amazon Polly TTSを活用したAIアシスタントアプリの新規機能開発について相談しています。\nフロントエンド（React + Vite + TypeScript + Zustand）とバックエンド（AWS CDK + Lambda + DynamoDB + API Gateway）の両面から、実装方針・アーキテクチャ設計・ユーザー体験の観点で具体的なアドバイスを提供してください。\n既存のサービスパターン（インターフェース定義 → Implクラス → シングルトンエクスポート）やコーディング規約に沿った提案を心がけてください。',
+      },
+      {
+        key: 'modify_feature', label: '既存機能改修について',
+        prompt: 'ユーザーはLive2D + LLM（Bedrock Claude）+ Amazon Polly TTSを活用したAIアシスタントアプリの既存機能の改修・改善について相談しています。\n現在の実装（3層記憶モデル、トピック管理、スキル連携、フレンド・グループチャット等）を踏まえて、既存コードへの影響範囲を最小化しつつ改修する方法を提案してください。\nバグ修正・リファクタリング・パフォーマンス改善など、具体的なコード変更案を含めて回答してください。',
+      },
+      {
+        key: 'ui_display', label: '画面表示について',
+        prompt: 'ユーザーはLive2D + LLM（Bedrock Claude）+ Amazon Polly TTSを活用したAIアシスタントアプリのUI・画面表示について相談しています。\nReact + Tailwind CSSによるコンポーネント設計、レスポンシブ対応（スマホ・デスクトップ）、ダークモード、アニメーション、Live2Dキャラクター表示との共存など、ユーザー体験を重視した具体的なUI改善案を提供してください。\nCapacitor（iOS）とTauri（デスクトップ）のクロスプラットフォーム対応も考慮してください。',
+      },
+      {
+        key: 'ai_technology', label: '技術について',
+        prompt: 'ユーザーはLive2D + LLM（Bedrock Claude）+ Amazon Polly TTSを活用したAIアシスタントアプリで使用している技術について相談しています。\nBedrock Converse API・Tool Use、AgentCore Memory、DynamoDB設計、Cognito認証、WebSocket、Lambda最適化、CDKインフラ構成など、AWSサービスやAI技術に関する深い知見をもとに具体的なアドバイスを提供してください。\nベストプラクティスやコスト最適化の観点も含めて回答してください。',
+      },
     ],
   },
 ]
