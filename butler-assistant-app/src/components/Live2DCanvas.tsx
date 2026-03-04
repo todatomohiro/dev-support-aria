@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHand
 import * as PIXI from 'pixi.js'
 import { Live2DModel } from 'pixi-live2d-display/cubism4'
 import { createVisibilityHandler, throttle, createFPSCounter } from '@/utils/performance'
+import { useAppStore } from '@/stores'
 
 // Cubism Core を window に登録（pixi-live2d-display が必要とする）
 if (typeof window !== 'undefined') {
@@ -375,6 +376,20 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
   /** マウス操作がない場合に正面を向くまでの秒数 */
   const IDLE_TIMEOUT_MS = 3000
 
+  // アイドル自律行動
+  const IDLE_MOTIONS = ['bow', 'smile', 'think'] as const
+  /** 初回アイドルモーション再生までの時間 */
+  const IDLE_FIRST_MOTION_MS = 15000
+  /** ループ開始までの時間 */
+  const IDLE_LOOP_START_MS = 100000
+  /** ループ間隔 */
+  const IDLE_LOOP_INTERVAL_MS = 30000
+
+  const idleMotionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const idleLoopTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  /** 100秒以降のループ中フラグ */
+  const isIdleSleepingRef = useRef(false)
+
   /**
    * 一定時間操作がなければ正面を向くタイマーをリセット
    */
@@ -409,6 +424,72 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
     }, IDLE_TIMEOUT_MS)
   }, [])
 
+  /** アイドルモーションをランダム再生 */
+  const playRandomIdleMotion = useCallback(() => {
+    const motion = IDLE_MOTIONS[Math.floor(Math.random() * IDLE_MOTIONS.length)]
+    useAppStore.getState().setCurrentMotion(motion)
+  }, [])
+
+  /** アイドル自律行動タイマーを開始 */
+  const startIdleBehavior = useCallback(() => {
+    // 既存タイマーをクリア（復帰モーションは再生しない）
+    if (idleMotionTimerRef.current) clearTimeout(idleMotionTimerRef.current)
+    if (idleLoopTimerRef.current) clearInterval(idleLoopTimerRef.current)
+    isIdleSleepingRef.current = false
+
+    // 15秒後に初回モーション
+    idleMotionTimerRef.current = setTimeout(() => {
+      playRandomIdleMotion()
+    }, IDLE_FIRST_MOTION_MS)
+
+    // 100秒後から30秒おきにループ再生
+    idleLoopTimerRef.current = setTimeout(() => {
+      isIdleSleepingRef.current = true
+      playRandomIdleMotion()
+      idleLoopTimerRef.current = setInterval(() => {
+        playRandomIdleMotion()
+      }, IDLE_LOOP_INTERVAL_MS)
+    }, IDLE_LOOP_START_MS) as unknown as ReturnType<typeof setInterval>
+  }, [playRandomIdleMotion])
+
+  /** アイドル自律行動を停止（復帰モーション付き） */
+  const stopIdleBehavior = useCallback(() => {
+    if (idleMotionTimerRef.current) {
+      clearTimeout(idleMotionTimerRef.current)
+      idleMotionTimerRef.current = null
+    }
+    if (idleLoopTimerRef.current) {
+      // setTimeout / setInterval 両方に対応
+      clearTimeout(idleLoopTimerRef.current as unknown as ReturnType<typeof setTimeout>)
+      clearInterval(idleLoopTimerRef.current)
+      idleLoopTimerRef.current = null
+    }
+
+    // ループ中だった場合は復帰モーション
+    if (isIdleSleepingRef.current) {
+      useAppStore.getState().setCurrentMotion('bow')
+      isIdleSleepingRef.current = false
+    }
+  }, [])
+
+  // メッセージ送信時（isLoading 変化）のアイドル行動制御
+  const prevIsLoadingRef = useRef(useAppStore.getState().isLoading)
+  useEffect(() => {
+    const unsubscribe = useAppStore.subscribe((state) => {
+      const prev = prevIsLoadingRef.current
+      const curr = state.isLoading
+      if (prev !== curr) {
+        prevIsLoadingRef.current = curr
+        if (curr) {
+          stopIdleBehavior()
+        } else {
+          startIdleBehavior()
+        }
+      }
+    })
+    return unsubscribe
+  }, [stopIdleBehavior, startIdleBehavior])
+
   // 視線追尾（マウス追従）とドラッグで顔の向きを変える
   useEffect(() => {
     const container = containerRef.current
@@ -418,6 +499,7 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       const model = modelRef.current
       if (!model) return
 
+      stopIdleBehavior()
       resetIdleTimer()
 
       // ドラッグ中は左右の向きを適用
@@ -445,6 +527,8 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       } catch {
         // focus メソッドがない場合は無視
       }
+
+      startIdleBehavior()
     }
 
     const handleMouseDown = (e: MouseEvent) => {
@@ -452,6 +536,7 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       dragStartXRef.current = e.clientX
       container.style.cursor = 'grabbing'
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+      stopIdleBehavior()
     }
 
     const handleMouseUp = (e: MouseEvent) => {
@@ -463,15 +548,17 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       isDraggingRef.current = false
       container.style.cursor = 'grab'
       resetIdleTimer()
+      startIdleBehavior()
     }
 
     const handleMouseLeave = () => {
       const model = modelRef.current
       if (!model) return
 
-      // ドラッグ中でなければ中心を見る（コンテナローカル座標）
+      // ドラッグ中でなければアイドルタイマー開始
       if (!isDraggingRef.current) {
         resetIdleTimer()
+        startIdleBehavior()
       }
     }
 
@@ -492,8 +579,13 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       container.removeEventListener('mouseleave', handleMouseLeave)
       window.removeEventListener('mouseup', handleMouseUp)
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+      if (idleMotionTimerRef.current) clearTimeout(idleMotionTimerRef.current)
+      if (idleLoopTimerRef.current) {
+        clearTimeout(idleLoopTimerRef.current as unknown as ReturnType<typeof setTimeout>)
+        clearInterval(idleLoopTimerRef.current)
+      }
     }
-  }, [resetIdleTimer])
+  }, [resetIdleTimer, stopIdleBehavior, startIdleBehavior])
 
   return (
     <div className={`relative w-full h-full overflow-hidden ${className}`}>
