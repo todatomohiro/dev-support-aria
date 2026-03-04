@@ -22,6 +22,11 @@ class TtsServiceImpl {
   /** 音量エンベロープの FPS */
   private static readonly ENVELOPE_FPS = 60
 
+  /** 音声再生中かどうかを返す */
+  get isSpeaking(): boolean {
+    return this.currentAudio !== null && !this.currentAudio.paused
+  }
+
   /**
    * リップシンク用の音量コールバックを登録
    * TTS 再生中にフレームごとの音量（0〜1）が通知される

@@ -18,7 +18,7 @@ import type { AuthView } from './auth'
 import { useAuthStore } from './auth'
 import { useThemeStore } from './stores/themeStore'
 import { ttsService } from './services/ttsService'
-import { PollyPoc, SttPoc, GpsPoc, SentimentPoc, PocIndex } from './poc'
+import { AivisPoc, PollyPoc, SttPoc, GpsPoc, SentimentPoc, PocIndex } from './poc'
 import './App.css'
 
 function App() {
@@ -485,7 +485,7 @@ function App() {
                 </div>
                 <p className="text-center text-xs text-gray-500 dark:text-gray-400 py-1 shrink-0"
                    data-testid="character-nickname">
-                  {config.profile.nickname || 'ゲスト'}
+                  {config.profile.aiName || 'アリア'}
                 </p>
                 {/* モーションコントロールパネル（開発者モードのみ） */}
                 {config.ui.developerMode && (
@@ -504,6 +504,7 @@ function App() {
               <Routes>
                 <Route path="/oauth/callback" element={<OAuthCallback />} />
                 <Route path="/poc" element={<PocIndex />} />
+                <Route path="/poc/aivis" element={<AivisPoc />} />
                 <Route path="/poc/polly" element={<PollyPoc />} />
                 <Route path="/poc/stt" element={<SttPoc />} />
                 <Route path="/poc/gps" element={<GpsPoc />} />

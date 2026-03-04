@@ -42,7 +42,7 @@ export function Sidebar({ activeTab, onOpenSettings, onOpenWork }: SidebarProps)
       </button>
 
       {/* テーマ別ノートセクション */}
-      <div className="border-t border-gray-200 dark:border-gray-700">
+      <div className="flex-1 min-h-0 border-t border-gray-200 dark:border-gray-700 flex flex-col">
         <div className="flex items-center justify-between px-4 py-2">
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             トピック
@@ -57,7 +57,7 @@ export function Sidebar({ activeTab, onOpenSettings, onOpenWork }: SidebarProps)
         </div>
 
         {/* テーマ一覧（直近5件） */}
-        <div className="max-h-40 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto">
           {themes.slice(0, 5).map((theme) => {
             const isActive = activeTab === 'themes' && activeThemeId === theme.themeId
             return (
@@ -82,9 +82,6 @@ export function Sidebar({ activeTab, onOpenSettings, onOpenWork }: SidebarProps)
           })}
         </div>
       </div>
-
-      {/* スペーサー */}
-      <div className="flex-1" />
 
       {/* ワーク */}
       <div className="border-t border-gray-200 dark:border-gray-700">

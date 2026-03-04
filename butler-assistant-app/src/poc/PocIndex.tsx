@@ -10,6 +10,12 @@ interface PocItem {
 
 const POC_ITEMS: readonly PocItem[] = [
   {
+    path: '/poc/aivis',
+    title: 'Aivis TTS',
+    description: 'Aivis Cloud API 音声合成テスト',
+    icon: '🗣️',
+  },
+  {
     path: '/poc/polly',
     title: 'Polly PoC',
     description: 'Amazon Polly の音声合成を検証',

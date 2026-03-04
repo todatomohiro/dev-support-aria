@@ -3,6 +3,7 @@ import * as PIXI from 'pixi.js'
 import { Live2DModel } from 'pixi-live2d-display/cubism4'
 import { createVisibilityHandler, throttle, createFPSCounter } from '@/utils/performance'
 import { useAppStore } from '@/stores'
+import { ttsService } from '@/services/ttsService'
 
 // Cubism Core を window に登録（pixi-live2d-display が必要とする）
 if (typeof window !== 'undefined') {
@@ -424,8 +425,9 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
     }, IDLE_TIMEOUT_MS)
   }, [])
 
-  /** アイドルモーションをランダム再生 */
+  /** アイドルモーションをランダム再生（TTS 再生中はスキップ） */
   const playRandomIdleMotion = useCallback(() => {
+    if (ttsService.isSpeaking) return
     const motion = IDLE_MOTIONS[Math.floor(Math.random() * IDLE_MOTIONS.length)]
     useAppStore.getState().setCurrentMotion(motion)
   }, [])
