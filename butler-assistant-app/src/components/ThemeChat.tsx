@@ -162,14 +162,24 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
   /** 壁打ちモード開始ハンドラー */
   const handleSocraticStart = useCallback(async () => {
     try {
-      useThemeStore.getState().updateThemeCategory(themeId, 'free', currentModelKey, 'socratic')
-      await themeService.updateThemeCategory(themeId, 'free', currentModelKey, 'socratic')
+      const socraticModel = 'sonnet' as const
+      useThemeStore.getState().updateThemeCategory(themeId, 'free', socraticModel, 'socratic')
+      await themeService.updateThemeCategory(themeId, 'free', socraticModel, 'socratic')
         .catch((err) => console.warn('[ThemeChat] 壁打ちモード保存エラー:', err))
       await chatController.sendThemeMessage('壁打ち相手になって。私の考えを深掘りしてほしい。', themeId)
     } catch (error) {
       console.error('[ThemeChat] 壁打ちモード開始エラー:', error)
     }
-  }, [themeId, currentModelKey])
+  }, [themeId])
+
+  /** 壁打ちモードのトグルハンドラー */
+  const handleSocraticToggle = useCallback(async (enabled: boolean) => {
+    const cat = currentTheme?.category || 'free'
+    const sub = enabled ? 'socratic' : undefined
+    useThemeStore.getState().updateThemeCategory(themeId, cat, currentModelKey, sub)
+    await themeService.updateThemeCategory(themeId, cat, currentModelKey, sub)
+      .catch((err) => console.warn('[ThemeChat] 壁打ちモードエラー:', err))
+  }, [themeId, currentModelKey, currentTheme?.category])
 
   const handleSendMessage = useCallback(async (text: string, imageBase64?: string) => {
     await chatController.sendThemeMessage(text, themeId, imageBase64)
@@ -188,13 +198,13 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
       {messages.length === 0 && !hasCategory && !workConnection && (
         <div className="flex flex-col">
           <CategorySelect onSelect={handleCategorySelect} developerMode={config.ui.developerMode} />
-          <div className="px-4 pb-3">
+          <div className="px-4 -mt-5">
             <button
               type="button"
-              className="w-full py-2.5 px-4 rounded-xl border border-purple-300 dark:border-purple-600 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors text-sm font-medium"
+              className="px-5 py-3 text-sm font-medium rounded-full border border-purple-300 dark:border-purple-600 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-sm transition-all"
               onClick={handleSocraticStart}
             >
-              壁打ち相手になって
+              💭 壁打ち相手になって
             </button>
           </div>
         </div>
@@ -207,23 +217,21 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
           isLoading={isSending}
           onSendMessage={handleSendMessage}
           ttsEnabled={config.ui.ttsEnabled}
-          onToggleTts={() => {}}
+          onToggleTts={(enabled) => useAppStore.getState().updateConfig({ ui: { ...config.ui, ttsEnabled: enabled } })}
           cameraEnabled={config.ui.cameraEnabled}
-          onToggleCamera={() => {}}
+          onToggleCamera={(enabled) => useAppStore.getState().updateConfig({ ui: { ...config.ui, cameraEnabled: enabled } })}
           developerMode={config.ui.developerMode}
           hasEarlierMessages={false}
           isLoadingEarlier={false}
           onLoadEarlier={() => {}}
-          inputExtra={
-            <div className="flex items-center gap-2">
-              {currentTheme?.subcategory === 'socratic' && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
-                  壁打ちモード
-                </span>
-              )}
-              <ModelSelector modelKey={currentModelKey} onChange={handleModelChange} />
-            </div>
-          }
+          extraOptions={[{
+            key: 'socratic',
+            label: '壁打ちモード',
+            icon: '💭',
+            enabled: currentTheme?.subcategory === 'socratic',
+            onToggle: handleSocraticToggle,
+          }]}
+          inputExtra={<ModelSelector modelKey={currentModelKey} onChange={handleModelChange} />}
         />
       </div>
     </div>

@@ -46,6 +46,15 @@ function linkifyContent(text: string, isUser: boolean): React.ReactNode[] {
   return result
 }
 
+/** 入力エリアのオプション定義 */
+export interface InputOption {
+  key: string
+  label: string
+  icon: string
+  enabled: boolean
+  onToggle: (enabled: boolean) => void
+}
+
 interface ChatUIProps {
   messages: Message[]
   isLoading: boolean
@@ -63,14 +72,17 @@ interface ChatUIProps {
   onInputSentimentChange?: (text: string) => void
   /** 入力エリアに追加表示する要素（モデルセレクタ等） */
   inputExtra?: React.ReactNode
+  /** 追加オプション（壁打ちモード等） */
+  extraOptions?: InputOption[]
 }
 
 /**
  * チャットUI コンポーネント
  */
-export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme, onInputSentimentChange, inputExtra }: ChatUIProps) {
+export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme, onInputSentimentChange, inputExtra, extraOptions = [] }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
   const [autoSendEnabled, setAutoSendEnabled] = useState(false)
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollHeightBeforeRef = useRef<number>(0)
@@ -80,6 +92,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   const autoSendEnabledRef = useRef(false)
   const isLoadingRef = useRef(false)
   const cameraCaptureRef = useRef<CameraPreviewHandle>(null)
+  const optionsContainerRef = useRef<HTMLDivElement>(null)
 
   const { status: sttStatus, interimText, error: sttError, toggleListening, isSupported: sttSupported } =
     useSpeechRecognition({
@@ -219,6 +232,45 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
     }
   }
 
+  // ポップオーバー外側クリックで閉じる
+  useEffect(() => {
+    if (!isPopoverOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (optionsContainerRef.current && !optionsContainerRef.current.contains(e.target as Node)) {
+        setIsPopoverOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isPopoverOpen])
+
+  // 組み込みオプションを InputOption[] に変換
+  const builtinOptions: InputOption[] = [
+    ...(sttSupported ? [{
+      key: 'auto-send',
+      label: '音声自動送信',
+      icon: '🎤',
+      enabled: autoSendEnabled,
+      onToggle: (enabled: boolean) => setAutoSendEnabled(enabled),
+    }] : []),
+    {
+      key: 'camera',
+      label: 'カメラ',
+      icon: '📷',
+      enabled: cameraEnabled,
+      onToggle: (enabled: boolean) => onToggleCamera(enabled),
+    },
+    ...(developerMode ? [{
+      key: 'tts',
+      label: '自動読み上げ',
+      icon: '🔊',
+      enabled: ttsEnabled,
+      onToggle: (enabled: boolean) => onToggleTts(enabled),
+    }] : []),
+  ]
+  const allOptions = [...builtinOptions, ...extraOptions]
+  const activeOptions = allOptions.filter((o) => o.enabled)
+
   return (
     <div className="relative flex flex-col h-full bg-white dark:bg-gray-900">
       {/* メッセージ履歴エリア */}
@@ -278,128 +330,145 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       {/* 入力エリア */}
       <div className="border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4">
         <CameraPreview ref={cameraCaptureRef} enabled={cameraEnabled} />
-        <textarea
-          value={inputText}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          placeholder="メッセージを入力..."
-          className="w-full resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 p-2 sm:p-3 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-          rows={2}
-          disabled={isLoading}
-          data-testid="chat-input"
-        />
         {/* 中間結果（認識中テキスト） */}
         {interimText && (
-          <p className="text-xs text-gray-400 italic px-1 mt-0.5 mb-1 truncate">
+          <p className="text-xs text-gray-400 italic px-1 mb-1 truncate">
             {interimText}
           </p>
         )}
         {/* STT エラー表示 */}
         {sttError && (
-          <p className="text-xs text-red-500 px-1 mt-0.5 mb-1">
+          <p className="text-xs text-red-500 px-1 mb-1">
             {sttError}
           </p>
         )}
-        <div className="flex items-center gap-2 mt-1">
+        {/* 入力コンテナ（textarea + ツールバーを1つのボーダーで囲む） */}
+        <div className="rounded-2xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 focus-within:border-blue-500 dark:focus-within:border-blue-400 transition-colors">
+          {/* Row 1: textarea + 送信アイコン */}
+          <div className="relative">
+            <textarea
+              value={inputText}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="メッセージを入力..."
+              className="w-full resize-none bg-transparent text-gray-900 dark:text-gray-100 p-2.5 sm:p-3 pr-11 text-sm sm:text-base border-none"
+              style={{ outline: 'none', boxShadow: 'none' }}
+              rows={1}
+              disabled={isLoading}
+              data-testid="chat-input"
+            />
+            <button
+              onClick={handleSendClick}
+              disabled={!inputText.trim() || isLoading}
+              className={`absolute right-2 bottom-1.5 w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all ${
+                !inputText.trim() || isLoading ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              }`}
+              data-testid="send-button"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+          {/* Row 2: ツールバー */}
+          <div className="flex items-center gap-1.5 px-1.5 pb-1.5">
+          {/* + ボタン（将来のファイル添付用） */}
+          <button
+            type="button"
+            disabled
+            className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-gray-400 dark:text-gray-500 cursor-not-allowed"
+            title="ファイル添付（準備中）"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+          {/* ⚙ オプションボタン + ポップオーバー */}
+          <div className="relative" ref={optionsContainerRef}>
+            <button
+              type="button"
+              onClick={() => setIsPopoverOpen(!isPopoverOpen)}
+              className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                isPopoverOpen
+                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+              title="オプション"
+              data-testid="options-button"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+            {isPopoverOpen && (
+              <div className="absolute left-0 bottom-full mb-2 min-w-[180px] rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-1 z-20" data-testid="options-popover">
+                {allOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => opt.onToggle(!opt.enabled)}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    data-testid={`option-${opt.key}`}
+                  >
+                    <span className="w-5 text-center">{opt.icon}</span>
+                    <span className="flex-1 text-left">{opt.label}</span>
+                    {opt.enabled && (
+                      <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* アクティブオプション チップ */}
+          {activeOptions.map((opt) => (
+            <span
+              key={opt.key}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+              data-testid={`chip-${opt.key}`}
+            >
+              {opt.icon} {opt.label}
+              <button
+                type="button"
+                onClick={() => opt.onToggle(false)}
+                className="ml-0.5 hover:text-blue-900 dark:hover:text-blue-100 transition-colors"
+                title={`${opt.label}を解除`}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </span>
+          ))}
+          <div className="flex-1" />
           {inputExtra}
           {/* マイクボタン（対応ブラウザのみ） */}
           {sttSupported && (
             <button
               onClick={toggleListening}
-              className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+              className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all ${
                 sttStatus === 'listening'
                   ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                  : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
               title={sttStatus === 'listening' ? '音声認識を停止' : '音声入力'}
               data-testid="stt-mic-button"
             >
               {sttStatus === 'listening' ? (
-                /* 停止アイコン */
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                   <rect x="6" y="6" width="12" height="12" rx="1" />
                 </svg>
               ) : (
-                /* マイクアイコン */
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                 </svg>
               )}
             </button>
           )}
-          <button
-            onClick={handleSendClick}
-            disabled={!inputText.trim() || isLoading}
-            className="flex-1 px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm sm:text-base"
-            data-testid="send-button"
-          >
-            送信
-          </button>
-        </div>
-        <div className="flex items-center justify-between mt-1 sm:mt-2">
-          <div className="flex items-center gap-3">
-            {sttSupported && (
-              <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="auto-send-toggle">
-                <span className="text-xs text-gray-500">🎤 音声自動送信</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={autoSendEnabled}
-                  onClick={() => setAutoSendEnabled(!autoSendEnabled)}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    autoSendEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                      autoSendEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
-                    }`}
-                  />
-                </button>
-              </label>
-            )}
-            <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="camera-toggle">
-              <span className="text-xs text-gray-500">📷 カメラ</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={cameraEnabled}
-                onClick={() => onToggleCamera(!cameraEnabled)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  cameraEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                    cameraEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
-                  }`}
-                />
-              </button>
-            </label>
-            {developerMode && (
-              <label className="flex items-center gap-1.5 cursor-pointer select-none" data-testid="tts-toggle">
-                <span className="text-xs text-gray-500">🔊 自動読み上げ</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={ttsEnabled}
-                  onClick={() => onToggleTts(!ttsEnabled)}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    ttsEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                      ttsEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
-                    }`}
-                  />
-                </button>
-              </label>
-            )}
           </div>
-          <p className="text-xs text-gray-500 hidden sm:block">
-            Enter で送信、Shift+Enter で改行
-          </p>
         </div>
       </div>
     </div>
