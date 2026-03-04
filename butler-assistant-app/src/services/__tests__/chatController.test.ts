@@ -187,16 +187,17 @@ describe('ChatController', () => {
       expect(state.messages[1].mapData).toBeUndefined()
     })
 
-    it('モーションが再生される', async () => {
+    it('LLM応答からモーションは再生されない（emotion のみ処理）', async () => {
       mockLLMClient.sendMessage.mockResolvedValue({
         text: 'test',
         motion: 'happy',
+        emotion: 'happy',
       })
 
       await chatController.sendMessage('テスト')
 
-      expect(mockMotionController.playMotion).toHaveBeenCalledWith('happy')
-      expect(useAppStore.getState().currentMotion).toBe('happy')
+      // LLM応答からの motionController.playMotion は呼ばれない
+      expect(mockMotionController.playMotion).not.toHaveBeenCalled()
     })
   })
 

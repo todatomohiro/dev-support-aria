@@ -14,7 +14,7 @@ import { measurePerformance } from '@/utils/performance'
  */
 const DEFAULT_RESPONSE: ParsedResponse = {
   text: '申し訳ございません。回答の処理中にエラーが発生しました。',
-  motion: 'bow',
+  motion: 'idle',
   isValid: false,
   errors: ['デフォルト値を使用しています'],
 }
@@ -50,7 +50,7 @@ class ResponseParserImpl implements ResponseParserService {
 
       return {
         text: response.text,
-        motion: this.normalizeMotion(response.motion),
+        motion: response.motion ? this.normalizeMotion(response.motion) : 'idle',
         emotion: response.emotion,
         mapData: this.extractMapData(response.mapData),
         isValid: true,
@@ -114,19 +114,6 @@ class ResponseParserImpl implements ResponseParserService {
       errors.push({
         field: 'text',
         message: 'textフィールドは空にできません',
-      })
-    }
-
-    // motionフィールドの検証
-    if (!('motion' in obj)) {
-      errors.push({
-        field: 'motion',
-        message: 'motionフィールドは必須です',
-      })
-    } else if (typeof obj.motion !== 'string') {
-      errors.push({
-        field: 'motion',
-        message: 'motionフィールドは文字列である必要があります',
       })
     }
 

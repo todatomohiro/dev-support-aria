@@ -20,7 +20,7 @@ describe('ResponseParser', () => {
 
       expect(result.isValid).toBe(false)
       expect(result.text).toBeDefined()
-      expect(result.motion).toBe('bow')
+      expect(result.motion).toBe('idle')
     })
 
     it('textフィールドが欠落している場合デフォルト値で補完する', () => {
@@ -32,13 +32,13 @@ describe('ResponseParser', () => {
       expect(result.motion).toBe('smile')
     })
 
-    it('motionフィールドが欠落している場合デフォルト値で補完する', () => {
+    it('motionフィールドが欠落している場合でもisValid=trueでmotionはidle', () => {
       const json = '{"text": "こんにちは"}'
       const result = responseParser.parse(json)
 
-      expect(result.isValid).toBe(false)
+      expect(result.isValid).toBe(true)
       expect(result.text).toBe('こんにちは')
-      expect(result.motion).toBe('bow')
+      expect(result.motion).toBe('idle')
     })
 
     it('無効なモーションタグはidleに正規化される', () => {
@@ -233,12 +233,11 @@ describe('ResponseParser', () => {
         fc.property(fc.object(), (obj) => {
           const result = responseParser.validate(obj)
 
-          // textとmotionが両方存在し有効な場合のみisValid=true
+          // textが存在し有効な場合のみisValid=true（motionは任意）
           const hasValidText =
             'text' in obj && typeof obj.text === 'string' && (obj.text as string).trim() !== ''
-          const hasValidMotion = 'motion' in obj && typeof obj.motion === 'string'
 
-          if (!hasValidText || !hasValidMotion) {
+          if (!hasValidText) {
             expect(result.isValid).toBe(false)
           }
         }),

@@ -84,7 +84,7 @@ class ChatControllerImpl {
       this.storeMemoryEvent(content.trim(), structuredResponse.text)
 
       // モーションと表情を再生
-      await this.playMotionAndExpression(structuredResponse)
+      this.playExpression(structuredResponse)
 
       // エラーをクリア
       store.setError(null)
@@ -98,22 +98,11 @@ class ChatControllerImpl {
   }
 
   /**
-   * モーションと表情を再生
+   * 感情に基づいて表情を再生
    */
-  private async playMotionAndExpression(response: StructuredResponse): Promise<void> {
-    const store = useAppStore.getState()
-
-    // モーションをキューに追加
-    store.enqueueMotion(response.motion)
-
-    // モーションを再生
-    motionController.playMotion(response.motion)
-
-    // 現在のモーションを更新
-    store.setCurrentMotion(response.motion)
-
-    // 感情に基づいて表情を設定（expressionVersion により同じ値でも再発火する）
+  private playExpression(response: StructuredResponse): void {
     if (response.emotion) {
+      const store = useAppStore.getState()
       const expressionName = this.emotionToExpression(response.emotion)
       console.log(`[ChatController] emotion=${response.emotion} → expression=${expressionName}`)
       store.setCurrentExpression(expressionName)
@@ -367,7 +356,7 @@ class ChatControllerImpl {
       this.storeMemoryEvent(content.trim(), structuredResponse.text)
 
       // モーションと表情を再生
-      await this.playMotionAndExpression(structuredResponse)
+      this.playExpression(structuredResponse)
 
       // エラーをクリア
       store.setError(null)

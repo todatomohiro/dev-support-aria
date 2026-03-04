@@ -370,6 +370,44 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
   const isDraggingRef = useRef(false)
   const dragStartXRef = useRef(0)
   const currentAngleRef = useRef(0)
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** マウス操作がない場合に正面を向くまでの秒数 */
+  const IDLE_TIMEOUT_MS = 3000
+
+  /**
+   * 一定時間操作がなければ正面を向くタイマーをリセット
+   */
+  const resetIdleTimer = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+
+    idleTimerRef.current = setTimeout(() => {
+      const model = modelRef.current
+      if (!model || isDraggingRef.current) return
+
+      const container = containerRef.current
+      if (!container) return
+
+      // 正面を向く（コンテナ中央）
+      try {
+        const rect = container.getBoundingClientRect()
+        ;(model as any).focus(rect.width / 2, rect.height / 2)
+      } catch {
+        // 無視
+      }
+
+      // ドラッグによる首の向きもリセット
+      currentAngleRef.current = 0
+      try {
+        const focusController = (model as any).internalModel?.focusController
+        if (focusController) {
+          focusController.focus(0, 0)
+        }
+      } catch {
+        // 無視
+      }
+    }, IDLE_TIMEOUT_MS)
+  }, [])
 
   // 視線追尾（マウス追従）とドラッグで顔の向きを変える
   useEffect(() => {
@@ -379,6 +417,8 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
     const handleMouseMove = (e: MouseEvent) => {
       const model = modelRef.current
       if (!model) return
+
+      resetIdleTimer()
 
       // ドラッグ中は左右の向きを適用
       if (isDraggingRef.current) {
@@ -398,9 +438,10 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
         return
       }
 
-      // 通常時は視線追尾
+      // 通常時は視線追尾（コンテナローカル座標に変換）
       try {
-        ;(model as any).focus(e.clientX, e.clientY)
+        const rect = container.getBoundingClientRect()
+        ;(model as any).focus(e.clientX - rect.left, e.clientY - rect.top)
       } catch {
         // focus メソッドがない場合は無視
       }
@@ -410,6 +451,7 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       isDraggingRef.current = true
       dragStartXRef.current = e.clientX
       container.style.cursor = 'grabbing'
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     }
 
     const handleMouseUp = (e: MouseEvent) => {
@@ -420,22 +462,16 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       }
       isDraggingRef.current = false
       container.style.cursor = 'grab'
+      resetIdleTimer()
     }
 
     const handleMouseLeave = () => {
       const model = modelRef.current
       if (!model) return
 
-      // ドラッグ中でなければ中心を見る
+      // ドラッグ中でなければ中心を見る（コンテナローカル座標）
       if (!isDraggingRef.current) {
-        const rect = container.getBoundingClientRect()
-        const centerX = rect.left + rect.width / 2
-        const centerY = rect.top + rect.height / 2
-        try {
-          ;(model as any).focus(centerX, centerY)
-        } catch {
-          // focus メソッドがない場合は無視
-        }
+        resetIdleTimer()
       }
     }
 
@@ -455,8 +491,9 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       container.removeEventListener('mouseup', handleMouseUp)
       container.removeEventListener('mouseleave', handleMouseLeave)
       window.removeEventListener('mouseup', handleMouseUp)
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     }
-  }, [])
+  }, [resetIdleTimer])
 
   return (
     <div className={`relative w-full h-full overflow-hidden ${className}`}>
