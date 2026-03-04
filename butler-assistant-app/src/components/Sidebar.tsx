@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useThemeStore } from '@/stores/themeStore'
 import { themeService } from '@/services'
@@ -22,6 +22,14 @@ export function Sidebar({ activeTab, onOpenSettings, onOpenWork }: SidebarProps)
   useEffect(() => {
     themeService.listThemes().then(setThemes).catch(() => {})
   }, [setThemes])
+
+  /** 新規トピックを作成して遷移 */
+  const handleQuickCreate = useCallback(async () => {
+    const result = await themeService.createTheme('新規トピック')
+    const themes = await themeService.listThemes()
+    setThemes(themes)
+    navigate(`/themes/${result.themeId}`)
+  }, [navigate, setThemes])
 
   return (
     <div className="h-full w-[260px] flex flex-col bg-white dark:bg-gray-800" data-testid="sidebar">
@@ -81,6 +89,7 @@ export function Sidebar({ activeTab, onOpenSettings, onOpenWork }: SidebarProps)
             )
           })}
         </div>
+
       </div>
 
       {/* ワーク */}
