@@ -599,7 +599,7 @@ function ThemeSuggestionCard({ themeName, onCreateTheme }: { themeName: string; 
 function SkeletonMessage() {
   return (
     <div className="flex justify-start" data-testid="loading-indicator">
-      <div className="max-w-[85%] sm:max-w-[70%] rounded-lg p-3 bg-gray-100 dark:bg-gray-800 space-y-2">
+      <div className="w-48 sm:w-64 rounded-lg p-3 bg-gray-100 dark:bg-gray-800 space-y-2">
         <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded animate-pulse w-3/4" />
         <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded animate-pulse w-1/2" />
         <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded animate-pulse w-2/3" />
