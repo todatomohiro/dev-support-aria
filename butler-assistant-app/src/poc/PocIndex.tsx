@@ -27,6 +27,12 @@ const POC_ITEMS: readonly PocItem[] = [
     description: 'GPS 位置情報の精度をマップで確認',
     icon: '📍',
   },
+  {
+    path: '/poc/sentiment',
+    title: 'テキスト感情分析 PoC',
+    description: 'テキストからリアルタイム感情分析を検証',
+    icon: '💭',
+  },
 ]
 
 /**

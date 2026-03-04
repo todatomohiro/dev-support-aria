@@ -1,4 +1,5 @@
 export { PollyPoc } from './PollyPoc'
 export { SttPoc } from './SttPoc'
 export { GpsPoc } from './GpsPoc'
+export { SentimentPoc } from './SentimentPoc'
 export { PocIndex } from './PocIndex'

@@ -17,7 +17,7 @@ import type { AuthView } from './auth'
 import { useAuthStore } from './auth'
 import { useThemeStore } from './stores/themeStore'
 import { ttsService } from './services/ttsService'
-import { PollyPoc, SttPoc, GpsPoc, PocIndex } from './poc'
+import { PollyPoc, SttPoc, GpsPoc, SentimentPoc, PocIndex } from './poc'
 import './App.css'
 
 function App() {
@@ -477,6 +477,7 @@ function App() {
                 <Route path="/poc/polly" element={<PollyPoc />} />
                 <Route path="/poc/stt" element={<SttPoc />} />
                 <Route path="/poc/gps" element={<GpsPoc />} />
+                <Route path="/poc/sentiment" element={<SentimentPoc />} />
                 <Route path="/groups/:groupId" element={<GroupChatScreen />} />
                 <Route path="/groups" element={<GroupChatScreen />} />
                 <Route path="/themes/:themeId" element={<ThemeScreen />} />
