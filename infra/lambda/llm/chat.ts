@@ -46,6 +46,35 @@ const MODEL_INFERENCE_CONFIG: Record<string, { maxTokens: number; imageMaxTokens
   sonnet: { maxTokens: 2048, imageMaxTokens: 4096 },
   opus: { maxTokens: 4096, imageMaxTokens: 4096 },
 }
+/** サブカテゴリキー → 日本語ラベルのマッピング */
+const SUBCATEGORY_LABELS: Record<string, string> = {
+  cleaning: 'お掃除',
+  appliances: '電化製品',
+  cooking: '料理',
+  health: '健康',
+  childcare: '育児',
+  relationships: '人間関係',
+  development: '開発',
+  design: '設計',
+  technology: '技術',
+}
+
+/** カテゴリ別専用システムプロンプト */
+const CATEGORY_PROMPTS: Record<string, string> = {
+  life: `<category_context>
+あなたは生活相談の専門アシスタントです。
+- 日常生活の悩み、暮らしのアドバイス、健康・料理・家事・育児・人間関係などの相談に親身に答えてください
+- 実用的で具体的なアドバイスを心がけてください
+- 必要に応じて専門家への相談を勧めてください
+</category_context>`,
+  dev: `<category_context>
+あなたは開発支援の専門アシスタントです。
+- プログラミング、ソフトウェア設計、デバッグ、技術選定などの相談に的確に答えてください
+- コード例を示す際は実用的で正確なものを提供してください
+- ベストプラクティスやセキュリティの観点も含めて回答してください
+</category_context>`,
+}
+
 /** imageBase64 の最大サイズ（5MB = 約 6.67MB の base64 文字列） */
 const MAX_IMAGE_BASE64_LENGTH = Math.ceil(5 * 1024 * 1024 * 4 / 3)
 /** 要約を生成する間隔（ターン数） */
@@ -531,7 +560,7 @@ function getJSTDateLabel(dateKey: string, todayKey: string, yesterdayKey: string
 /**
  * DynamoDB からテーマセッション情報を取得
  */
-async function getThemeContext(userId: string, themeId: string): Promise<{ themeName: string } | null> {
+async function getThemeContext(userId: string, themeId: string): Promise<{ themeName: string; category?: string; subcategory?: string } | null> {
   try {
     const result = await dynamo.send(new GetItemCommand({
       TableName: TABLE_NAME,
@@ -543,6 +572,8 @@ async function getThemeContext(userId: string, themeId: string): Promise<{ theme
     if (!result.Item) return null
     return {
       themeName: result.Item.themeName?.S ?? '',
+      ...(result.Item.category?.S ? { category: result.Item.category.S } : {}),
+      ...(result.Item.subcategory?.S ? { subcategory: result.Item.subcategory.S } : {}),
     }
   } catch (error) {
     console.warn('[LLM] テーマコンテキスト取得エラー（スキップ）:', error)
@@ -618,7 +649,7 @@ function buildEnhancedSystemPrompt(
   checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }> = [],
   sessionDate?: string,
   pastSessions?: PastSessionGroup[],
-  themeContext?: { themeName: string },
+  themeContext?: { themeName: string; category?: string; subcategory?: string },
   workContext?: { tools: Array<{ name: string; description: string }>; expiresAt: string },
   userLocation?: { lat: number; lng: number }
 ): string {
@@ -655,6 +686,17 @@ function buildEnhancedSystemPrompt(
       enhanced += `\n\n<theme_context>\nこれは新しく作成されたトピックです。\nユーザーの最初の発言内容から、このトピックにふさわしい短いタイトル（15文字以内）を考えて、レスポンスJSONの "topicName" フィールドに含めてください。\n</theme_context>`
     } else {
       enhanced += `\n\n<theme_context>\nテーマ: ${themeContext.themeName}\nこのセッションでは「${themeContext.themeName}」について会話しています。\nテーマに関連する回答を心がけてください。\n</theme_context>`
+    }
+
+    // カテゴリ別専用プロンプトを注入（free やキーなしの場合はスキップ）
+    if (themeContext.category && CATEGORY_PROMPTS[themeContext.category]) {
+      enhanced += `\n\n${CATEGORY_PROMPTS[themeContext.category]}`
+    }
+
+    // サブカテゴリ別コンテキストを注入
+    if (themeContext.subcategory) {
+      const subcategoryLabel = SUBCATEGORY_LABELS[themeContext.subcategory] ?? themeContext.subcategory
+      enhanced += `\n\n<subcategory_context>\nユーザーは特に「${subcategoryLabel}」に関する相談を希望しています。\nこの分野に特化した具体的で実用的なアドバイスを心がけてください。\n</subcategory_context>`
     }
   }
 
@@ -759,7 +801,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let enhancedSystemPrompt: string
   let sessionTurnsSinceSummary = 0
   let sessionSummary = ''
-  let themeContext: { themeName: string } | null = null
+  let themeContext: { themeName: string; category?: string; subcategory?: string } | null = null
   let mcpConn: MCPConnection | null = null
 
   if (sessionId) {

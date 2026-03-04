@@ -9,13 +9,15 @@ export interface ThemeServiceType {
   /** テーマ一覧を取得 */
   listThemes(): Promise<ThemeSession[]>
   /** テーマを作成 */
-  createTheme(themeName: string): Promise<{ themeId: string; themeName: string }>
+  createTheme(themeName: string, category?: string, modelKey?: ModelKey): Promise<{ themeId: string; themeName: string }>
   /** テーマを削除 */
   deleteTheme(themeId: string): Promise<void>
   /** テーマ名を更新 */
   renameTheme(themeId: string, themeName: string): Promise<void>
   /** テーマのモデルを更新 */
   updateThemeModel(themeId: string, modelKey: ModelKey): Promise<void>
+  /** テーマのカテゴリとモデルを更新 */
+  updateThemeCategory(themeId: string, category: string, modelKey: ModelKey, subcategory?: string): Promise<void>
   /** テーマのメッセージ一覧を取得 */
   listMessages(themeId: string): Promise<Message[]>
 }
@@ -35,10 +37,10 @@ export class ThemeServiceImpl implements ThemeServiceType {
   /**
    * テーマを作成
    */
-  async createTheme(themeName: string): Promise<{ themeId: string; themeName: string }> {
+  async createTheme(themeName: string, category?: string, modelKey?: ModelKey): Promise<{ themeId: string; themeName: string }> {
     const data = await this.fetchAPI('/themes', {
       method: 'POST',
-      body: JSON.stringify({ themeName }),
+      body: JSON.stringify({ themeName, ...(category ? { category } : {}), ...(modelKey ? { modelKey } : {}) }),
     }) as { themeId: string; themeName: string }
     return data
   }
@@ -67,6 +69,16 @@ export class ThemeServiceImpl implements ThemeServiceType {
     await this.fetchAPI(`/themes/${themeId}`, {
       method: 'PATCH',
       body: JSON.stringify({ modelKey }),
+    })
+  }
+
+  /**
+   * テーマのカテゴリとモデルを更新
+   */
+  async updateThemeCategory(themeId: string, category: string, modelKey: ModelKey, subcategory?: string): Promise<void> {
+    await this.fetchAPI(`/themes/${themeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ category, modelKey, ...(subcategory ? { subcategory } : {}) }),
     })
   }
 

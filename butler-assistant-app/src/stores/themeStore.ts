@@ -38,6 +38,8 @@ export interface ThemeState {
   updateThemeName: (themeId: string, themeName: string) => void
   /** テーマのモデルキーを更新 */
   updateThemeModelKey: (themeId: string, modelKey: ModelKey) => void
+  /** テーマのカテゴリとモデルキーを更新 */
+  updateThemeCategory: (themeId: string, category: string, modelKey: ModelKey, subcategory?: string) => void
   /** ワーク接続を設定 */
   setWorkConnection: (conn: WorkConnection | null) => void
   /** ワーク接続をクリア */
@@ -96,6 +98,13 @@ export const useThemeStore = create<ThemeState>()((set) => ({
     set((state) => ({
       themes: state.themes.map((t) =>
         t.themeId === themeId ? { ...t, modelKey } : t
+      ),
+    })),
+
+  updateThemeCategory: (themeId: string, category: string, modelKey: ModelKey, subcategory?: string) =>
+    set((state) => ({
+      themes: state.themes.map((t) =>
+        t.themeId === themeId ? { ...t, category, modelKey, ...(subcategory ? { subcategory } : {}) } : t
       ),
     })),
 

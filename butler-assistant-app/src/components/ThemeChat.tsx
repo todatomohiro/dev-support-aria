@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useThemeStore } from '@/stores/themeStore'
 import { useAppStore } from '@/stores'
 import { DEFAULT_MODEL_KEY } from '@/types'
-import type { ModelKey } from '@/types'
+import type { ModelKey, TopicCategory, TopicSubcategory } from '@/types'
 import { chatController } from '@/services/chatController'
 import { themeService } from '@/services/themeService'
 import { workService } from '@/services/workService'
@@ -12,6 +12,7 @@ import { motionController } from '@/services/motionController'
 import { ChatUI } from './ChatUI'
 import { WorkBadge } from './WorkBadge'
 import { ModelSelector } from './ModelSelector'
+import { CategorySelect } from './CategorySelect'
 
 interface ThemeChatProps {
   themeId: string
@@ -30,7 +31,9 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
   const workConnection = useThemeStore((s) => s.activeWorkConnection)
   const expiredNotifiedRef = useRef(false)
 
-  const currentModelKey = themes.find((t) => t.themeId === themeId)?.modelKey ?? DEFAULT_MODEL_KEY
+  const currentTheme = themes.find((t) => t.themeId === themeId)
+  const currentModelKey = currentTheme?.modelKey ?? DEFAULT_MODEL_KEY
+  const hasCategory = Boolean(currentTheme?.category)
 
   /** モデル変更ハンドラー */
   const handleModelChange = useCallback(async (modelKey: ModelKey) => {
@@ -39,6 +42,22 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
       useThemeStore.getState().updateThemeModelKey(themeId, modelKey)
     } catch (error) {
       console.error('[ThemeChat] モデル変更エラー:', error)
+    }
+  }, [themeId])
+
+  /** カテゴリ選択ハンドラー（サブカテゴリ選択後にAI自動挨拶） */
+  const handleCategorySelect = useCallback(async (category: TopicCategory, subcategory?: TopicSubcategory) => {
+    try {
+      await themeService.updateThemeCategory(themeId, category.key, category.modelKey, subcategory?.key)
+      useThemeStore.getState().updateThemeCategory(themeId, category.key, category.modelKey, subcategory?.key)
+
+      // AI自動挨拶をトリガー
+      const triggerText = subcategory
+        ? `${subcategory.label}について相談したい`
+        : '相談したい'
+      await chatController.sendThemeMessage(triggerText, themeId)
+    } catch (error) {
+      console.error('[ThemeChat] カテゴリ設定エラー:', error)
     }
   }, [themeId])
 
@@ -147,6 +166,11 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
         <div className="px-4 pt-2 shrink-0">
           <WorkBadge active={workConnection.active} expiresAt={workConnection.expiresAt} />
         </div>
+      )}
+
+      {/* カテゴリ選択（メッセージなし＆カテゴリ未設定時） */}
+      {messages.length === 0 && !hasCategory && !workConnection && (
+        <CategorySelect onSelect={handleCategorySelect} />
       )}
 
       {/* チャットエリア */}

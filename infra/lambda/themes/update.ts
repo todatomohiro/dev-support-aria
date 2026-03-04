@@ -24,6 +24,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   let themeName: string | undefined
   let modelKey: string | undefined
+  let category: string | undefined
+  let subcategory: string | undefined
   try {
     const body = JSON.parse(event.body)
 
@@ -44,9 +46,26 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       modelKey = body.modelKey
     }
 
-    // 少なくとも一方が必要
-    if (!themeName && !modelKey) {
-      return response(400, { error: 'themeName or modelKey is required' })
+    // category のバリデーション（オプション）
+    const validCategories = ['free', 'life', 'dev']
+    if (body.category !== undefined) {
+      if (typeof body.category !== 'string' || !validCategories.includes(body.category)) {
+        return response(400, { error: 'category must be one of: free, life, dev' })
+      }
+      category = body.category
+    }
+
+    // subcategory のバリデーション（オプション）
+    if (body.subcategory !== undefined) {
+      if (typeof body.subcategory !== 'string' || !body.subcategory.trim()) {
+        return response(400, { error: 'subcategory must be a non-empty string' })
+      }
+      subcategory = body.subcategory.trim()
+    }
+
+    // 少なくとも一つが必要
+    if (!themeName && !modelKey && !category && !subcategory) {
+      return response(400, { error: 'themeName, modelKey, category, or subcategory is required' })
     }
   } catch {
     return response(400, { error: 'Invalid JSON' })
@@ -67,6 +86,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updateParts.push('modelKey = :mk')
       expressionValues[':mk'] = { S: modelKey }
     }
+    if (category) {
+      updateParts.push('category = :cat')
+      expressionValues[':cat'] = { S: category }
+    }
+    if (subcategory) {
+      updateParts.push('subcategory = :sub')
+      expressionValues[':sub'] = { S: subcategory }
+    }
 
     await client.send(new UpdateItemCommand({
       TableName: TABLE_NAME,
@@ -79,7 +106,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       ExpressionAttributeValues: expressionValues,
     }))
 
-    return response(200, { themeId, ...(themeName ? { themeName } : {}), ...(modelKey ? { modelKey } : {}) })
+    return response(200, { themeId, ...(themeName ? { themeName } : {}), ...(modelKey ? { modelKey } : {}), ...(category ? { category } : {}), ...(subcategory ? { subcategory } : {}) })
   } catch (error) {
     const err = error as { name?: string }
     if (err.name === 'ConditionalCheckFailedException') {

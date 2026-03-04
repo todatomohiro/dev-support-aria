@@ -20,7 +20,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   try {
-    const { themeName, modelKey } = JSON.parse(event.body)
+    const { themeName, modelKey, category } = JSON.parse(event.body)
 
     if (!themeName || typeof themeName !== 'string') {
       return response(400, { error: 'themeName is required' })
@@ -29,6 +29,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // modelKey のバリデーション（デフォルト haiku）
     const validModelKeys = ['haiku', 'sonnet', 'opus']
     const resolvedModelKey = typeof modelKey === 'string' && validModelKeys.includes(modelKey) ? modelKey : 'haiku'
+
+    // category のバリデーション
+    const validCategories = ['free', 'life', 'dev']
+    const resolvedCategory = typeof category === 'string' && validCategories.includes(category) ? category : undefined
 
     const themeId = crypto.randomUUID()
     const now = new Date().toISOString()
@@ -41,12 +45,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         themeId,
         themeName,
         modelKey: resolvedModelKey,
+        ...(resolvedCategory ? { category: resolvedCategory } : {}),
         createdAt: now,
         updatedAt: now,
       }),
     }))
 
-    return response(200, { themeId, themeName, modelKey: resolvedModelKey })
+    return response(200, { themeId, themeName, modelKey: resolvedModelKey, ...(resolvedCategory ? { category: resolvedCategory } : {}) })
   } catch (error) {
     if (error instanceof SyntaxError) {
       return response(400, { error: 'Invalid JSON' })
