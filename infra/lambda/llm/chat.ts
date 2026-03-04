@@ -32,6 +32,20 @@ const MEMORY_ID = process.env.MEMORY_ID ?? ''
 const TABLE_NAME = process.env.TABLE_NAME ?? ''
 const SUMMARIZE_FUNCTION_NAME = process.env.SUMMARIZE_FUNCTION_NAME ?? ''
 const MAX_TOOL_USE_ITERATIONS = 5
+
+/** モデルキーから Bedrock 推論プロファイル ID へのマッピング */
+const MODEL_ID_MAP: Record<string, string> = {
+  haiku: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0',
+  sonnet: 'jp.anthropic.claude-sonnet-4-6',
+  opus: 'global.anthropic.claude-opus-4-6-v1',
+}
+
+/** モデルキーごとの推論設定 */
+const MODEL_INFERENCE_CONFIG: Record<string, { maxTokens: number; imageMaxTokens: number }> = {
+  haiku: { maxTokens: 1024, imageMaxTokens: 2048 },
+  sonnet: { maxTokens: 2048, imageMaxTokens: 4096 },
+  opus: { maxTokens: 4096, imageMaxTokens: 4096 },
+}
 /** imageBase64 の最大サイズ（5MB = 約 6.67MB の base64 文字列） */
 const MAX_IMAGE_BASE64_LENGTH = Math.ceil(5 * 1024 * 1024 * 4 / 3)
 /** 要約を生成する間隔（ターン数） */
@@ -694,6 +708,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let sessionId: string | undefined
   let themeId: string | undefined
   let userLocation: { lat: number; lng: number } | undefined
+  let modelKey = 'haiku'
 
   try {
     const body = JSON.parse(event.body)
@@ -703,6 +718,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     imageBase64 = typeof body.imageBase64 === 'string' ? body.imageBase64 : undefined
     sessionId = typeof body.sessionId === 'string' ? body.sessionId : undefined
     themeId = typeof body.themeId === 'string' ? body.themeId : undefined
+
+    // modelKey のホワイトリスト検証（不正値はデフォルト haiku）
+    if (typeof body.modelKey === 'string' && body.modelKey in MODEL_ID_MAP) {
+      modelKey = body.modelKey
+    }
 
     // userLocation のバリデーション
     if (body.userLocation && typeof body.userLocation === 'object'
@@ -836,13 +856,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   try {
     let currentMessages = [...messages]
 
+    const resolvedModelId = MODEL_ID_MAP[modelKey] ?? MODEL_ID_MAP.haiku
+    const inferenceConf = MODEL_INFERENCE_CONFIG[modelKey] ?? MODEL_INFERENCE_CONFIG.haiku
+    console.log(`[LLM] モデル: ${modelKey} (${resolvedModelId})`)
+
     for (let iteration = 0; iteration < MAX_TOOL_USE_ITERATIONS; iteration++) {
       const result = await bedrock.send(new ConverseCommand({
-        modelId: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0',
+        modelId: resolvedModelId,
         messages: currentMessages,
         system,
         inferenceConfig: {
-          maxTokens: imageBase64 ? 2048 : 1024,
+          maxTokens: imageBase64 ? inferenceConf.imageMaxTokens : inferenceConf.maxTokens,
           temperature: 0.7,
         },
         toolConfig,

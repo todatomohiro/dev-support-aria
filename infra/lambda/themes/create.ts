@@ -20,11 +20,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   try {
-    const { themeName } = JSON.parse(event.body)
+    const { themeName, modelKey } = JSON.parse(event.body)
 
     if (!themeName || typeof themeName !== 'string') {
       return response(400, { error: 'themeName is required' })
     }
+
+    // modelKey のバリデーション（デフォルト haiku）
+    const validModelKeys = ['haiku', 'sonnet', 'opus']
+    const resolvedModelKey = typeof modelKey === 'string' && validModelKeys.includes(modelKey) ? modelKey : 'haiku'
 
     const themeId = crypto.randomUUID()
     const now = new Date().toISOString()
@@ -36,12 +40,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         SK: `THEME_SESSION#${themeId}`,
         themeId,
         themeName,
+        modelKey: resolvedModelKey,
         createdAt: now,
         updatedAt: now,
       }),
     }))
 
-    return response(200, { themeId, themeName })
+    return response(200, { themeId, themeName, modelKey: resolvedModelKey })
   } catch (error) {
     if (error instanceof SyntaxError) {
       return response(400, { error: 'Invalid JSON' })

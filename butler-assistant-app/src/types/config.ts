@@ -1,3 +1,21 @@
+/** LLM モデルキー */
+export type ModelKey = 'haiku' | 'sonnet' | 'opus'
+
+/** モデル表示情報 */
+export interface ModelInfo {
+  key: ModelKey
+  label: string
+  description: string
+}
+
+export const AVAILABLE_MODELS: readonly ModelInfo[] = [
+  { key: 'haiku', label: 'Haiku', description: '高速・低コスト' },
+  { key: 'sonnet', label: 'Sonnet', description: 'バランス型' },
+  { key: 'opus', label: 'Opus', description: '高性能' },
+]
+
+export const DEFAULT_MODEL_KEY: ModelKey = 'haiku'
+
 /**
  * モデル参照
  */
@@ -53,6 +71,8 @@ export interface ThemeSession {
   themeName: string
   createdAt: string
   updatedAt: string
+  /** LLM モデルキー */
+  modelKey?: ModelKey
   /** ワーク（MCP接続）がアクティブか */
   workActive?: boolean
   /** ワーク有効期限 */

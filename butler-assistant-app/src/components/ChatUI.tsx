@@ -59,12 +59,14 @@ interface ChatUIProps {
   isLoadingEarlier?: boolean
   onLoadEarlier?: () => void
   onCreateTheme?: (themeName: string) => void
+  /** 入力エリアに追加表示する要素（モデルセレクタ等） */
+  inputExtra?: React.ReactNode
 }
 
 /**
  * チャットUI コンポーネント
  */
-export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme }: ChatUIProps) {
+export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme, inputExtra }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
   const [autoSendEnabled, setAutoSendEnabled] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -296,6 +298,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
           </p>
         )}
         <div className="flex items-center gap-2 mt-1">
+          {inputExtra}
           {/* マイクボタン（対応ブラウザのみ） */}
           {sttSupported && (
             <button

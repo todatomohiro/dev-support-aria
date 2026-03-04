@@ -1,5 +1,6 @@
 import type {
   LLMClientService,
+  ModelKey,
   StructuredResponse,
   UserProfile,
   UserLocation,
@@ -165,7 +166,7 @@ class LLMClientImpl implements LLMClientService {
   /**
    * Lambda /llm/chat を経由して Bedrock Claude にメッセージを送信
    */
-  async sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation): Promise<StructuredResponse> {
+  async sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey): Promise<StructuredResponse> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     const accessToken = await getIdToken()
 
@@ -198,7 +199,7 @@ class LLMClientImpl implements LLMClientService {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ message, sessionId, systemPrompt, ...(imageBase64 ? { imageBase64 } : {}), ...(themeId ? { themeId } : {}), ...(userLocation ? { userLocation } : {}) }),
+        body: JSON.stringify({ message, sessionId, systemPrompt, ...(imageBase64 ? { imageBase64 } : {}), ...(themeId ? { themeId } : {}), ...(userLocation ? { userLocation } : {}), ...(modelKey && modelKey !== 'haiku' ? { modelKey } : {}) }),
       })
 
       if (!res.ok) {

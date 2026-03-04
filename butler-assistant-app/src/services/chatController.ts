@@ -317,9 +317,11 @@ class ChatControllerImpl {
     try {
       // LLMにメッセージを送信（themeId でテーマコンテキスト注入）
       const appStore = useAppStore.getState()
+      const activeTheme = store.themes.find((t) => t.themeId === themeId)
+      const themeModelKey = activeTheme?.modelKey
       const structuredResponse = await measurePerformanceAsync(
         'LLM送信→テーマレスポンス受信',
-        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, themeId, appStore.currentLocation ?? undefined)
+        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, themeId, appStore.currentLocation ?? undefined, themeModelKey)
       )
 
       // アシスタントメッセージを作成

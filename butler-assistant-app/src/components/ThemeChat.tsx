@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { useThemeStore } from '@/stores/themeStore'
 import { useAppStore } from '@/stores'
+import { DEFAULT_MODEL_KEY } from '@/types'
+import type { ModelKey } from '@/types'
 import { chatController } from '@/services/chatController'
 import { themeService } from '@/services/themeService'
 import { workService } from '@/services/workService'
@@ -9,6 +11,7 @@ import { ttsService } from '@/services/ttsService'
 import { motionController } from '@/services/motionController'
 import { ChatUI } from './ChatUI'
 import { WorkBadge } from './WorkBadge'
+import { ModelSelector } from './ModelSelector'
 
 interface ThemeChatProps {
   themeId: string
@@ -22,9 +25,22 @@ interface ThemeChatProps {
 export function ThemeChat({ themeId }: ThemeChatProps) {
   const messages = useThemeStore((s) => s.activeMessages)
   const isSending = useThemeStore((s) => s.isSending)
+  const themes = useThemeStore((s) => s.themes)
   const config = useAppStore((s) => s.config)
   const workConnection = useThemeStore((s) => s.activeWorkConnection)
   const expiredNotifiedRef = useRef(false)
+
+  const currentModelKey = themes.find((t) => t.themeId === themeId)?.modelKey ?? DEFAULT_MODEL_KEY
+
+  /** モデル変更ハンドラー */
+  const handleModelChange = useCallback(async (modelKey: ModelKey) => {
+    try {
+      await themeService.updateThemeModel(themeId, modelKey)
+      useThemeStore.getState().updateThemeModelKey(themeId, modelKey)
+    } catch (error) {
+      console.error('[ThemeChat] モデル変更エラー:', error)
+    }
+  }, [themeId])
 
   // テーマ切り替え時にサーバーからメッセージを読み込む
   useEffect(() => {
@@ -147,6 +163,7 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
           hasEarlierMessages={false}
           isLoadingEarlier={false}
           onLoadEarlier={() => {}}
+          inputExtra={<ModelSelector modelKey={currentModelKey} onChange={handleModelChange} />}
         />
       </div>
     </div>

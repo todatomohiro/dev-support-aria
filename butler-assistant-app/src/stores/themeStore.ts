@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { ThemeSession, Message } from '@/types'
+import type { ThemeSession, Message, ModelKey } from '@/types'
 import type { WorkConnection } from '@/types/work'
 
 /**
@@ -36,6 +36,8 @@ export interface ThemeState {
   resetSession: () => void
   /** テーマ名を更新（トピック自動命名） */
   updateThemeName: (themeId: string, themeName: string) => void
+  /** テーマのモデルキーを更新 */
+  updateThemeModelKey: (themeId: string, modelKey: ModelKey) => void
   /** ワーク接続を設定 */
   setWorkConnection: (conn: WorkConnection | null) => void
   /** ワーク接続をクリア */
@@ -87,6 +89,13 @@ export const useThemeStore = create<ThemeState>()((set) => ({
     set((state) => ({
       themes: state.themes.map((t) =>
         t.themeId === themeId ? { ...t, themeName } : t
+      ),
+    })),
+
+  updateThemeModelKey: (themeId: string, modelKey: ModelKey) =>
+    set((state) => ({
+      themes: state.themes.map((t) =>
+        t.themeId === themeId ? { ...t, modelKey } : t
       ),
     })),
 

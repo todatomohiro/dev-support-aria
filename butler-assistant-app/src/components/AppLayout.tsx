@@ -9,6 +9,8 @@ interface AppLayoutProps {
   currentSessionName?: string
   onOpenSettings: () => void
   headerRight?: React.ReactNode
+  /** セッション名の右横に表示する追加要素 */
+  headerExtra?: React.ReactNode
   /** ヘッダーのセッション名を編集可能にするコールバック */
   onRenameSession?: (newName: string) => void
 }
@@ -19,7 +21,7 @@ interface AppLayoutProps {
  * PC: サイドバー + コンテンツ
  * スマホ: コンテンツ + ボトムナビ
  */
-export function AppLayout({ children, currentSessionName, onOpenSettings, headerRight, onRenameSession }: AppLayoutProps) {
+export function AppLayout({ children, currentSessionName, onOpenSettings, headerRight, headerExtra, onRenameSession }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isWorkModalOpen, setIsWorkModalOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -142,6 +144,7 @@ export function AppLayout({ children, currentSessionName, onOpenSettings, header
                 </svg>
               </button>
             )}
+            {headerExtra}
           </div>
           {headerRight && (
             <nav className="flex items-center gap-1 sm:gap-2">

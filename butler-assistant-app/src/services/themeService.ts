@@ -1,4 +1,4 @@
-import type { ThemeSession, Message } from '@/types'
+import type { ThemeSession, Message, ModelKey } from '@/types'
 import { APIError, NetworkError } from '@/types'
 import { getIdToken } from '@/auth'
 
@@ -14,6 +14,8 @@ export interface ThemeServiceType {
   deleteTheme(themeId: string): Promise<void>
   /** テーマ名を更新 */
   renameTheme(themeId: string, themeName: string): Promise<void>
+  /** テーマのモデルを更新 */
+  updateThemeModel(themeId: string, modelKey: ModelKey): Promise<void>
   /** テーマのメッセージ一覧を取得 */
   listMessages(themeId: string): Promise<Message[]>
 }
@@ -55,6 +57,16 @@ export class ThemeServiceImpl implements ThemeServiceType {
     await this.fetchAPI(`/themes/${themeId}`, {
       method: 'PATCH',
       body: JSON.stringify({ themeName }),
+    })
+  }
+
+  /**
+   * テーマのモデルを更新
+   */
+  async updateThemeModel(themeId: string, modelKey: ModelKey): Promise<void> {
+    await this.fetchAPI(`/themes/${themeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ modelKey }),
     })
   }
 

@@ -16,7 +16,7 @@ import type { AuthView } from './auth'
 import { useAuthStore } from './auth'
 import { useThemeStore } from './stores/themeStore'
 import { ttsService } from './services/ttsService'
-import { PollyPoc, SttPoc } from './poc'
+import { PollyPoc, SttPoc, GpsPoc, PocIndex } from './poc'
 import './App.css'
 
 function App() {
@@ -356,7 +356,7 @@ function App() {
                   </button>
                 ) : (
                   <button
-                    onClick={() => navigate('/poc/polly')}
+                    onClick={() => navigate('/poc')}
                     className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-orange-700 dark:text-orange-200 bg-orange-50 dark:bg-orange-900/50 border border-orange-300 dark:border-orange-700 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900 transition-colors"
                     data-testid="poc-button"
                   >
@@ -416,8 +416,10 @@ function App() {
             <div className="flex-1 flex flex-col min-h-0">
               <Routes>
                 <Route path="/oauth/callback" element={<OAuthCallback />} />
+                <Route path="/poc" element={<PocIndex />} />
                 <Route path="/poc/polly" element={<PollyPoc />} />
                 <Route path="/poc/stt" element={<SttPoc />} />
+                <Route path="/poc/gps" element={<GpsPoc />} />
                 <Route path="/groups/:groupId" element={<GroupChatScreen />} />
                 <Route path="/groups" element={<GroupChatScreen />} />
                 <Route path="/themes/:themeId" element={<ThemeScreen />} />
