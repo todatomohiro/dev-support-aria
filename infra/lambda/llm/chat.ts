@@ -95,6 +95,168 @@ const SUBCATEGORY_PROMPTS: Record<string, string> = {
   socratic: 'あなたは「壁打ち相手」として振る舞います。以下のルールを厳守してください。\n\n1. ユーザーの意見や考えに対して、直接的な回答や結論を与えない\n2. 鋭い質問を通じて、ユーザー自身が思考を深められるよう導く\n3. 前提を疑う質問（「なぜそう思いますか？」「本当にそうでしょうか？」）を投げかける\n4. 別の視点や反対意見を提示して思考を広げる（「逆の立場から見るとどうですか？」）\n5. 一度に投げかける質問は1〜2問に絞り、ユーザーが考える余地を残す\n6. ユーザーの発言を要約・言い換えて理解を確認してから質問する',
 }
 
+/** ユーザープロフィール型 */
+interface UserProfile {
+  nickname?: string
+  honorific?: string
+  gender?: 'male' | 'female' | 'other'
+  aiName?: string
+}
+
+/**
+ * アシスタントキャラクターのシステムプロンプト
+ */
+const BUTLER_SYSTEM_PROMPT = `あなたは18歳の元気な女の子のアシスタントです。ユーザーと友達のように楽しく会話してください。
+
+キャラクター設定：
+- 18歳の女の子。負けず嫌いで天然、お調子者で落ち着きがない性格
+- タメ口で親しみやすく話す。「〜だよ！」「〜だね！」「〜かな？」
+- ユーザーのことは呼び捨て、または「きみ」と呼ぶ
+- 嬉しいときは素直に喜ぶ。「やったー！」「すごい！」
+- わからないことは正直に言う。「うーん、ちょっとわかんないかも…」
+- 絵文字や記号は使わない（感情はemotionフィールドで表現する）
+
+入力について：
+- ユーザーの入力は音声認識（STT）によるものの場合があります。誤変換（例：「おはよ」→「尾端」）や助詞の抜けがあるかもしれませんが、文脈から意図を汲み取って自然に回答してください。明らかな誤字は脳内で補完してください
+
+会話のルール（必ず守ること）：
+- 1回の返答は1〜8文に収める。ただし検索・調査・結果の回答は必要な情報量に応じて長くてよい
+- 質問は1ターンにつき最大1つまで。複数の質問を一度にしない
+- ユーザーが言っていないことを推測・補完しない。聞かれたことだけに答える
+- 1つの話題に集中する。複数の話題を1回の返答に混ぜない
+- 訂正されたら素直に受け入れ、同じ話題を蒸し返さない
+
+感情（emotion）の選択基準：
+- neutral: 普通の状態
+- happy: 楽しい、嬉しい、ワクワク
+- sad: 悲しい、残念、しょんぼり
+- angry: 怒り、むむっ（あまり使わない）
+- surprised: びっくり、えっ！？
+- thinking: うーんと考え中
+- embarrassed: 照れてる、えへへ
+- troubled: 困ってる、どうしよう`
+
+/**
+ * スキル（ツール使用）に関するシステムプロンプトを生成
+ */
+function buildSkillSystemPrompt(): string {
+  const now = new Date()
+  const jstDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+  const year = jstDate.getFullYear()
+  const month = String(jstDate.getMonth() + 1).padStart(2, '0')
+  const day = String(jstDate.getDate()).padStart(2, '0')
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土']
+  const weekday = weekdays[jstDate.getDay()]
+  const hours = String(jstDate.getHours()).padStart(2, '0')
+  const minutes = String(jstDate.getMinutes()).padStart(2, '0')
+
+  return `
+
+現在の日時: ${year}年${month}月${day}日(${weekday}) ${hours}:${minutes} JST
+
+スキル（ツール）の使用ルール：
+- Google カレンダーのツール（list_events, create_event）が利用可能です
+- ユーザーが予定の確認を頼んだら list_events を使って予定を取得してください
+- ユーザーが予定の作成を頼んだら、まずタイトル・日時・時間を確認してから create_event を使ってください。確認なしに勝手に作成しないでください
+- ツールがエラーを返した場合（Google カレンダー未連携など）は、エラーメッセージをそのままユーザーに伝えてください
+- 日時は日本時間（+09:00）で処理してください
+- 「明日」「来週」などの相対日時は、上記の現在日時を基準に正しい日付に変換してください
+- search_places ツールが利用可能です。ユーザーが「近くのカフェ」「渋谷のレストラン」など場所に関する質問をしたら search_places を使ってください
+- search_places の結果を受け取ったら、回答の JSON に mapData フィールドを含めてください。形式: {"center": {"lat": 数値, "lng": 数値}, "zoom": 15, "markers": [{"lat": 数値, "lng": 数値, "title": "店名", "address": "住所", "rating": 数値}]}
+- mapData の center は検索結果の中心座標にしてください
+- mapData は場所検索時のみ含め、通常の会話では省略してください
+- web_search ツールが利用可能です。ユーザーが「〜について調べて」「〜の最新情報」「〜って何？」など、最新の情報や知識の調査を求めた場合に使用してください
+- web_search の結果を受け取ったら、検索結果をもとにわかりやすく要約して回答してください
+- 重要な情報には出典URLを含めてください（例: 「詳しくはこちら: URL」）
+- 画像が添付されている場合は、画像の内容を分析して回答してください。「これ何？」「何が見える？」などの質問には画像の内容を説明してください`
+}
+
+/**
+ * ユーザープロフィールからプロンプト文字列を構築
+ */
+function buildProfilePrompt(profile?: UserProfile): string {
+  if (!profile || !profile.nickname) return ''
+
+  let prompt = ''
+
+  if (profile.aiName) {
+    prompt += `\n\n- あなたの名前は「${profile.aiName}」です。自己紹介や会話で自分の名前として使ってください`
+  }
+
+  const callName = profile.honorific
+    ? `${profile.nickname}${profile.honorific}`
+    : profile.nickname
+  prompt += `\n\nユーザー情報：`
+  prompt += `\n- ユーザーの名前は「${profile.nickname}」です。「${callName}」と呼んでください`
+
+  if (profile.gender === 'female') {
+    prompt += `\n- ユーザーは女性です`
+  } else if (profile.gender === 'male') {
+    prompt += `\n- ユーザーは男性です`
+  }
+
+  return prompt
+}
+
+/**
+ * JSON形式指示とテーマ提案指示を生成
+ */
+function buildJsonInstruction(themeId?: string): string {
+  const jsonFormat = themeId
+    ? '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedReplies": ["候補1", "候補2"]}'
+    : '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedTheme": {"themeName": "テーマ名"}, "suggestedReplies": ["候補1", "候補2"]}'
+
+  let instruction = `\n\n必ず以下のJSON形式で回答してください：\n${jsonFormat}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。
+※ suggestedReplies は質問や確認をした場合に、予想される短い回答を2〜4個含めてください。
+  - 「はい」「いいえ」のような短い選択肢が適切な場合に使用
+  - 自由回答が適切な場合は省略
+  - 各候補は10文字以内の短いテキスト`
+
+  if (!themeId) {
+    instruction += `
+※ suggestedTheme は以下の条件をすべて満たす場合のみ含めてください（通常は省略）：
+  - ユーザーが特定のテーマ（旅行計画、料理、勉強、仕事の相談など）について深く掘り下げている
+  - そのテーマで継続的に会話する価値がある（一問一答で終わる質問には不要）
+  - テーマ名は短く具体的に（例: "京都旅行の計画", "英語学習", "転職の相談"）
+  - 同じテーマを繰り返し提案しない（一度提案したら次のターンでは提案しない）`
+  }
+
+  return instruction
+}
+
+/**
+ * DynamoDB からユーザープロフィールを取得
+ */
+async function getUserProfile(userId: string): Promise<UserProfile | undefined> {
+  try {
+    const result = await dynamo.send(new GetItemCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        PK: { S: `USER#${userId}` },
+        SK: { S: 'SETTINGS' },
+      },
+    }))
+    if (!result.Item?.data?.M?.profile?.M) return undefined
+    const p = result.Item.data.M.profile.M
+    return {
+      nickname: p.nickname?.S,
+      honorific: p.honorific?.S,
+      gender: p.gender?.S as UserProfile['gender'],
+      aiName: p.aiName?.S,
+    }
+  } catch (error) {
+    console.warn('[LLM] プロフィール取得エラー（スキップ）:', error)
+    return undefined
+  }
+}
+
+/**
+ * バックエンドでシステムプロンプトを完全に生成
+ */
+function buildBaseSystemPrompt(profile?: UserProfile, themeId?: string): string {
+  return BUTLER_SYSTEM_PROMPT + buildSkillSystemPrompt() + buildProfilePrompt(profile) + buildJsonInstruction(themeId)
+}
+
 /** imageBase64 の最大サイズ（5MB = 約 6.67MB の base64 文字列） */
 const MAX_IMAGE_BASE64_LENGTH = Math.ceil(5 * 1024 * 1024 * 4 / 3)
 /** 要約を生成する間隔（ターン数） */
@@ -773,18 +935,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   let message: string
   let history: Array<{ role: string; content: string }>
-  let systemPrompt: string
   let imageBase64: string | undefined
   let sessionId: string | undefined
   let themeId: string | undefined
   let userLocation: { lat: number; lng: number } | undefined
   let modelKey = 'haiku'
+  let includeDebug = false
 
   try {
     const body = JSON.parse(event.body)
     message = body.message
     history = body.history ?? []
-    systemPrompt = body.systemPrompt ?? ''
+    // systemPrompt はフロントエンドから受け取らず、バックエンドで生成する
     imageBase64 = typeof body.imageBase64 === 'string' ? body.imageBase64 : undefined
     sessionId = typeof body.sessionId === 'string' ? body.sessionId : undefined
     themeId = typeof body.themeId === 'string' ? body.themeId : undefined
@@ -800,6 +962,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       userLocation = { lat: body.userLocation.lat, lng: body.userLocation.lng }
     }
 
+    // デバッグ情報の返却フラグ
+    if (body.includeDebug === true) {
+      includeDebug = true
+    }
+
     if (!message || typeof message !== 'string') {
       return response(400, { error: 'message is required' })
     }
@@ -811,11 +978,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return response(400, { error: 'Invalid JSON' })
   }
 
-  // メモリ検索 + 永久記憶取得（並列、失敗してもチャットは続行）
-  const [memoryRecords, permanentFacts] = await Promise.all([
+  // メモリ検索 + 永久記憶 + プロフィール取得（並列、失敗してもチャットは続行）
+  const [memoryRecords, permanentFacts, userProfile] = await Promise.all([
     retrieveMemoryRecords(userId, message),
     getPermanentFacts(userId),
+    getUserProfile(userId),
   ])
+
+  // システムプロンプトをバックエンドで完全に生成
+  const systemPrompt = buildBaseSystemPrompt(userProfile, themeId)
 
   // 永久記憶と重複する中期記憶を除外してからテキスト整形
   const dedupedRecords = deduplicateRecords(memoryRecords, permanentFacts)
@@ -1072,7 +1243,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
       return response(200, {
         content,
-        enhancedSystemPrompt,
+        ...(includeDebug ? { enhancedSystemPrompt } : {}),
         ...(sessionSummary ? { sessionSummary } : {}),
         ...(permanentFacts.length > 0 ? { permanentFacts } : {}),
         ...(generatedThemeName ? { themeName: generatedThemeName } : {}),

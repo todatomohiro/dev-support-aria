@@ -147,19 +147,10 @@ function extractBalancedJson(text: string): string | null {
  * LLM Client Service 実装（Bedrock Lambda プロキシ経由）
  */
 class LLMClientImpl implements LLMClientService {
-  private userProfile?: UserProfile
-
-  /**
-   * ユーザープロフィールを設定
-   */
-  setUserProfile(profile: UserProfile): void {
-    this.userProfile = profile
-  }
-
   /**
    * Lambda /llm/chat を経由して Bedrock Claude にメッセージを送信
    */
-  async sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey): Promise<StructuredResponse> {
+  async sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey, debug?: boolean): Promise<StructuredResponse> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     const accessToken = await getIdToken()
 
@@ -167,28 +158,7 @@ class LLMClientImpl implements LLMClientService {
       throw new APIError('API Base URL が設定されていません', 500)
     }
 
-    // システムプロンプト構築（JSON 形式指示含む）
-    // トピックチャットでは suggestedTheme をフォーマット例から除外
-    const jsonFormat = themeId
-      ? '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedReplies": ["候補1", "候補2"]}'
-      : '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedTheme": {"themeName": "テーマ名"}, "suggestedReplies": ["候補1", "候補2"]}'
-
-    const jsonInstruction = `\n\n必ず以下のJSON形式で回答してください：\n${jsonFormat}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。
-※ suggestedReplies は質問や確認をした場合に、予想される短い回答を2〜4個含めてください。
-  - 「はい」「いいえ」のような短い選択肢が適切な場合に使用
-  - 自由回答が適切な場合は省略
-  - 各候補は10文字以内の短いテキスト`
-
-    // メイン会話の場合のみテーマ提案指示を追加
-    const themeSuggestionInstruction = themeId ? '' : `
-※ suggestedTheme は以下の条件をすべて満たす場合のみ含めてください（通常は省略）：
-  - ユーザーが特定のテーマ（旅行計画、料理、勉強、仕事の相談など）について深く掘り下げている
-  - そのテーマで継続的に会話する価値がある（一問一答で終わる質問には不要）
-  - テーマ名は短く具体的に（例: "京都旅行の計画", "英語学習", "転職の相談"）
-  - 同じテーマを繰り返し提案しない（一度提案したら次のターンでは提案しない）`
-
-    const systemPrompt = buildSystemPrompt(this.userProfile) + jsonInstruction + themeSuggestionInstruction
-
+    // システムプロンプトはバックエンドで生成（セキュリティ対策）
     try {
       const res = await fetch(`${apiBaseUrl}/llm/chat`, {
         method: 'POST',
@@ -196,7 +166,7 @@ class LLMClientImpl implements LLMClientService {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ message, sessionId, systemPrompt, ...(imageBase64 ? { imageBase64 } : {}), ...(themeId ? { themeId } : {}), ...(userLocation ? { userLocation } : {}), ...(modelKey && modelKey !== 'haiku' ? { modelKey } : {}) }),
+        body: JSON.stringify({ message, sessionId, ...(imageBase64 ? { imageBase64 } : {}), ...(themeId ? { themeId } : {}), ...(userLocation ? { userLocation } : {}), ...(modelKey && modelKey !== 'haiku' ? { modelKey } : {}), ...(debug ? { includeDebug: true } : {}) }),
       })
 
       if (!res.ok) {

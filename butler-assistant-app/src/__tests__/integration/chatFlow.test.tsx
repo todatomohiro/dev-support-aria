@@ -10,7 +10,6 @@ import type { StructuredResponse } from '@/types'
 vi.mock('@/services/llmClient', () => ({
   llmClient: {
     sendMessage: vi.fn(),
-    setUserProfile: vi.fn(),
   },
 }))
 
@@ -77,7 +76,9 @@ describe('チャットフロー統合テスト', () => {
           expect.any(String),
           undefined,
           undefined,
-          undefined
+          undefined,
+          undefined,
+          false
         )
       })
     })

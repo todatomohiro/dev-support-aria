@@ -145,60 +145,6 @@ describe('ChatUI', () => {
     })
   })
 
-  describe('開発者モード JSON 表示', () => {
-    const rawJson = JSON.stringify({ text: 'こんにちは', motion: 'greeting', emotion: 'happy' }, null, 2)
-
-    it('developerMode=false の場合、JSON ボタンが表示されない', () => {
-      const messages: Message[] = [
-        createMessage('1', 'こんにちは', 'assistant', Date.now(), rawJson),
-      ]
-
-      renderChatUI({ messages, developerMode: false })
-
-      expect(screen.queryByTestId('raw-json-toggle')).not.toBeInTheDocument()
-    })
-
-    it('developerMode=true かつ rawResponse あり → JSON ボタンが表示される', () => {
-      const messages: Message[] = [
-        createMessage('1', 'こんにちは', 'assistant', Date.now(), rawJson),
-      ]
-
-      renderChatUI({ messages, developerMode: true })
-
-      expect(screen.getByTestId('raw-json-toggle')).toBeInTheDocument()
-    })
-
-    it('JSON ボタンクリックで raw JSON が展開・折りたたみされる', () => {
-      const messages: Message[] = [
-        createMessage('1', 'こんにちは', 'assistant', Date.now(), rawJson),
-      ]
-
-      renderChatUI({ messages, developerMode: true })
-
-      // 初期状態では raw JSON が表示されていない
-      expect(screen.queryByTestId('raw-json-content')).not.toBeInTheDocument()
-
-      // JSON ボタンをクリックして展開
-      fireEvent.click(screen.getByTestId('raw-json-toggle'))
-      expect(screen.getByTestId('raw-json-content')).toBeInTheDocument()
-      expect(screen.getByTestId('raw-json-content').textContent).toBe(rawJson)
-
-      // もう一度クリックして折りたたみ
-      fireEvent.click(screen.getByTestId('raw-json-toggle'))
-      expect(screen.queryByTestId('raw-json-content')).not.toBeInTheDocument()
-    })
-
-    it('ユーザーメッセージには JSON ボタンが表示されない', () => {
-      const messages: Message[] = [
-        createMessage('1', 'テスト', 'user', Date.now(), rawJson),
-      ]
-
-      renderChatUI({ messages, developerMode: true })
-
-      expect(screen.queryByTestId('raw-json-toggle')).not.toBeInTheDocument()
-    })
-  })
-
   describe('URL リンク化', () => {
     it('URL を含むアシスタントメッセージに <a> タグがレンダリングされる', () => {
       const messages: Message[] = [

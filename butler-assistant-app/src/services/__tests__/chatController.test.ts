@@ -129,7 +129,9 @@ describe('ChatController', () => {
         expect.any(String),
         'aW1hZ2VkYXRh',
         undefined,
-        undefined
+        undefined,
+        undefined,
+        false
       )
 
       const state = useAppStore.getState()
@@ -152,7 +154,9 @@ describe('ChatController', () => {
         expect.any(String),
         undefined,
         undefined,
-        { lat: 35.6812, lng: 139.7671 }
+        { lat: 35.6812, lng: 139.7671 },
+        undefined,
+        false
       )
     })
 
@@ -171,7 +175,9 @@ describe('ChatController', () => {
         expect.any(String),
         undefined,
         undefined,
-        undefined
+        undefined,
+        undefined,
+        false
       )
     })
 

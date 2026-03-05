@@ -576,7 +576,6 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 function MessageBubble({ message, developerMode = false }: { message: Message; developerMode?: boolean }) {
   const isUser = message.role === 'user'
   const [isSpeaking, setIsSpeaking] = useState(false)
-  const [showRaw, setShowRaw] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
 
   // rawResponse から enhancedSystemPrompt を抽出
@@ -656,16 +655,6 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
                 PROMPT
               </button>
             )}
-            {!isUser && developerMode && message.rawResponse && (
-              <button
-                onClick={() => setShowRaw((prev) => !prev)}
-                className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold opacity-60 hover:opacity-100 transition-opacity bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20"
-                title="Raw JSON を表示"
-                data-testid="raw-json-toggle"
-              >
-                JSON
-              </button>
-            )}
             {!isUser && (
               <button
                 onClick={handleSpeak}
@@ -692,14 +681,6 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
             data-testid="debug-info-content"
           >
             {promptText}
-          </pre>
-        )}
-        {showRaw && message.rawResponse && (
-          <pre
-            className="mt-2 p-2 rounded text-xs bg-gray-900 text-green-400 overflow-x-auto whitespace-pre-wrap break-all"
-            data-testid="raw-json-content"
-          >
-            {message.rawResponse}
           </pre>
         )}
       </div>

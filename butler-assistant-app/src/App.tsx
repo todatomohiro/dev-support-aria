@@ -6,7 +6,6 @@ import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
 import { syncService } from './services/syncService'
-import { llmClient } from './services/llmClient'
 import { themeService } from './services/themeService'
 import { greetingService } from './services/greetingService'
 import { sentimentService } from './services/sentimentService'
@@ -330,11 +329,6 @@ function App() {
       console.warn(`[App] 位置情報エラー: ${geoError}`)
     }
   }, [geoError])
-
-  // プロフィールをLLMクライアントに反映
-  useEffect(() => {
-    llmClient.setUserProfile(config.profile)
-  }, [config.profile])
 
   // 表情の変更を監視して再生（一定時間後に neutral に戻す）
   // expressionVersion を依存に含めることで、同じ表情名でも確実に再発火する

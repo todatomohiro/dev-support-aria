@@ -1,6 +1,6 @@
 import type { ModelConfig, MotionPriority } from './model'
 import type { ParsedResponse, StructuredResponse, ValidationResult } from './response'
-import type { ModelKey, UserProfile, UserLocation } from './config'
+import type { ModelKey, UserLocation } from './config'
 
 /**
  * LLM Client Service インターフェース
@@ -9,12 +9,7 @@ export interface LLMClientService {
   /**
    * LLMにメッセージを送信し、構造化された回答を取得
    */
-  sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey): Promise<StructuredResponse>
-
-  /**
-   * ユーザープロフィールを設定
-   */
-  setUserProfile(profile: UserProfile): void
+  sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey, debug?: boolean): Promise<StructuredResponse>
 }
 
 /**

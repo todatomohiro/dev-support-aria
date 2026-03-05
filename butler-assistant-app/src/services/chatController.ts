@@ -56,7 +56,7 @@ class ChatControllerImpl {
       // LLMにメッセージを送信（sessionId でサーバー側コンテキスト構築）
       const structuredResponse = await measurePerformanceAsync(
         'LLM送信→レスポンス受信',
-        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined)
+        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode)
       )
 
       // アシスタントメッセージを作成
@@ -311,7 +311,7 @@ class ChatControllerImpl {
       const themeModelKey = activeTheme?.modelKey
       const structuredResponse = await measurePerformanceAsync(
         'LLM送信→テーマレスポンス受信',
-        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, themeId, appStore.currentLocation ?? undefined, themeModelKey)
+        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, themeId, appStore.currentLocation ?? undefined, themeModelKey, appStore.config.ui.developerMode)
       )
 
       // アシスタントメッセージを作成

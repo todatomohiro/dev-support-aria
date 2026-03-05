@@ -44,7 +44,8 @@ describe('LLMClient', () => {
       const body = JSON.parse(fetchCall[1].body)
       expect(body.message).toBe('こんにちは')
       expect(body.sessionId).toBe('test-session-id')
-      expect(body.systemPrompt).toContain(BUTLER_SYSTEM_PROMPT)
+      // systemPrompt はバックエンドで生成されるため、フロントエンドから送信しない
+      expect(body.systemPrompt).toBeUndefined()
       expect(body.history).toBeUndefined()
     })
 
@@ -314,32 +315,6 @@ describe('buildSystemPrompt', () => {
     const profile: UserProfile = { nickname: '太郎', honorific: 'さん', gender: 'male' }
     const result = buildSystemPrompt(profile)
     expect(result).toContain(BUTLER_SYSTEM_PROMPT)
-  })
-})
-
-describe('setUserProfile', () => {
-  const originalFetch = global.fetch
-
-  afterEach(() => {
-    global.fetch = originalFetch
-  })
-
-  it('プロフィール設定後のsendMessageでプロンプトにユーザー情報が含まれる', async () => {
-    llmClient.setUserProfile({ nickname: '太郎', honorific: 'さん', gender: 'male' })
-
-    const mockResponse = { content: '{"text": "太郎さん、こんにちは！", "motion": "smile", "emotion": "happy"}' }
-
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => mockResponse,
-    })
-
-    await llmClient.sendMessage('こんにちは', 'test-session-id')
-
-    const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
-    const body = JSON.parse(fetchCall[1].body)
-    expect(body.systemPrompt).toContain('太郎さん')
-    expect(body.systemPrompt).toContain('ユーザーは男性です')
   })
 })
 
