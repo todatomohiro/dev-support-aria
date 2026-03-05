@@ -556,7 +556,8 @@ function toConverseMessages(
   imageBase64?: string,
 ): BedrockMessage[] {
   const messages: BedrockMessage[] = history.map((m) => {
-    const text = m.createdAt ? `[${toJSTDateTimeString(m.createdAt)}] ${m.content}` : m.content
+    // タイムスタンプはユーザーメッセージにのみ付与（assistantに付けるとLLMが応答に含めてしまう）
+    const text = m.createdAt && m.role === 'user' ? `[${toJSTDateTimeString(m.createdAt)}] ${m.content}` : m.content
     return {
       role: m.role as 'user' | 'assistant',
       content: [{ text }],
