@@ -139,9 +139,32 @@ const BUTLER_SYSTEM_PROMPT = `<ai_config>
 </ai_config>`
 
 /**
- * スキル（ツール使用）に関するシステムプロンプトを生成
+ * スキルルール（静的部分、キャッシュ対象）
  */
-function buildSkillSystemPrompt(): string {
+const SKILL_RULES_PROMPT = `
+
+<skills>
+スキル（ツール）の使用ルール：
+- Google カレンダーのツール（list_events, create_event）が利用可能です
+- ユーザーが予定の確認を頼んだら list_events を使って予定を取得してください
+- ユーザーが予定の作成を頼んだら、まずタイトル・日時・時間を確認してから create_event を使ってください。確認なしに勝手に作成しないでください
+- ツールがエラーを返した場合（Google カレンダー未連携など）は、エラーメッセージをそのままユーザーに伝えてください
+- 日時は日本時間（+09:00）で処理してください
+- 「明日」「来週」などの相対日時は、現在の日時を基準に正しい日付に変換してください
+- search_places ツールが利用可能です。ユーザーが「近くのカフェ」「渋谷のレストラン」など場所に関する質問をしたら search_places を使ってください
+- search_places の結果を受け取ったら、回答の JSON に mapData フィールドを含めてください。形式: {"center": {"lat": 数値, "lng": 数値}, "zoom": 15, "markers": [{"lat": 数値, "lng": 数値, "title": "店名", "address": "住所", "rating": 数値}]}
+- mapData の center は検索結果の中心座標にしてください
+- mapData は場所検索時のみ含め、通常の会話では省略してください
+- web_search ツールが利用可能です。ユーザーが「〜について調べて」「〜の最新情報」「〜って何？」など、最新の情報や知識の調査を求めた場合に使用してください
+- web_search の結果を受け取ったら、検索結果をもとにわかりやすく要約して回答してください
+- 重要な情報には出典URLを含めてください（例: 「詳しくはこちら: URL」）
+- 画像が添付されている場合は、画像の内容を分析して回答してください。「これ何？」「何が見える？」などの質問には画像の内容を説明してください
+</skills>`
+
+/**
+ * 現在日時プロンプトを生成（動的、キャッシュ対象外）
+ */
+function buildDateTimePrompt(): string {
   const now = new Date()
   const jstDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
   const year = jstDate.getFullYear()
@@ -152,27 +175,7 @@ function buildSkillSystemPrompt(): string {
   const hours = String(jstDate.getHours()).padStart(2, '0')
   const minutes = String(jstDate.getMinutes()).padStart(2, '0')
 
-  return `
-
-<skills>
-現在の日時: ${year}年${month}月${day}日(${weekday}) ${hours}:${minutes} JST
-
-スキル（ツール）の使用ルール：
-- Google カレンダーのツール（list_events, create_event）が利用可能です
-- ユーザーが予定の確認を頼んだら list_events を使って予定を取得してください
-- ユーザーが予定の作成を頼んだら、まずタイトル・日時・時間を確認してから create_event を使ってください。確認なしに勝手に作成しないでください
-- ツールがエラーを返した場合（Google カレンダー未連携など）は、エラーメッセージをそのままユーザーに伝えてください
-- 日時は日本時間（+09:00）で処理してください
-- 「明日」「来週」などの相対日時は、上記の現在日時を基準に正しい日付に変換してください
-- search_places ツールが利用可能です。ユーザーが「近くのカフェ」「渋谷のレストラン」など場所に関する質問をしたら search_places を使ってください
-- search_places の結果を受け取ったら、回答の JSON に mapData フィールドを含めてください。形式: {"center": {"lat": 数値, "lng": 数値}, "zoom": 15, "markers": [{"lat": 数値, "lng": 数値, "title": "店名", "address": "住所", "rating": 数値}]}
-- mapData の center は検索結果の中心座標にしてください
-- mapData は場所検索時のみ含め、通常の会話では省略してください
-- web_search ツールが利用可能です。ユーザーが「〜について調べて」「〜の最新情報」「〜って何？」など、最新の情報や知識の調査を求めた場合に使用してください
-- web_search の結果を受け取ったら、検索結果をもとにわかりやすく要約して回答してください
-- 重要な情報には出典URLを含めてください（例: 「詳しくはこちら: URL」）
-- 画像が添付されている場合は、画像の内容を分析して回答してください。「これ何？」「何が見える？」などの質問には画像の内容を説明してください
-</skills>`
+  return `<current_datetime>現在の日時: ${year}年${month}月${day}日(${weekday}) ${hours}:${minutes} JST</current_datetime>`
 }
 
 /**
@@ -257,10 +260,24 @@ async function getUserProfile(userId: string): Promise<UserProfile | undefined> 
 }
 
 /**
- * バックエンドでシステムプロンプトを完全に生成
+ * 静的システムプロンプトを生成（キャッシュ対象: 全ユーザー共通）
  */
-function buildBaseSystemPrompt(profile?: UserProfile, themeId?: string): string {
-  return BUTLER_SYSTEM_PROMPT + buildSkillSystemPrompt() + buildProfilePrompt(profile) + buildJsonInstruction(themeId)
+function buildStaticSystemPrompt(themeId?: string): string {
+  return BUTLER_SYSTEM_PROMPT + SKILL_RULES_PROMPT + buildJsonInstruction(themeId)
+}
+
+/**
+ * ユーザー固有の半静的プロンプトを生成（キャッシュ対象: ユーザー単位）
+ */
+function buildUserStaticPrompt(profile?: UserProfile, permanentFacts?: string[]): string {
+  let prompt = buildProfilePrompt(profile)
+
+  if (permanentFacts && permanentFacts.length > 0) {
+    const factsText = permanentFacts.map((f) => `- ${f}`).join('\n')
+    prompt += `\n\n<permanent_profile>\nユーザーについて知っている事実：\n${factsText}\n</permanent_profile>`
+  }
+
+  return prompt
 }
 
 /** imageBase64 の最大サイズ（5MB = 約 6.67MB の base64 文字列） */
@@ -840,11 +857,14 @@ function convertMCPToolToBedrock(mcpTool: MCPToolDefinition): { toolSpec: { name
 }
 
 /**
- * システムプロンプトを構築（永久記憶 + メモリ + セッション要約 + チェックポイントを注入）
+ * システムプロンプトを SystemContentBlock[] として構築（Prompt Caching 対応）
+ *
+ * 構造:
+ *   [静的プロンプト] → cachePoint → [ユーザー固有] → cachePoint → [動的コンテキスト]
  */
-function buildEnhancedSystemPrompt(
-  systemPrompt: string,
-  permanentFacts: string[],
+function buildSystemContentBlocks(
+  staticPrompt: string,
+  userStaticPrompt: string,
   memoryContext: string,
   sessionSummary: string,
   checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }> = [],
@@ -853,23 +873,33 @@ function buildEnhancedSystemPrompt(
   themeContext?: { themeName: string; category?: string; subcategory?: string },
   workContext?: { tools: Array<{ name: string; description: string }>; expiresAt: string },
   userLocation?: { lat: number; lng: number }
-): string {
-  let enhanced = systemPrompt
+): SystemContentBlock[] {
+  const blocks: SystemContentBlock[] = []
+
+  // ── キャッシュブロック1: 全ユーザー共通の静的プロンプト ──
+  blocks.push({ text: staticPrompt })
+  blocks.push({ cachePoint: { type: 'default' } })
+
+  // ── キャッシュブロック2: ユーザー固有の半静的プロンプト ──
+  if (userStaticPrompt) {
+    blocks.push({ text: userStaticPrompt })
+    blocks.push({ cachePoint: { type: 'default' } })
+  }
+
+  // ── 動的コンテキスト（キャッシュ対象外） ──
+  let dynamic = ''
+
+  // 現在日時
+  dynamic += `\n\n${buildDateTimePrompt()}`
 
   // ユーザーの現在地
   if (userLocation) {
-    enhanced += `\n\n<user_location>\nユーザーの現在地: 緯度 ${userLocation.lat}, 経度 ${userLocation.lng}\n「近くの〜」と聞かれたら search_places の locationBias にこの座標を使ってください\n</user_location>`
-  }
-
-  // 永久記憶（最優先）
-  if (permanentFacts.length > 0) {
-    const factsText = permanentFacts.map((f) => `- ${f}`).join('\n')
-    enhanced += `\n\n<permanent_profile>\nユーザーについて知っている事実：\n${factsText}\n</permanent_profile>`
+    dynamic += `\n\n<user_location>\nユーザーの現在地: 緯度 ${userLocation.lat}, 経度 ${userLocation.lng}\n「近くの〜」と聞かれたら search_places の locationBias にこの座標を使ってください\n</user_location>`
   }
 
   // AgentCore Memory（中期記憶）
   if (memoryContext) {
-    enhanced += `\n\n<user_context>\n${memoryContext}\n</user_context>`
+    dynamic += `\n\n<user_context>\n${memoryContext}\n</user_context>`
   }
 
   // 過去セッション要約（日付グループ化）
@@ -878,30 +908,30 @@ function buildEnhancedSystemPrompt(
       const lines = g.sessions.map((s) => `・${s}`)
       return `【${g.date}（${g.label}）】\n${lines.join('\n')}`
     })
-    enhanced += `\n\n<past_sessions>\n過去のセッション要約：\n\n${groups.join('\n\n')}\n</past_sessions>`
+    dynamic += `\n\n<past_sessions>\n過去のセッション要約：\n\n${groups.join('\n\n')}\n</past_sessions>`
   }
 
   // テーマコンテキスト
   if (themeContext) {
     if (themeContext.themeName === '新規トピック') {
-      enhanced += `\n\n<theme_context>\nこれは新しく作成されたトピックです。\nユーザーの最初の発言内容から、このトピックにふさわしい短いタイトル（15文字以内）を考えて、レスポンスJSONの "topicName" フィールドに含めてください。\n</theme_context>`
+      dynamic += `\n\n<theme_context>\nこれは新しく作成されたトピックです。\nユーザーの最初の発言内容から、このトピックにふさわしい短いタイトル（15文字以内）を考えて、レスポンスJSONの "topicName" フィールドに含めてください。\n</theme_context>`
     } else {
-      enhanced += `\n\n<theme_context>\nテーマ: ${themeContext.themeName}\nこのセッションでは「${themeContext.themeName}」について会話しています。\nテーマに関連する回答を心がけてください。\n</theme_context>`
+      dynamic += `\n\n<theme_context>\nテーマ: ${themeContext.themeName}\nこのセッションでは「${themeContext.themeName}」について会話しています。\nテーマに関連する回答を心がけてください。\n</theme_context>`
     }
 
     // カテゴリ別専用プロンプトを注入（free やキーなしの場合はスキップ）
     if (themeContext.category && CATEGORY_PROMPTS[themeContext.category]) {
-      enhanced += `\n\n${CATEGORY_PROMPTS[themeContext.category]}`
+      dynamic += `\n\n${CATEGORY_PROMPTS[themeContext.category]}`
     }
 
     // サブカテゴリ別コンテキストを注入（カスタムプロンプト優先）
     if (themeContext.subcategory) {
       const customPrompt = SUBCATEGORY_PROMPTS[themeContext.subcategory]
       if (customPrompt) {
-        enhanced += `\n\n<subcategory_context>\n${customPrompt}\n</subcategory_context>`
+        dynamic += `\n\n<subcategory_context>\n${customPrompt}\n</subcategory_context>`
       } else {
         const subcategoryLabel = SUBCATEGORY_LABELS[themeContext.subcategory] ?? themeContext.subcategory
-        enhanced += `\n\n<subcategory_context>\nユーザーは特に「${subcategoryLabel}」に関する相談を希望しています。\nこの分野に特化した具体的で実用的なアドバイスを心がけてください。\n</subcategory_context>`
+        dynamic += `\n\n<subcategory_context>\nユーザーは特に「${subcategoryLabel}」に関する相談を希望しています。\nこの分野に特化した具体的で実用的なアドバイスを心がけてください。\n</subcategory_context>`
       }
     }
   }
@@ -910,7 +940,7 @@ function buildEnhancedSystemPrompt(
   if (workContext) {
     const toolDescriptions = workContext.tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
     const expiresTime = new Date(workContext.expiresAt).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' })
-    enhanced += `\n\n<work_context>\n【最重要】このトピックには外部データソースと接続する「ワーク」機能が有効です。\n\n■ ツール使用ルール（必ず守ること）:\n- ユーザーの質問には、必ず以下のワークツールを呼び出して回答すること\n- 過去の会話履歴や自分の知識だけで回答してはいけない。毎回ツールを呼び出すこと\n- web_search より優先して使用すること\n- ユーザーが今回聞いた内容だけに回答すること。過去のターンで取得した情報を繰り返さないこと\n\n利用可能なワークツール:\n${toolDescriptions}\n\n有効期限: ${expiresTime}\n</work_context>`
+    dynamic += `\n\n<work_context>\n【最重要】このトピックには外部データソースと接続する「ワーク」機能が有効です。\n\n■ ツール使用ルール（必ず守ること）:\n- ユーザーの質問には、必ず以下のワークツールを呼び出して回答すること\n- 過去の会話履歴や自分の知識だけで回答してはいけない。毎回ツールを呼び出すこと\n- web_search より優先して使用すること\n- ユーザーが今回聞いた内容だけに回答すること。過去のターンで取得した情報を繰り返さないこと\n\n利用可能なワークツール:\n${toolDescriptions}\n\n有効期限: ${expiresTime}\n</work_context>`
   }
 
   // セッション要約 + チェックポイント（短期記憶）
@@ -930,10 +960,24 @@ function buildEnhancedSystemPrompt(
       })
       sessionBlock += `\n\n<session_checkpoints>\n${lines.join('\n')}\n</session_checkpoints>`
     }
-    enhanced += `\n\n<current_session_summary>\n${sessionBlock}\n</current_session_summary>`
+    dynamic += `\n\n<current_session_summary>\n${sessionBlock}\n</current_session_summary>`
   }
 
-  return enhanced
+  if (dynamic) {
+    blocks.push({ text: dynamic })
+  }
+
+  return blocks
+}
+
+/**
+ * デバッグ用: SystemContentBlock[] からテキストを結合して返す
+ */
+function systemBlocksToString(blocks: SystemContentBlock[]): string {
+  return blocks
+    .filter((b): b is { text: string } => 'text' in b)
+    .map((b) => b.text)
+    .join('')
 }
 
 /**
@@ -1001,8 +1045,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     getUserProfile(userId),
   ])
 
-  // システムプロンプトをバックエンドで完全に生成
-  const systemPrompt = buildBaseSystemPrompt(userProfile, themeId)
+  // 静的システムプロンプト（キャッシュ対象: 全ユーザー共通）
+  const staticPrompt = buildStaticSystemPrompt(themeId)
+
+  // ユーザー固有の半静的プロンプト（キャッシュ対象: ユーザー単位）
+  const userStaticPrompt = buildUserStaticPrompt(userProfile, permanentFacts)
 
   // 永久記憶と重複する中期記憶を除外してからテキスト整形
   const dedupedRecords = deduplicateRecords(memoryRecords, permanentFacts)
@@ -1013,7 +1060,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   // sessionId の有無で分岐: 新フロー vs 既存フロー
   let messages: BedrockMessage[]
-  let enhancedSystemPrompt: string
+  let system: SystemContentBlock[]
+  let enhancedSystemPrompt: string  // デバッグ用
   let sessionTurnsSinceSummary = 0
   let sessionSummary = ''
   let themeContext: { themeName: string; category?: string; subcategory?: string } | null = null
@@ -1057,9 +1105,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.log(`[LLM] MCP接続: serverUrl=${mcpConn.serverUrl}, expired=${mcpConn.isExpired}, tools=${mcpConn.tools.length}`)
     }
 
-    enhancedSystemPrompt = buildEnhancedSystemPrompt(
-      systemPrompt,
-      permanentFacts,
+    system = buildSystemContentBlocks(
+      staticPrompt,
+      userStaticPrompt,
       memoryContext,
       sessionSummary,
       sessionContext.checkpoints,
@@ -1069,6 +1117,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       workContext,
       userLocation
     )
+    enhancedSystemPrompt = systemBlocksToString(system)
 
     if (sessionContext.checkpoints.length > 0) {
       console.log(`[LLM] チェックポイント ${sessionContext.checkpoints.length} 件をプロンプトに注入`)
@@ -1085,9 +1134,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       : toConverseMessages(sessionContext.recentMessages, message, imageBase64)
   } else {
     // 既存フロー: フロントエンドからの history をそのまま使用
-    enhancedSystemPrompt = buildEnhancedSystemPrompt(
-      systemPrompt,
-      permanentFacts,
+    system = buildSystemContentBlocks(
+      staticPrompt,
+      userStaticPrompt,
       memoryContext,
       '',
       [],
@@ -1097,12 +1146,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       undefined,
       userLocation
     )
+    enhancedSystemPrompt = systemBlocksToString(system)
     messages = toConverseMessages(history, message, imageBase64)
   }
-
-  const system: SystemContentBlock[] = enhancedSystemPrompt
-    ? [{ text: enhancedSystemPrompt }]
-    : []
 
   // MCP ツールを動的注入（接続が有効な場合のみ）
   const mcpTools = mcpConn && !mcpConn.isExpired
@@ -1118,7 +1164,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const resolvedModelId = MODEL_ID_MAP[modelKey] ?? MODEL_ID_MAP.haiku
     const inferenceConf = MODEL_INFERENCE_CONFIG[modelKey] ?? MODEL_INFERENCE_CONFIG.haiku
-    console.log(`[LLM] モデル: ${modelKey} (${resolvedModelId})`)
+    const cachePoints = system.filter((b) => 'cachePoint' in b).length
+    console.log(`[LLM] モデル: ${modelKey} (${resolvedModelId}), システムブロック: ${system.length} (cachePoint: ${cachePoints})`)
 
     for (let iteration = 0; iteration < MAX_TOOL_USE_ITERATIONS; iteration++) {
       const result = await bedrock.send(new ConverseCommand({
