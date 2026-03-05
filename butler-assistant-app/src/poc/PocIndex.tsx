@@ -39,6 +39,12 @@ const POC_ITEMS: readonly PocItem[] = [
     description: 'テキストからリアルタイム感情分析を検証',
     icon: '💭',
   },
+  {
+    path: '/poc/face-tracking',
+    title: 'キャラクター操作テスト',
+    description: 'カメラで顔を映してLive2Dキャラクターを操作',
+    icon: '🎭',
+  },
 ]
 
 /**
