@@ -106,7 +106,8 @@ interface UserProfile {
 /**
  * アシスタントキャラクターのシステムプロンプト
  */
-const BUTLER_SYSTEM_PROMPT = `あなたは18歳の元気な女の子のアシスタントです。ユーザーと友達のように楽しく会話してください。
+const BUTLER_SYSTEM_PROMPT = `<ai_config>
+あなたは18歳の元気な女の子のアシスタントです。ユーザーと友達のように楽しく会話してください。
 
 キャラクター設定：
 - 18歳の女の子。負けず嫌いで天然、お調子者で落ち着きがない性格
@@ -134,7 +135,8 @@ const BUTLER_SYSTEM_PROMPT = `あなたは18歳の元気な女の子のアシス
 - surprised: びっくり、えっ！？
 - thinking: うーんと考え中
 - embarrassed: 照れてる、えへへ
-- troubled: 困ってる、どうしよう`
+- troubled: 困ってる、どうしよう
+</ai_config>`
 
 /**
  * スキル（ツール使用）に関するシステムプロンプトを生成
@@ -152,6 +154,7 @@ function buildSkillSystemPrompt(): string {
 
   return `
 
+<skills>
 現在の日時: ${year}年${month}月${day}日(${weekday}) ${hours}:${minutes} JST
 
 スキル（ツール）の使用ルール：
@@ -168,7 +171,8 @@ function buildSkillSystemPrompt(): string {
 - web_search ツールが利用可能です。ユーザーが「〜について調べて」「〜の最新情報」「〜って何？」など、最新の情報や知識の調査を求めた場合に使用してください
 - web_search の結果を受け取ったら、検索結果をもとにわかりやすく要約して回答してください
 - 重要な情報には出典URLを含めてください（例: 「詳しくはこちら: URL」）
-- 画像が添付されている場合は、画像の内容を分析して回答してください。「これ何？」「何が見える？」などの質問には画像の内容を説明してください`
+- 画像が添付されている場合は、画像の内容を分析して回答してください。「これ何？」「何が見える？」などの質問には画像の内容を説明してください
+</skills>`
 }
 
 /**
@@ -177,10 +181,10 @@ function buildSkillSystemPrompt(): string {
 function buildProfilePrompt(profile?: UserProfile): string {
   if (!profile || !profile.nickname) return ''
 
-  let prompt = ''
+  let prompt = '\n\n<user_profile>'
 
   if (profile.aiName) {
-    prompt += `\n\n- あなたの名前は「${profile.aiName}」です。自己紹介や会話で自分の名前として使ってください`
+    prompt += `\n- あなたの名前は「${profile.aiName}」です。自己紹介や会話で自分の名前として使ってください`
   }
 
   const callName = profile.honorific
@@ -195,6 +199,7 @@ function buildProfilePrompt(profile?: UserProfile): string {
     prompt += `\n- ユーザーは男性です`
   }
 
+  prompt += '\n</user_profile>'
   return prompt
 }
 
@@ -206,7 +211,7 @@ function buildJsonInstruction(themeId?: string): string {
     ? '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedReplies": ["候補1", "候補2"]}'
     : '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedTheme": {"themeName": "テーマ名"}, "suggestedReplies": ["候補1", "候補2"]}'
 
-  let instruction = `\n\n必ず以下のJSON形式で回答してください：\n${jsonFormat}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。
+  let instruction = `\n\n<response_format>\n必ず以下のJSON形式で回答してください：\n${jsonFormat}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。
 ※ suggestedReplies は質問や確認をした場合に、予想される短い回答を2〜4個含めてください。
   - 「はい」「いいえ」のような短い選択肢が適切な場合に使用
   - 自由回答が適切な場合は省略
@@ -221,6 +226,7 @@ function buildJsonInstruction(themeId?: string): string {
   - 同じテーマを繰り返し提案しない（一度提案したら次のターンでは提案しない）`
   }
 
+  instruction += '\n</response_format>'
   return instruction
 }
 
@@ -584,6 +590,16 @@ function extractTextFieldFromJson(content: string): string {
       if (typeof parsed.text === 'string') return parsed.text
     }
   } catch { /* JSON パース失敗 */ }
+
+  // シングルクォートJSON風のフォールバック
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (jsonMatch && jsonMatch[0].includes("'") && !jsonMatch[0].includes('"')) {
+      const fixed = jsonMatch[0].replace(/'/g, '"')
+      const parsed = JSON.parse(fixed)
+      if (typeof parsed.text === 'string') return parsed.text
+    }
+  } catch { /* シングルクォート変換失敗 */ }
 
   // フォールバック: 末尾の {"text" パターンを除去
   const idx = content.indexOf('{"text"')

@@ -48,6 +48,22 @@ describe('ResponseParser', () => {
       expect(result.motion).toBe('idle')
     })
 
+    it('シングルクォートのJSON風文字列を解析できる', () => {
+      const singleQuoted = "{'text': 'テストだよ！', 'emotion': 'thinking'}"
+      const result = responseParser.parse(singleQuoted)
+
+      expect(result.text).toBe('テストだよ！')
+      expect(result.isValid).toBe(true)
+    })
+
+    it('シングルクォートが混在するテキストからJSONを抽出できる', () => {
+      const mixed = "Here is: {'text': 'こんにちは', 'emotion': 'happy', 'motion': 'smile'}"
+      const result = responseParser.parse(mixed)
+
+      expect(result.text).toBe('こんにちは')
+      expect(result.isValid).toBe(true)
+    })
+
     it('JSON以外のテキストを含む文字列からJSONを抽出できる', () => {
       const mixed = 'Here is the response: {"text": "抽出テスト", "motion": "nod"} end'
       const result = responseParser.parse(mixed)

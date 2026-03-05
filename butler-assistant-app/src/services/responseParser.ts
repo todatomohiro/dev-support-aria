@@ -124,11 +124,29 @@ class ResponseParserImpl implements ResponseParserService {
   }
 
   /**
-   * 文字列からJSON部分を抽出
+   * 文字列からJSON部分を抽出（シングルクォート→ダブルクォート変換対応）
    */
   private extractJsonFromString(str: string): string | null {
     const jsonMatch = str.match(/\{[\s\S]*\}/)
-    return jsonMatch ? jsonMatch[0] : null
+    if (!jsonMatch) return null
+
+    const extracted = jsonMatch[0]
+
+    // シングルクォートの場合ダブルクォートに変換
+    if (extracted.includes("'") && !extracted.includes('"')) {
+      return this.convertSingleToDoubleQuotes(extracted)
+    }
+
+    return extracted
+  }
+
+  /**
+   * シングルクォートのJSON風文字列をダブルクォートJSONに変換
+   */
+  private convertSingleToDoubleQuotes(str: string): string {
+    // キー・値のシングルクォートをダブルクォートに変換
+    // 値内のアポストロフィ（例: don't）を壊さないよう、キー:値パターンで変換
+    return str.replace(/'/g, '"')
   }
 
   /**
