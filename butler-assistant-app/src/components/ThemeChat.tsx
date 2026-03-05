@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores'
 import { DEFAULT_MODEL_KEY } from '@/types'
 import type { ModelKey, TopicCategory, TopicSubcategory } from '@/types'
 import { chatController } from '@/services/chatController'
+import { useThemePolling } from '@/hooks/useThemePolling'
 import { themeService } from '@/services/themeService'
 import { workService } from '@/services/workService'
 import { ttsService } from '@/services/ttsService'
@@ -30,6 +31,9 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
   const config = useAppStore((s) => s.config)
   const workConnection = useThemeStore((s) => s.activeWorkConnection)
   const expiredNotifiedRef = useRef(false)
+
+  // 他ブラウザ/タブからのメッセージ同期用ポーリング
+  useThemePolling(themeId)
 
   const currentTheme = themes.find((t) => t.themeId === themeId)
   const currentModelKey = currentTheme?.modelKey ?? DEFAULT_MODEL_KEY
