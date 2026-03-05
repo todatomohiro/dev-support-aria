@@ -5,6 +5,7 @@ import { logout } from '@/auth/authClient'
 /** サイドバー */
 export function Sidebar() {
   const user = useAuthStore((s) => s.user)
+  const mfaEnabled = useAuthStore((s) => s.mfaEnabled)
 
   return (
     <aside className="w-60 bg-white border-r border-gray-200 flex flex-col">
@@ -13,13 +14,23 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 p-2">
+        {mfaEnabled && (
+          <NavLink
+            to="/users"
+            className={({ isActive }) =>
+              `block px-3 py-2 rounded text-sm ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`
+            }
+          >
+            ユーザー管理
+          </NavLink>
+        )}
         <NavLink
-          to="/users"
+          to="/mfa"
           className={({ isActive }) =>
             `block px-3 py-2 rounded text-sm ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`
           }
         >
-          ユーザー管理
+          MFA 設定
         </NavLink>
       </nav>
 

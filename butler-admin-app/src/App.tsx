@@ -6,6 +6,7 @@ import { LoginPage } from '@/components/LoginPage'
 import { AppLayout } from '@/components/AppLayout'
 import { UserTable } from '@/components/UserTable'
 import { UserDetail } from '@/components/UserDetail'
+import { MfaSettingsPage } from '@/components/MfaSettingsPage'
 
 function AuthenticatedApp() {
   const status = useAuthStore((s) => s.status)
@@ -24,14 +25,36 @@ function AuthenticatedApp() {
 
   return (
     <AdminGuard>
+      <AppRoutes />
+    </AdminGuard>
+  )
+}
+
+/** MFA 有効状態に応じてルーティングを制御 */
+function AppRoutes() {
+  const mfaEnabled = useAuthStore((s) => s.mfaEnabled)
+
+  if (!mfaEnabled) {
+    // MFA 未設定: MFA 設定ページのみアクセス可能
+    return (
       <Routes>
         <Route element={<AppLayout />}>
-          <Route path="/users" element={<UserTable />} />
-          <Route path="/users/:userId" element={<UserDetail />} />
-          <Route path="*" element={<Navigate to="/users" replace />} />
+          <Route path="/mfa" element={<MfaSettingsPage />} />
+          <Route path="*" element={<Navigate to="/mfa" replace />} />
         </Route>
       </Routes>
-    </AdminGuard>
+    )
+  }
+
+  return (
+    <Routes>
+      <Route element={<AppLayout />}>
+        <Route path="/users" element={<UserTable />} />
+        <Route path="/users/:userId" element={<UserDetail />} />
+        <Route path="/mfa" element={<MfaSettingsPage />} />
+        <Route path="*" element={<Navigate to="/users" replace />} />
+      </Route>
+    </Routes>
   )
 }
 

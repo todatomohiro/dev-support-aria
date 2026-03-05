@@ -3,6 +3,7 @@ import {
   signIn,
   signUp,
   confirmSignUp,
+  confirmSignIn,
   resetPassword,
   confirmResetPassword,
   signOut,
@@ -112,6 +113,13 @@ export async function confirmForgotPassword(
 }
 
 /**
+ * TOTP コード確認（ログイン時の MFA チャレンジ）
+ */
+export async function confirmMfaCode(code: string): Promise<void> {
+  await confirmSignIn({ challengeResponse: code })
+}
+
+/**
  * ログアウト
  */
 export async function logout(): Promise<void> {
@@ -147,6 +155,25 @@ export async function getIdToken(): Promise<string | null> {
     return session.tokens?.idToken?.toString() ?? null
   } catch {
     return null
+  }
+}
+
+/**
+ * 管理者ロールを持つかチェック
+ */
+export async function checkIsAdmin(token: string): Promise<boolean> {
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
+  if (!apiBaseUrl) return false
+
+  try {
+    const res = await fetch(`${apiBaseUrl}/admin/me`, {
+      headers: { Authorization: token },
+    })
+    if (!res.ok) return false
+    const data = await res.json()
+    return data.role === 'admin'
+  } catch {
+    return false
   }
 }
 

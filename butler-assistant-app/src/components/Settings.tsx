@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useAuthStore } from '@/auth/authStore'
 import type { UIConfig, UserLocation } from '@/types'
 
 /** 位置情報ステータス */
@@ -22,6 +23,8 @@ interface SettingsProps {
  * 設定パネル コンポーネント
  */
 export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }: SettingsProps) {
+  const isAdmin = useAuthStore((s) => s.isAdmin)
+
   // UI設定のローカル状態
   const [theme, setTheme] = useState<'light' | 'dark'>(config.ui.theme)
   const [fontSize, setFontSize] = useState(config.ui.fontSize)
@@ -252,23 +255,25 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
                     data-testid="sentiment-toggle"
                   />
                 </label>
-                <label className="flex items-center justify-between cursor-pointer">
-                  <div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      開発者モード
-                    </span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      有効にすると PoC ボタンが表示されます
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={developerMode}
-                    onChange={(e) => setDeveloperMode(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    data-testid="developer-mode-toggle"
-                  />
-                </label>
+                {isAdmin && (
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        開発者モード
+                      </span>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        有効にすると PoC ボタンが表示されます
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={developerMode}
+                      onChange={(e) => setDeveloperMode(e.target.checked)}
+                      className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      data-testid="developer-mode-toggle"
+                    />
+                  </label>
+                )}
               </div>
             </div>
           </div>

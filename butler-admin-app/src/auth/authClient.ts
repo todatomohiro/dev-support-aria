@@ -1,5 +1,15 @@
 import { Amplify } from 'aws-amplify'
-import { signIn, signOut, getCurrentUser, fetchAuthSession } from 'aws-amplify/auth'
+import {
+  signIn,
+  signOut,
+  getCurrentUser,
+  fetchAuthSession,
+  confirmSignIn,
+  setUpTOTP,
+  verifyTOTPSetup,
+  fetchMFAPreference,
+  updateMFAPreference,
+} from 'aws-amplify/auth'
 import { Hub } from 'aws-amplify/utils'
 
 let isConfigured = false
@@ -31,6 +41,11 @@ export async function login(email: string, password: string) {
   return signIn({ username: email, password })
 }
 
+/** TOTP コード確認（ログイン時の MFA チャレンジ） */
+export async function confirmMfaCode(code: string) {
+  return confirmSignIn({ challengeResponse: code })
+}
+
 /** ログアウト */
 export async function logout() {
   return signOut()
@@ -51,6 +66,28 @@ export async function getAuthUser() {
 export async function getIdToken(): Promise<string> {
   const session = await fetchAuthSession()
   return session.tokens?.idToken?.toString() ?? ''
+}
+
+/** TOTP セットアップ開始（QR コード用の URI を返す） */
+export async function setupTotp(email: string) {
+  const output = await setUpTOTP()
+  const setupUri = output.getSetupUri('Butler Admin', email)
+  return {
+    sharedSecret: output.sharedSecret,
+    qrCodeUri: setupUri.toString(),
+  }
+}
+
+/** TOTP セットアップ検証 + 有効化 */
+export async function verifyAndEnableTotp(code: string) {
+  await verifyTOTPSetup({ code })
+  await updateMFAPreference({ totp: 'PREFERRED' })
+}
+
+/** MFA（TOTP）が有効かチェック */
+export async function checkMfaEnabled(): Promise<boolean> {
+  const prefs = await fetchMFAPreference()
+  return prefs.enabled?.includes('TOTP') ?? false
 }
 
 /** 認証イベントリスナー */

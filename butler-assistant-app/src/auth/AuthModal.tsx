@@ -4,6 +4,7 @@ import {
   login,
   signup,
   confirmSignup,
+  confirmMfaCode,
   forgotPassword,
   confirmForgotPassword,
   isAuthConfigured,
@@ -28,6 +29,7 @@ export function AuthModal({
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [code, setCode] = useState('')
+  const [totpCode, setTotpCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -40,6 +42,7 @@ export function AuthModal({
     setPassword('')
     setPasswordConfirm('')
     setCode('')
+    setTotpCode('')
     setNewPassword('')
     setError(null)
     setIsSubmitting(false)
@@ -79,6 +82,8 @@ export function AuthModal({
         if (result.nextStep === 'CONFIRM_SIGN_UP') {
           setPendingEmail(email)
           setView('confirmSignUp')
+        } else if (result.nextStep === 'CONFIRM_SIGN_IN_WITH_TOTP_CODE') {
+          setView('totpChallenge')
         } else {
           handleClose()
         }
@@ -89,6 +94,24 @@ export function AuthModal({
       }
     },
     [email, password, setPendingEmail, handleClose]
+  )
+
+  /** TOTP コード送信 */
+  const handleTotpChallenge = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault()
+      setError(null)
+      setIsSubmitting(true)
+      try {
+        await confirmMfaCode(totpCode)
+        handleClose()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '認証コードが正しくありません')
+      } finally {
+        setIsSubmitting(false)
+      }
+    },
+    [totpCode, handleClose]
   )
 
   /** サインアップ送信 */
@@ -204,6 +227,7 @@ export function AuthModal({
             {view === 'login' && 'ログイン'}
             {view === 'signup' && 'アカウント作成'}
             {view === 'confirmSignUp' && 'メール確認'}
+            {view === 'totpChallenge' && '二要素認証'}
             {view === 'forgotPassword' && 'パスワードリセット'}
             {view === 'confirmForgotPassword' && '新しいパスワード'}
           </h2>
@@ -353,6 +377,46 @@ export function AuthModal({
               </button>
               <div>
                 <span onClick={() => switchView('login')} className={linkClass} data-testid="goto-login">
+                  ログインに戻る
+                </span>
+              </div>
+            </form>
+          )}
+
+          {/* ── TOTP チャレンジフォーム ── */}
+          {view === 'totpChallenge' && (
+            <form onSubmit={handleTotpChallenge} className="space-y-4" data-testid="totp-form">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                認証アプリに表示されている6桁のコードを入力してください。
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  認証コード
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  autoComplete="one-time-code"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                  className={inputClass}
+                  required
+                  autoFocus
+                  data-testid="totp-code"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSubmitting || totpCode.length !== 6}
+                className={btnPrimaryClass}
+                data-testid="totp-submit"
+              >
+                {isSubmitting ? '確認中...' : '確認'}
+              </button>
+              <div>
+                <span onClick={() => { switchView('login'); setTotpCode('') }} className={linkClass} data-testid="goto-login">
                   ログインに戻る
                 </span>
               </div>

@@ -15,10 +15,16 @@ import type { Construct } from 'constructs'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
 import * as cloudfrontOrigins from 'aws-cdk-lib/aws-cloudfront-origins'
+import * as acm from 'aws-cdk-lib/aws-certificatemanager'
 import * as path from 'path'
 
+interface ButlerStackProps extends cdk.StackProps {
+  /** CloudFront 用 ACM 証明書（us-east-1 で作成済み） */
+  adminCertificate: acm.ICertificate
+}
+
 export class ButlerStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: ButlerStackProps) {
     super(scope, id, props)
 
     // ── DynamoDB テーブル ──
@@ -68,6 +74,11 @@ export class ButlerStack extends cdk.Stack {
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      mfa: cognito.Mfa.OPTIONAL,
+      mfaSecondFactor: {
+        sms: false,
+        otp: true,
+      },
     })
 
     // App Client（SPA 用 — SRP 認証、client secret なし）
@@ -856,6 +867,8 @@ export class ButlerStack extends cdk.Stack {
         origin: cloudfrontOrigins.S3BucketOrigin.withOriginAccessControl(adminBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       },
+      domainNames: ['aiadmin.aria.develop.blue'],
+      certificate: props.adminCertificate,
       defaultRootObject: 'index.html',
       errorResponses: [
         {
@@ -898,8 +911,13 @@ export class ButlerStack extends cdk.Stack {
     })
 
     new cdk.CfnOutput(this, 'AdminAppUrl', {
-      value: `https://${adminDistribution.distributionDomainName}`,
-      description: 'Admin App CloudFront URL',
+      value: 'https://aiadmin.aria.develop.blue',
+      description: 'Admin App URL',
+    })
+
+    new cdk.CfnOutput(this, 'AdminAppCloudfrontDomain', {
+      value: adminDistribution.distributionDomainName,
+      description: 'Admin App CloudFront ドメイン（CNAME ターゲット）',
     })
 
     new cdk.CfnOutput(this, 'AdminAppClientId', {

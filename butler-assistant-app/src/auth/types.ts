@@ -6,7 +6,7 @@ export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'conf
 /**
  * 認証フォームの表示状態
  */
-export type AuthView = 'login' | 'signup' | 'confirmSignUp' | 'forgotPassword' | 'confirmForgotPassword'
+export type AuthView = 'login' | 'signup' | 'confirmSignUp' | 'forgotPassword' | 'confirmForgotPassword' | 'totpChallenge'
 
 /**
  * 認証済みユーザー情報
@@ -34,12 +34,15 @@ export interface AuthState {
   accessToken: string | null
   /** 確認コード送信先メール（サインアップ/パスワードリセット用） */
   pendingEmail: string | null
+  /** 管理者権限を持つか */
+  isAdmin: boolean
 
   // アクション
   setStatus: (status: AuthStatus) => void
   setUser: (user: AuthUser | null) => void
   setAccessToken: (token: string | null) => void
   setPendingEmail: (email: string | null) => void
+  setIsAdmin: (isAdmin: boolean) => void
   login: (user: AuthUser, token: string) => void
   logout: () => void
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Settings } from '../Settings'
+import { useAuthStore } from '@/auth/authStore'
 
 const mockConfig = {
   ui: {
@@ -17,6 +18,7 @@ describe('Settings', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    useAuthStore.setState({ isAdmin: false })
   })
 
   describe('表示制御', () => {
@@ -206,7 +208,11 @@ describe('Settings', () => {
   })
 
   describe('開発者モード', () => {
-    it('開発者モードトグルが表示される', () => {
+    beforeEach(() => {
+      useAuthStore.setState({ isAdmin: true })
+    })
+
+    it('管理者の場合、開発者モードトグルが表示される', () => {
       render(
         <Settings
           isOpen={true}
@@ -219,6 +225,21 @@ describe('Settings', () => {
       expect(screen.getByTestId('developer-mode-toggle')).toBeInTheDocument()
       expect(screen.getByText('開発者モード')).toBeInTheDocument()
       expect(screen.getByText('有効にすると PoC ボタンが表示されます')).toBeInTheDocument()
+    })
+
+    it('非管理者の場合、開発者モードトグルが表示されない', () => {
+      useAuthStore.setState({ isAdmin: false })
+
+      render(
+        <Settings
+          isOpen={true}
+          onClose={mockOnClose}
+          config={mockConfig}
+          onSave={mockOnSave}
+        />
+      )
+
+      expect(screen.queryByTestId('developer-mode-toggle')).not.toBeInTheDocument()
     })
 
     it('デフォルトでOFFになっている', () => {

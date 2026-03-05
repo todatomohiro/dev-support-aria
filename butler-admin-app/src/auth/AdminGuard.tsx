@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from './authStore'
 import { adminApi } from '@/services/adminApi'
-import { logout } from './authClient'
+import { checkMfaEnabled, logout } from './authClient'
 
 type GuardState = 'loading' | 'admin' | 'denied' | 'unauthenticated'
 
 /**
  * 管理者権限ガード
- * admin ロール確認後にのみ children を描画
+ * admin ロール確認 + MFA 有効化状態を authStore に反映
  */
 export function AdminGuard({ children }: { children: React.ReactNode }) {
-  const { status, idToken } = useAuthStore()
+  const { status, idToken, setMfaEnabled } = useAuthStore()
   const [guardState, setGuardState] = useState<GuardState>('loading')
 
   useEffect(() => {
@@ -21,16 +21,23 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
     }
     if (!idToken) return
 
-    const checkRole = async () => {
+    const checkAccess = async () => {
       try {
         const me = await adminApi.getMe(idToken)
-        setGuardState(me.role === 'admin' ? 'admin' : 'denied')
+        if (me.role !== 'admin') {
+          setGuardState('denied')
+          return
+        }
+
+        const mfaEnabled = await checkMfaEnabled()
+        setMfaEnabled(mfaEnabled)
+        setGuardState('admin')
       } catch {
         setGuardState('denied')
       }
     }
-    checkRole()
-  }, [status, idToken])
+    checkAccess()
+  }, [status, idToken, setMfaEnabled])
 
   if (guardState === 'loading') {
     return (
@@ -41,7 +48,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (guardState === 'unauthenticated') {
-    return null // LoginPage が表示される
+    return null
   }
 
   if (guardState === 'denied') {
