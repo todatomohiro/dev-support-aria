@@ -887,6 +887,89 @@ export class ButlerStack extends cdk.Stack {
     const adminUserRoleResource = adminUserByIdResource.addResource('role')
     adminUserRoleResource.addMethod('PUT', new apigateway.LambdaIntegration(adminUsersRoleFn), authMethodOptions)
 
+    // ── Models S3 バケット（Live2D モデル保存用） ──
+    const modelsBucket = new s3.Bucket(this, 'ModelsStorageBucket', {
+      bucketName: `butler-models-${this.account}`,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      versioned: true,
+    })
+
+    // Models CloudFront（モデルファイル配信）
+    const modelsDistribution = new cloudfront.Distribution(this, 'ModelsDistribution', {
+      defaultBehavior: {
+        origin: cloudfrontOrigins.S3BucketOrigin.withOriginAccessControl(modelsBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      },
+      comment: 'Live2D Models CDN',
+    })
+
+    const modelsCdnBase = `https://${modelsDistribution.distributionDomainName}`
+
+    // ── Admin Models Lambda 関数 ──
+    const adminModelsUploadFn = new lambdaNode.NodejsFunction(this, 'AdminModelsUploadFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'upload.ts'),
+      functionName: 'butler-admin-models-upload',
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+    })
+    adminModelsUploadFn.addEnvironment('MODELS_BUCKET', modelsBucket.bucketName)
+
+    const adminModelsListFn = new lambdaNode.NodejsFunction(this, 'AdminModelsListFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'list.ts'),
+      functionName: 'butler-admin-models-list',
+    })
+
+    const adminModelsUpdateFn = new lambdaNode.NodejsFunction(this, 'AdminModelsUpdateFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'update.ts'),
+      functionName: 'butler-admin-models-update',
+    })
+
+    const adminModelsDeleteFn = new lambdaNode.NodejsFunction(this, 'AdminModelsDeleteFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'delete.ts'),
+      functionName: 'butler-admin-models-delete',
+    })
+    adminModelsDeleteFn.addEnvironment('MODELS_BUCKET', modelsBucket.bucketName)
+
+    // Models — DynamoDB 権限
+    table.grantReadWriteData(adminModelsUploadFn)
+    table.grantReadData(adminModelsListFn)
+    table.grantReadWriteData(adminModelsUpdateFn)
+    table.grantReadWriteData(adminModelsDeleteFn)
+
+    // Models — S3 権限
+    modelsBucket.grantReadWrite(adminModelsUploadFn)
+    modelsBucket.grantRead(adminModelsListFn)
+    modelsBucket.grantReadWrite(adminModelsDeleteFn)
+
+    // ユーザー向けモデル一覧 Lambda
+    const modelsListFn = new lambdaNode.NodejsFunction(this, 'ModelsListFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'models', 'list.ts'),
+      functionName: 'butler-models-list',
+    })
+    modelsListFn.addEnvironment('MODELS_CDN_BASE', modelsCdnBase)
+    table.grantReadData(modelsListFn)
+
+    // /admin/models API ルート
+    const adminModelsResource = adminResource.addResource('models')
+    adminModelsResource.addMethod('GET', new apigateway.LambdaIntegration(adminModelsListFn), authMethodOptions)
+    adminModelsResource.addMethod('POST', new apigateway.LambdaIntegration(adminModelsUploadFn), authMethodOptions)
+
+    // /admin/models/{modelId}
+    const adminModelByIdResource = adminModelsResource.addResource('{modelId}')
+    adminModelByIdResource.addMethod('PATCH', new apigateway.LambdaIntegration(adminModelsUpdateFn), authMethodOptions)
+    adminModelByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(adminModelsDeleteFn), authMethodOptions)
+
+    // /models（ユーザー向け）
+    const modelsResource = api.root.addResource('models')
+    modelsResource.addMethod('GET', new apigateway.LambdaIntegration(modelsListFn), authMethodOptions)
+
     // ── Admin S3 + CloudFront ──
     const adminBucket = new s3.Bucket(this, 'AdminAppBucket', {
       bucketName: `butler-admin-app-${this.account}`,
@@ -961,6 +1044,16 @@ export class ButlerStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AdminAppBucketName', {
       value: adminBucket.bucketName,
       description: 'Admin App S3 Bucket',
+    })
+
+    new cdk.CfnOutput(this, 'ModelsBucketName', {
+      value: modelsBucket.bucketName,
+      description: 'Live2D Models S3 Bucket',
+    })
+
+    new cdk.CfnOutput(this, 'ModelsCdnUrl', {
+      value: modelsCdnBase,
+      description: 'Live2D Models CDN URL',
     })
   }
 }

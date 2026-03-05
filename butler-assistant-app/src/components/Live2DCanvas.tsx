@@ -274,8 +274,9 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
     const model = modelRef.current
     if (!model || !currentMotion) return
 
-    // モーションマッピング
-    const motionMap: Record<string, { group: string; index: number }> = {
+    // モーションマッピング（サーバーから取得したメタデータを優先）
+    const meta = useAppStore.getState().activeModelMeta
+    const defaultMotionMap: Record<string, { group: string; index: number }> = {
       idle: { group: 'Idle', index: 0 },
       bow: { group: '', index: 0 },
       smile: { group: '', index: 1 },
@@ -287,6 +288,9 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       nervous: { group: '', index: 3 },
       confused: { group: '', index: 2 },
     }
+    const motionMap = (meta?.motionMapping && Object.keys(meta.motionMapping).length > 0)
+      ? { ...defaultMotionMap, ...meta.motionMapping }
+      : defaultMotionMap
 
     const motion = motionMap[currentMotion] || { group: 'Idle', index: 0 }
 

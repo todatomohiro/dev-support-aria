@@ -15,14 +15,24 @@ export function Sidebar() {
 
       <nav className="flex-1 p-2">
         {mfaEnabled && (
-          <NavLink
-            to="/users"
-            className={({ isActive }) =>
-              `block px-3 py-2 rounded text-sm ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`
-            }
-          >
-            ユーザー管理
-          </NavLink>
+          <>
+            <NavLink
+              to="/users"
+              className={({ isActive }) =>
+                `block px-3 py-2 rounded text-sm ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`
+              }
+            >
+              ユーザー管理
+            </NavLink>
+            <NavLink
+              to="/models"
+              className={({ isActive }) =>
+                `block px-3 py-2 rounded text-sm ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`
+              }
+            >
+              モデル管理
+            </NavLink>
+          </>
         )}
         <NavLink
           to="/mfa"

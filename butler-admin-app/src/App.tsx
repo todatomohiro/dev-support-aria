@@ -7,6 +7,7 @@ import { AppLayout } from '@/components/AppLayout'
 import { UserTable } from '@/components/UserTable'
 import { UserDetail } from '@/components/UserDetail'
 import { MfaSettingsPage } from '@/components/MfaSettingsPage'
+import { ModelManagement } from '@/components/ModelManagement'
 
 function AuthenticatedApp() {
   const status = useAuthStore((s) => s.status)
@@ -51,6 +52,7 @@ function AppRoutes() {
       <Route element={<AppLayout />}>
         <Route path="/users" element={<UserTable />} />
         <Route path="/users/:userId" element={<UserDetail />} />
+        <Route path="/models" element={<ModelManagement />} />
         <Route path="/mfa" element={<MfaSettingsPage />} />
         <Route path="*" element={<Navigate to="/users" replace />} />
       </Route>

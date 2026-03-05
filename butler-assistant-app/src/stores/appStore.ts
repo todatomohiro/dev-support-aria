@@ -32,6 +32,13 @@ export interface AppState {
   // 位置情報関連
   currentLocation: UserLocation | null
 
+  // モデルメタデータ（サーバーから取得した感情・モーションマッピング）
+  activeModelMeta: {
+    modelId: string
+    emotionMapping: Record<string, string>
+    motionMapping: Record<string, { group: string; index: number }>
+  } | null
+
   // 設定関連
   config: AppConfig
 
@@ -54,6 +61,7 @@ export interface AppState {
   enqueueMotion: (motion: string) => void
   dequeueMotion: () => string | null
   setCurrentLocation: (location: UserLocation | null) => void
+  setActiveModelMeta: (meta: AppState['activeModelMeta']) => void
   updateConfig: (config: Partial<AppConfig>) => void
   updateLastActive: () => void
   setError: (error: AppError | null) => void
@@ -91,6 +99,7 @@ export const useAppStore = create<AppState>()(
       isMotionPlaying: false,
       motionQueue: [],
       currentLocation: null,
+      activeModelMeta: null,
       lastActiveTimestamp: null,
       config: defaultConfig,
       lastError: null,
@@ -151,6 +160,7 @@ export const useAppStore = create<AppState>()(
 
       // 位置情報アクション
       setCurrentLocation: (location: UserLocation | null) => set({ currentLocation: location }),
+      setActiveModelMeta: (meta) => set({ activeModelMeta: meta }),
 
       // 設定アクション
       updateConfig: (configUpdate: Partial<AppConfig>) =>

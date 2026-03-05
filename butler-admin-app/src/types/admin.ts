@@ -33,3 +33,39 @@ export interface UsersListResponse {
 export interface UserDetailResponse {
   user: AdminUserDetail
 }
+
+// ── Models ──
+
+/** モデル表情定義 */
+export interface ModelExpression {
+  name: string
+  file: string
+}
+
+/** モデルモーション定義 */
+export interface ModelMotion {
+  group: string
+  index: number
+  file: string
+}
+
+/** モデルメタデータ */
+export interface ModelMeta {
+  modelId: string
+  name: string
+  description: string
+  s3Prefix: string
+  modelFile: string
+  status: 'active' | 'inactive'
+  expressions: ModelExpression[]
+  motions: ModelMotion[]
+  emotionMapping: Record<string, string>
+  motionMapping: Record<string, { group: string; index: number }>
+  createdAt: string
+  updatedAt: string
+}
+
+/** モデル一覧レスポンス */
+export interface ModelsListResponse {
+  models: ModelMeta[]
+}

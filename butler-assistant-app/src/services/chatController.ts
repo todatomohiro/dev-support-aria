@@ -112,9 +112,18 @@ class ChatControllerImpl {
 
   /**
    * 感情を表情名に変換
+   *
+   * サーバーから取得したモデルメタデータの emotionMapping を優先し、
+   * なければデフォルトの mao_pro マッピングにフォールバック。
    */
   private emotionToExpression(emotion: string): string {
-    // mao_pro モデルの表情マッピング
+    // サーバーから取得したマッピングを優先
+    const meta = useAppStore.getState().activeModelMeta
+    if (meta?.emotionMapping && Object.keys(meta.emotionMapping).length > 0) {
+      return meta.emotionMapping[emotion] ?? meta.emotionMapping['neutral'] ?? 'exp_01'
+    }
+
+    // デフォルト: mao_pro モデルの表情マッピング
     const emotionMap: Record<string, string> = {
       neutral: 'exp_01',
       happy: 'exp_02',
