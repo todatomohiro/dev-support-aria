@@ -22,6 +22,10 @@ export interface WorkConnection {
   serverUrl: string
   greeting?: string
   description?: string
+  suggestedReplies?: string[]
+  suggestedRepliesPersistent?: boolean
+  /** 送信テンプレート。{reply} がボタンラベルに置換される（例: "{reply}について教えて"） */
+  suggestedRepliesTemplate?: string
 }
 
 /** LLMレスポンスに含まれるワーク状態 */

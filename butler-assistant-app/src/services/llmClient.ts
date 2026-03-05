@@ -170,10 +170,14 @@ class LLMClientImpl implements LLMClientService {
     // システムプロンプト構築（JSON 形式指示含む）
     // トピックチャットでは suggestedTheme をフォーマット例から除外
     const jsonFormat = themeId
-      ? '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}'
-      : '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedTheme": {"themeName": "テーマ名"}}'
+      ? '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedReplies": ["候補1", "候補2"]}'
+      : '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedTheme": {"themeName": "テーマ名"}, "suggestedReplies": ["候補1", "候補2"]}'
 
-    const jsonInstruction = `\n\n必ず以下のJSON形式で回答してください：\n${jsonFormat}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。`
+    const jsonInstruction = `\n\n必ず以下のJSON形式で回答してください：\n${jsonFormat}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。
+※ suggestedReplies は質問や確認をした場合に、予想される短い回答を2〜4個含めてください。
+  - 「はい」「いいえ」のような短い選択肢が適切な場合に使用
+  - 自由回答が適切な場合は省略
+  - 各候補は10文字以内の短いテキスト`
 
     // メイン会話の場合のみテーマ提案指示を追加
     const themeSuggestionInstruction = themeId ? '' : `

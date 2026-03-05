@@ -125,7 +125,17 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
         content: workConnection.description,
         timestamp: Date.now() + 1,
         motion: 'idle',
+        suggestedReplies: workConnection.suggestedReplies,
       })
+    } else if (workConnection.suggestedReplies?.length) {
+      // description がない場合は greeting メッセージを更新して suggestedReplies を付与
+      const msgs = useThemeStore.getState().activeMessages
+      const lastMsg = msgs[msgs.length - 1]
+      if (lastMsg) {
+        store.setActiveMessages(msgs.map((m) =>
+          m.id === lastMsg.id ? { ...m, suggestedReplies: workConnection.suggestedReplies } : m
+        ))
+      }
     }
 
     // TTS で greeting を発話 + モーション再生
@@ -231,6 +241,8 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
             enabled: currentTheme?.subcategory === 'socratic',
             onToggle: handleSocraticToggle,
           }]}
+          persistentReplies={workConnection?.active && workConnection.suggestedRepliesPersistent ? workConnection.suggestedReplies : undefined}
+          persistentRepliesTemplate={workConnection?.active && workConnection.suggestedRepliesPersistent ? workConnection.suggestedRepliesTemplate : undefined}
           inputExtra={<ModelSelector modelKey={currentModelKey} onChange={handleModelChange} />}
         />
       </div>

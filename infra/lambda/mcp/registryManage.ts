@@ -72,6 +72,9 @@ async function handleCreate(event: APIGatewayProxyEvent): Promise<APIGatewayProx
       }
       if (description) item.description = description
       if (body.greeting) item.greeting = body.greeting
+      if (body.suggestedReplies && Array.isArray(body.suggestedReplies)) item.suggestedReplies = body.suggestedReplies
+      if (body.suggestedRepliesPersistent === true) item.suggestedRepliesPersistent = true
+      if (body.suggestedRepliesTemplate && typeof body.suggestedRepliesTemplate === 'string') item.suggestedRepliesTemplate = body.suggestedRepliesTemplate
       if (config) item.config = typeof config === 'string' ? config : JSON.stringify(config)
       if (script) item.script = script
       if (userId) item.createdBy = userId
@@ -136,7 +139,7 @@ async function handleUpdate(event: APIGatewayProxyEvent): Promise<APIGatewayProx
   }
 
   // 更新可能フィールド
-  const allowedFields = ['serverUrl', 'transport', 'displayName', 'description', 'greeting', 'defaultTtlMinutes', 'config', 'script', 'active', 'expiresAt']
+  const allowedFields = ['serverUrl', 'transport', 'displayName', 'description', 'greeting', 'suggestedReplies', 'suggestedRepliesPersistent', 'suggestedRepliesTemplate', 'defaultTtlMinutes', 'config', 'script', 'active', 'expiresAt']
   const updateExpressions: string[] = ['#updatedAt = :updatedAt']
   const expressionNames: Record<string, string> = { '#updatedAt': 'updatedAt' }
   const expressionValues: Record<string, unknown> = { ':updatedAt': new Date().toISOString() }

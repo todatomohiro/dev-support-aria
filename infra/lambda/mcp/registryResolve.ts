@@ -15,6 +15,10 @@ export interface RegistryEntry {
   displayName: string
   description?: string
   greeting?: string
+  suggestedReplies?: string[]
+  suggestedRepliesPersistent?: boolean
+  /** 送信テンプレート。{reply} がボタンラベルに置換される（例: "{reply}について教えて"） */
+  suggestedRepliesTemplate?: string
   defaultTtlMinutes: number
   config?: string
   script?: string

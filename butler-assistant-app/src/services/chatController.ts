@@ -69,6 +69,7 @@ class ChatControllerImpl {
         rawResponse: JSON.stringify(structuredResponse, null, 2),
         mapData: structuredResponse.mapData,
         suggestedTheme: structuredResponse.suggestedTheme,
+        suggestedReplies: structuredResponse.suggestedReplies,
       }
 
       // ストアにアシスタントメッセージを追加
@@ -322,6 +323,7 @@ class ChatControllerImpl {
         motion: structuredResponse.motion,
         rawResponse: JSON.stringify(structuredResponse, null, 2),
         mapData: structuredResponse.mapData,
+        suggestedReplies: structuredResponse.suggestedReplies,
       }
 
       // トピック自動命名: レスポンスに themeName があれば store を更新
@@ -329,15 +331,17 @@ class ChatControllerImpl {
         store.updateThemeName(themeId, structuredResponse.themeName)
       }
 
-      // ワーク（MCP）接続状態を更新
+      // ワーク（MCP）接続状態を更新（既存の接続情報を保持しつつ有効期限を更新）
       if (structuredResponse.workStatus) {
         if (structuredResponse.workStatus.active) {
+          const existing = store.activeWorkConnection
           store.setWorkConnection({
+            ...existing,
             themeId,
             active: true,
             expiresAt: structuredResponse.workStatus.expiresAt,
-            tools: [], // ツール情報は初回接続時に取得済み
-            serverUrl: '', // サーバーURLは初回接続時に取得済み
+            tools: existing?.tools ?? [],
+            serverUrl: existing?.serverUrl ?? '',
           })
         } else {
           store.clearWorkConnection()

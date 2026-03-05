@@ -49,6 +49,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       serverUrl: record.serverUrl,
       ...(record.greeting ? { greeting: record.greeting } : {}),
       ...(record.description ? { description: record.description } : {}),
+      ...(record.suggestedReplies ? { suggestedReplies: record.suggestedReplies } : {}),
+      ...(record.suggestedRepliesPersistent ? { suggestedRepliesPersistent: true } : {}),
+      ...(record.suggestedRepliesTemplate ? { suggestedRepliesTemplate: record.suggestedRepliesTemplate } : {}),
     })
   } catch (error) {
     console.error('MCP接続ステータス取得エラー:', error)

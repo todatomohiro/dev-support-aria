@@ -39,6 +39,8 @@ export interface StructuredResponse {
   themeName?: string
   /** Lambda から返されたワーク（MCP）接続状態 */
   workStatus?: { active: boolean; expiresAt: string; toolCount: number }
+  /** LLM が提案する回答候補（クイックリプライ） */
+  suggestedReplies?: string[]
 }
 
 /**

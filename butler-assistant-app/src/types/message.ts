@@ -15,6 +15,8 @@ export interface Message {
   mapData?: MapData
   /** LLM が提案するテーマ別ノート */
   suggestedTheme?: { themeName: string }
+  /** LLM が提案する回答候補（クイックリプライ） */
+  suggestedReplies?: string[]
 }
 
 /**

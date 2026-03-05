@@ -368,12 +368,15 @@ async function updateSessionAndMaybeSummarize(
 function toConverseMessages(
   history: Array<{ role: string; content: string; createdAt?: string }>,
   message: string,
-  imageBase64?: string
+  imageBase64?: string,
 ): BedrockMessage[] {
-  const messages: BedrockMessage[] = history.map((m) => ({
-    role: m.role as 'user' | 'assistant',
-    content: [{ text: m.createdAt ? `[${toJSTDateTimeString(m.createdAt)}] ${m.content}` : m.content }],
-  }))
+  const messages: BedrockMessage[] = history.map((m) => {
+    const text = m.createdAt ? `[${toJSTDateTimeString(m.createdAt)}] ${m.content}` : m.content
+    return {
+      role: m.role as 'user' | 'assistant',
+      content: [{ text }],
+    }
+  })
 
   const userContent: ContentBlock[] = [{ text: message }]
   if (imageBase64) {
@@ -729,7 +732,7 @@ function buildEnhancedSystemPrompt(
   if (workContext) {
     const toolDescriptions = workContext.tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
     const expiresTime = new Date(workContext.expiresAt).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' })
-    enhanced += `\n\n<work_context>\n【重要】このトピックには外部データソースと接続する「ワーク」機能が有効です。\nユーザーの質問には、まず以下のワークツールを使って回答してください。web_search より優先して使用すること。\n\n利用可能なワークツール:\n${toolDescriptions}\n\n有効期限: ${expiresTime}\n</work_context>`
+    enhanced += `\n\n<work_context>\n【最重要】このトピックには外部データソースと接続する「ワーク」機能が有効です。\n\n■ ツール使用ルール（必ず守ること）:\n- ユーザーの質問には、必ず以下のワークツールを呼び出して回答すること\n- 過去の会話履歴や自分の知識だけで回答してはいけない。毎回ツールを呼び出すこと\n- web_search より優先して使用すること\n- ユーザーが今回聞いた内容だけに回答すること。過去のターンで取得した情報を繰り返さないこと\n\n利用可能なワークツール:\n${toolDescriptions}\n\n有効期限: ${expiresTime}\n</work_context>`
   }
 
   // セッション要約 + チェックポイント（短期記憶）
@@ -888,8 +891,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.log(`[LLM] 過去セッション ${totalSessions} 件（${pastSessions.length} 日分）をプロンプトに注入`)
     }
 
-    // セッションの直近メッセージ + 今回のメッセージで会話構築
-    messages = toConverseMessages(sessionContext.recentMessages, message, imageBase64)
+    // ワーク（MCP）接続時: 会話履歴を含めず現在のメッセージのみで推論（過去のツール結果による汚染を完全防止）
+    const skipHistory = Boolean(mcpConn && !mcpConn.isExpired)
+    messages = skipHistory
+      ? toConverseMessages([], message, imageBase64)
+      : toConverseMessages(sessionContext.recentMessages, message, imageBase64)
   } else {
     // 既存フロー: フロントエンドからの history をそのまま使用
     enhancedSystemPrompt = buildEnhancedSystemPrompt(

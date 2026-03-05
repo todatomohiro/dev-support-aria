@@ -291,6 +291,65 @@ describe('ChatUI', () => {
     })
   })
 
+  describe('クイックリプライ', () => {
+    it('suggestedReplies がある場合にボタンが表示される', () => {
+      const messages: Message[] = [
+        { ...createMessage('1', '好き？嫌い？', 'assistant', Date.now()), suggestedReplies: ['好き', '嫌い', 'どちらでもない'] },
+      ]
+
+      renderChatUI({ messages })
+
+      const buttons = screen.getAllByTestId('quick-reply-button')
+      expect(buttons).toHaveLength(3)
+      expect(buttons[0]).toHaveTextContent('好き')
+      expect(buttons[1]).toHaveTextContent('嫌い')
+      expect(buttons[2]).toHaveTextContent('どちらでもない')
+    })
+
+    it('ボタンタップで onSendMessage が呼ばれる', () => {
+      const onSendMessage = vi.fn()
+      const messages: Message[] = [
+        { ...createMessage('1', '好き？', 'assistant', Date.now()), suggestedReplies: ['好き', '嫌い'] },
+      ]
+
+      renderChatUI({ messages, onSendMessage })
+
+      fireEvent.click(screen.getAllByTestId('quick-reply-button')[0])
+      expect(onSendMessage).toHaveBeenCalledWith('好き')
+    })
+
+    it('suggestedReplies がない場合にボタンが表示されない', () => {
+      const messages: Message[] = [
+        createMessage('1', 'こんにちは', 'assistant', Date.now()),
+      ]
+
+      renderChatUI({ messages })
+
+      expect(screen.queryByTestId('quick-reply-button')).not.toBeInTheDocument()
+    })
+
+    it('ローディング中はボタンが非表示', () => {
+      const messages: Message[] = [
+        { ...createMessage('1', '好き？', 'assistant', Date.now()), suggestedReplies: ['好き', '嫌い'] },
+      ]
+
+      renderChatUI({ messages, isLoading: true })
+
+      expect(screen.queryByTestId('quick-reply-button')).not.toBeInTheDocument()
+    })
+
+    it('最新メッセージがユーザーの場合はボタンが表示されない', () => {
+      const messages: Message[] = [
+        { ...createMessage('1', '好き？', 'assistant', Date.now() - 1000), suggestedReplies: ['好き', '嫌い'] },
+        createMessage('2', '好き', 'user', Date.now()),
+      ]
+
+      renderChatUI({ messages })
+
+      expect(screen.queryByTestId('quick-reply-button')).not.toBeInTheDocument()
+    })
+  })
+
   // Property-based tests
   describe('Property Tests', () => {
     // Property 1: メッセージ表示の時系列順序保持

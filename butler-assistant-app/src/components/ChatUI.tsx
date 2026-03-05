@@ -5,6 +5,7 @@ import type { Message } from '@/types'
 import { ttsService } from '@/services/ttsService'
 import { formatTime } from '@/utils'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+import { useVAD } from '@/hooks/useVAD'
 import { CameraPreview } from './CameraPreview'
 import type { CameraPreviewHandle } from './CameraPreview'
 
@@ -74,12 +75,16 @@ interface ChatUIProps {
   inputExtra?: React.ReactNode
   /** 追加オプション（壁打ちモード等） */
   extraOptions?: InputOption[]
+  /** ワーク定義の常時表示クイックリプライ */
+  persistentReplies?: string[]
+  /** クイックリプライ送信テンプレート（{reply} がラベルに置換） */
+  persistentRepliesTemplate?: string
 }
 
 /**
  * チャットUI コンポーネント
  */
-export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme, onInputSentimentChange, inputExtra, extraOptions = [] }: ChatUIProps) {
+export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme, onInputSentimentChange, inputExtra, extraOptions = [], persistentReplies, persistentRepliesTemplate }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
   const [autoSendEnabled, setAutoSendEnabled] = useState(false)
   const [isPopoverOpen, setIsPopoverOpen] = useState(false)
@@ -104,11 +109,30 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       },
     })
 
+  const { isSpeaking: vadSpeaking, silenceDurationMs, startMonitoring: vadStart, stopMonitoring: vadStop, isSupported: vadSupported } = useVAD()
+  const vadSpeakingRef = useRef(false)
+
   // ref を最新値に同期（setTimeout クロージャ問題回避）
   useEffect(() => { inputTextRef.current = inputText }, [inputText])
   useEffect(() => { autoSendEnabledRef.current = autoSendEnabled }, [autoSendEnabled])
   useEffect(() => { isLoadingRef.current = isLoading }, [isLoading])
+  useEffect(() => { vadSpeakingRef.current = vadSpeaking }, [vadSpeaking])
 
+  // autoSendEnabled + VAD 対応時、マイク監視を連動
+  useEffect(() => {
+    if (autoSendEnabled && vadSupported) {
+      vadStart()
+    } else {
+      vadStop()
+    }
+  }, [autoSendEnabled, vadSupported, vadStart, vadStop])
+
+  /** テキスト長に応じた動的ディレイを返す */
+  const getAutoSendDelay = useCallback((textLength: number): number => {
+    if (textLength <= 10) return 1000
+    if (textLength <= 30) return 1500
+    return 2500
+  }, [])
 
   /** 自動送信タイマーをリセット */
   const resetAutoSendTimer = useCallback(() => {
@@ -117,23 +141,54 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       autoSendTimerRef.current = null
     }
     if (!autoSendEnabledRef.current || isLoadingRef.current) return
+    // VAD 対応時: 発話中はタイマーを設定しない
+    if (vadSupported && vadSpeakingRef.current) return
+    const text = inputTextRef.current.trim()
+    const delay = vadSupported ? getAutoSendDelay(text.length) : 3500
     autoSendTimerRef.current = setTimeout(() => {
-      const text = inputTextRef.current.trim()
-      if (text) {
+      // VAD 対応時: 送信直前にも発話中チェック
+      if (vadSupported && vadSpeakingRef.current) {
+        autoSendTimerRef.current = null
+        return
+      }
+      const currentText = inputTextRef.current.trim()
+      if (currentText) {
         const image = cameraCaptureRef.current?.captureFrame() ?? undefined
-        onSendMessage(text, image)
+        onSendMessage(currentText, image)
         setInputText('')
       }
       autoSendTimerRef.current = null
-    }, 3500)
-  }, [onSendMessage])
+    }, delay)
+  }, [onSendMessage, vadSupported, getAutoSendDelay])
 
-  // 中間結果（話し続けている最中）でもタイマーリセット
+  // VAD: 無音検出時に動的タイマーで自動送信判定
   useEffect(() => {
-    if (interimText && autoSendEnabledRef.current && !isLoadingRef.current) {
+    if (!vadSupported || !autoSendEnabledRef.current || isLoadingRef.current) return
+    if (vadSpeaking) {
+      // 発話再開 → タイマーキャンセル
+      if (autoSendTimerRef.current) {
+        clearTimeout(autoSendTimerRef.current)
+        autoSendTimerRef.current = null
+      }
+      return
+    }
+    // 無音状態 + テキストあり → タイマー開始
+    const text = inputTextRef.current.trim()
+    if (!text) return
+    const delay = getAutoSendDelay(text.length)
+    if (silenceDurationMs >= delay && !autoSendTimerRef.current) {
+      const image = cameraCaptureRef.current?.captureFrame() ?? undefined
+      onSendMessage(text, image)
+      setInputText('')
+    }
+  }, [vadSpeaking, silenceDurationMs, vadSupported, getAutoSendDelay, onSendMessage])
+
+  // 中間結果（話し続けている最中）でもタイマーリセット（VAD非対応時のフォールバック）
+  useEffect(() => {
+    if (interimText && autoSendEnabledRef.current && !isLoadingRef.current && !vadSupported) {
       resetAutoSendTimer()
     }
-  }, [interimText, resetAutoSendTimer])
+  }, [interimText, resetAutoSendTimer, vadSupported])
 
   // 返事が来た後、入力テキストがあればタイマー開始
   useEffect(() => {
@@ -326,6 +381,32 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
           </svg>
         </button>
       )}
+
+      {/* クイックリプライ */}
+      {!isLoading && (() => {
+        // 常時表示リプライ or 最新アシスタントメッセージのリプライ
+        const lastMsg = messages[messages.length - 1]
+        const isPersistent = Boolean(persistentReplies?.length)
+        const replies = isPersistent
+          ? persistentReplies
+          : (lastMsg?.role === 'assistant' ? lastMsg.suggestedReplies : undefined)
+        const template = isPersistent ? persistentRepliesTemplate : undefined
+        return replies?.length ? (
+          <div className="flex gap-2 overflow-x-auto px-2 sm:px-4 py-1.5 border-t border-gray-200 dark:border-gray-700" data-testid="quick-replies">
+            {replies.map((reply) => (
+              <button
+                key={reply}
+                type="button"
+                onClick={() => onSendMessage(template ? template.replace('{reply}', reply) : reply)}
+                className="shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border border-blue-300 dark:border-blue-600 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors"
+                data-testid="quick-reply-button"
+              >
+                {reply}
+              </button>
+            ))}
+          </div>
+        ) : null
+      })()}
 
       {/* 入力エリア */}
       <div className="border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4">
