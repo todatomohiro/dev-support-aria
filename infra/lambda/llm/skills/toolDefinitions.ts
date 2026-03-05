@@ -109,3 +109,89 @@ export const TOOL_DEFINITIONS: Tool[] = [
     },
   },
 ]
+
+/**
+ * メモ機能のツール定義（有効時のみ TOOL_DEFINITIONS に追加）
+ */
+export const MEMO_TOOL_DEFINITIONS: Tool[] = [
+  {
+    toolSpec: {
+      name: 'save_memo',
+      description: 'ユーザーが「これメモして」「覚えておいて」「メモに保存して」と言った場合に使用します。会話の内容やユーザーが指定した内容をメモとして保存します。',
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            title: {
+              type: 'string',
+              description: 'メモのタイトル（50文字以内）',
+            },
+            content: {
+              type: 'string',
+              description: 'メモの内容（500文字以内）',
+            },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'タグ（最大10個、各20文字以内）',
+            },
+          },
+          required: ['title', 'content'],
+        },
+      },
+    },
+  },
+  {
+    toolSpec: {
+      name: 'search_memos',
+      description: 'ユーザーが「メモを探して」「〜のメモある？」と聞いた場合に使用します。キーワードでメモを検索します。',
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: '検索キーワード',
+            },
+          },
+          required: ['query'],
+        },
+      },
+    },
+  },
+  {
+    toolSpec: {
+      name: 'list_memos',
+      description: 'ユーザーが「メモ一覧を見せて」「最近のメモは？」と聞いた場合に使用します。メモの一覧を取得します。',
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: '取得件数（デフォルト: 10）',
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    toolSpec: {
+      name: 'delete_memo',
+      description: 'ユーザーが「メモを消して」「このメモ削除して」と言った場合に使用します。指定されたメモを削除します。必ずユーザーに確認してから実行してください。',
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            memoId: {
+              type: 'string',
+              description: '削除するメモのID',
+            },
+          },
+          required: ['memoId'],
+        },
+      },
+    },
+  },
+]

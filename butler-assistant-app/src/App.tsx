@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
@@ -507,6 +507,7 @@ function App() {
                 <Route path="/groups" element={<GroupChatScreen />} />
                 <Route path="/themes/:themeId" element={<ThemeScreen />} />
                 <Route path="/themes" element={<ThemeScreen />} />
+                <Route path="/memos" element={<MemoScreen />} />
                 <Route path="*" element={
                   <div className="flex-1 flex flex-col min-h-0" style={{ fontSize: `${config.ui.fontSize}px` }}>
                     <ChatUI

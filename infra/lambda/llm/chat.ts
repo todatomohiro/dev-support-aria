@@ -20,7 +20,7 @@ import {
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import { executeSkill } from './skills'
-import { TOOL_DEFINITIONS } from './skills/toolDefinitions'
+import { TOOL_DEFINITIONS, MEMO_TOOL_DEFINITIONS } from './skills/toolDefinitions'
 import type { MCPToolDefinition } from '../mcp/mcpClient'
 
 const bedrock = new BedrockRuntimeClient({})
@@ -159,6 +159,13 @@ const SKILL_RULES_PROMPT = `
 - web_search の結果を受け取ったら、検索結果をもとにわかりやすく要約して回答してください
 - 重要な情報には出典URLを含めてください（例: 「詳しくはこちら: URL」）
 - 画像が添付されている場合は、画像の内容を分析して回答してください。「これ何？」「何が見える？」などの質問には画像の内容を説明してください
+- save_memo: ユーザーが「メモして」「覚えておいて」「保存して」と言った場合に使用。会話の内容をメモとして保存する
+- search_memos: ユーザーが「メモを探して」「〜のメモある？」と聞いた場合に使用
+- list_memos: ユーザーが「メモ一覧」「最近のメモ」と聞いた場合に使用
+- delete_memo: ユーザーが「メモを消して」と言った場合に使用。必ず確認してから実行
+- メモのタイトルは内容を端的に表す短い文（15文字以内推奨）
+- タグは内容から適切なものを2〜3個自動付与
+- メモ一覧を表示するときは、タイトル・日時・タグを見やすく整理して表示
 </skills>`
 
 /**
@@ -1157,7 +1164,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     : []
 
   const toolConfig: ToolConfiguration = {
-    tools: [...TOOL_DEFINITIONS, ...mcpTools],
+    tools: [...TOOL_DEFINITIONS, ...MEMO_TOOL_DEFINITIONS, ...mcpTools],
   }
 
   try {

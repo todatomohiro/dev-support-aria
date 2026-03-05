@@ -84,6 +84,24 @@ export function Sidebar({ activeTab, onOpenSettings, onOpenWork }: SidebarProps)
 
       </div>
 
+      {/* メモ */}
+      <div className="border-t border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => navigate('/memos')}
+          className={`w-full flex items-center gap-2 px-4 py-3 text-left text-sm transition-colors ${
+            activeTab === 'memos'
+              ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+          }`}
+          data-testid="sidebar-memos"
+        >
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+          </svg>
+          メモ
+        </button>
+      </div>
+
       {/* ワーク */}
       <div className="border-t border-gray-200 dark:border-gray-700">
         <button

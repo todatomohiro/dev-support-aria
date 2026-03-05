@@ -40,9 +40,11 @@ export function AppLayout({ children, currentSessionName, onOpenSettings, header
   // 現在のアクティブタブを判定
   const activeTab = location.pathname.startsWith('/themes')
     ? 'themes'
-    : location.pathname.startsWith('/groups')
-      ? 'groups'
-      : 'chat'
+    : location.pathname.startsWith('/memos')
+      ? 'memos'
+      : location.pathname.startsWith('/groups')
+        ? 'groups'
+        : 'chat'
 
   /** 編集開始 */
   const handleStartEdit = useCallback(() => {

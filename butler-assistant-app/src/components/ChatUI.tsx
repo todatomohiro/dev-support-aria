@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Message } from '@/types'
 import { ttsService } from '@/services/ttsService'
+import { memoService } from '@/services/memoService'
 import { formatTime } from '@/utils'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useVAD } from '@/hooks/useVAD'
@@ -577,6 +578,8 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
   const isUser = message.role === 'user'
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
+  const [memoSaved, setMemoSaved] = useState(false)
+  const [memoSaving, setMemoSaving] = useState(false)
 
   // rawResponse から enhancedSystemPrompt を抽出
   const promptText = (() => {
@@ -602,6 +605,20 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
       setIsSpeaking(false)
     }
   }, [message.content, isSpeaking])
+
+  const handleQuickMemo = useCallback(async () => {
+    if (memoSaving || memoSaved) return
+    setMemoSaving(true)
+    try {
+      const title = message.content.slice(0, 50).replace(/\n/g, ' ')
+      await memoService.saveMemo(title, message.content.slice(0, 500), [], 'quick')
+      setMemoSaved(true)
+    } catch (error) {
+      console.error('[Memo] クイック保存エラー:', error)
+    } finally {
+      setMemoSaving(false)
+    }
+  }, [message.content, memoSaving, memoSaved])
 
   return (
     <div
@@ -653,6 +670,25 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
                 data-testid="debug-info-toggle"
               >
                 PROMPT
+              </button>
+            )}
+            {!isUser && (
+              <button
+                onClick={handleQuickMemo}
+                disabled={memoSaving || memoSaved}
+                className={`ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-opacity ${memoSaved ? 'opacity-100 text-green-500' : 'opacity-60 hover:opacity-100'}`}
+                title={memoSaved ? '保存済み' : 'メモに保存'}
+                data-testid="memo-quick-save-button"
+              >
+                {memoSaved ? (
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                  </svg>
+                )}
               </button>
             )}
             {!isUser && (

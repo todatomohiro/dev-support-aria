@@ -220,6 +220,25 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-themes-messages',
     })
 
+    // ── Memos Lambda 関数 ──
+    const memosSaveFn = new lambdaNode.NodejsFunction(this, 'MemosSaveFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'memos', 'save.ts'),
+      functionName: 'butler-memos-save',
+    })
+
+    const memosListFn = new lambdaNode.NodejsFunction(this, 'MemosListFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'memos', 'list.ts'),
+      functionName: 'butler-memos-list',
+    })
+
+    const memosDeleteFn = new lambdaNode.NodejsFunction(this, 'MemosDeleteFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'memos', 'delete.ts'),
+      functionName: 'butler-memos-delete',
+    })
+
     // ── Conversations Lambda 関数（/groups ルートで利用）──
     const conversationsListFn = new lambdaNode.NodejsFunction(this, 'ConversationsListFn', {
       ...lambdaDefaults,
@@ -583,6 +602,11 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadWriteData(groupsLeaveFn)
     table.grantReadData(groupsMembersFn)
 
+    // Memos — DynamoDB 権限
+    table.grantReadWriteData(memosSaveFn)
+    table.grantReadData(memosListFn)
+    table.grantReadWriteData(memosDeleteFn)
+
     // Themes — DynamoDB 権限
     table.grantReadWriteData(themesCreateFn)
     table.grantReadData(themesListFn)
@@ -700,6 +724,15 @@ export class ButlerStack extends cdk.Stack {
     // /groups/{id}/members/me
     const groupMembersMeResource = groupMembersResource.addResource('me')
     groupMembersMeResource.addMethod('DELETE', new apigateway.LambdaIntegration(groupsLeaveFn), authMethodOptions)
+
+    // /memos
+    const memosResource = api.root.addResource('memos')
+    memosResource.addMethod('GET', new apigateway.LambdaIntegration(memosListFn), authMethodOptions)
+    memosResource.addMethod('POST', new apigateway.LambdaIntegration(memosSaveFn), authMethodOptions)
+
+    // /memos/{memoId}
+    const memoByIdResource = memosResource.addResource('{memoId}')
+    memoByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(memosDeleteFn), authMethodOptions)
 
     // /themes
     const themesResource = api.root.addResource('themes')
