@@ -44,6 +44,8 @@ export interface ThemeState {
   setWorkConnection: (conn: WorkConnection | null) => void
   /** ワーク接続をクリア */
   clearWorkConnection: () => void
+  /** テーマを楽観的に削除 */
+  removeTheme: (themeId: string) => void
   /** 状態を完全リセット */
   reset: () => void
 }
@@ -111,6 +113,11 @@ export const useThemeStore = create<ThemeState>()((set) => ({
   setWorkConnection: (conn: WorkConnection | null) => set({ activeWorkConnection: conn }),
 
   clearWorkConnection: () => set({ activeWorkConnection: null }),
+
+  removeTheme: (themeId: string) =>
+    set((state) => ({
+      themes: state.themes.filter((t) => t.themeId !== themeId),
+    })),
 
   resetSession: () => set({
     activeMessages: [],

@@ -20,6 +20,7 @@ export function ThemeScreen() {
   const setActiveTheme = useThemeStore((s) => s.setActiveTheme)
   const setLoading = useThemeStore((s) => s.setLoading)
   const setError = useThemeStore((s) => s.setError)
+  const removeTheme = useThemeStore((s) => s.removeTheme)
 
   /** テーマ一覧を取得 */
   const loadThemes = useCallback(async () => {
@@ -68,15 +69,21 @@ export function ThemeScreen() {
     await handleCreateTheme('新規トピック')
   }, [handleCreateTheme])
 
-  /** テーマを削除 */
+  /** テーマを削除（楽観的UI: 即座にリストから除去） */
   const handleDeleteTheme = useCallback(async (themeId: string) => {
-    await themeService.deleteTheme(themeId)
+    // 楽観的にUIから即削除
+    removeTheme(themeId)
     if (activeThemeId === themeId) {
       setActiveTheme(null)
       navigate('/themes')
     }
-    await loadThemes()
-  }, [activeThemeId, setActiveTheme, navigate, loadThemes])
+    try {
+      await themeService.deleteTheme(themeId)
+    } catch {
+      // 失敗時はサーバーから再取得して復元
+      await loadThemes()
+    }
+  }, [activeThemeId, setActiveTheme, navigate, removeTheme, loadThemes])
 
   /** 一覧に戻る */
   const handleBack = useCallback(() => {

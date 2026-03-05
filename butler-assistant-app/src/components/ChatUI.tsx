@@ -105,7 +105,10 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       continuous: autoSendEnabled,
       onResult: (text) => {
         setInputText((prev) => prev + text)
-        resetAutoSendTimer()
+        // VAD 非対応時のみタイマーで自動送信（VAD 対応時は無音検知に任せる）
+        if (!vadSupported) {
+          resetAutoSendTimer()
+        }
       },
     })
 
@@ -127,11 +130,11 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
     }
   }, [autoSendEnabled, vadSupported, vadStart, vadStop])
 
-  /** テキスト長に応じた動的ディレイを返す */
+  /** テキスト長に応じた動的ディレイを返す（息継ぎ程度の間で誤送信しない余裕を持たせる） */
   const getAutoSendDelay = useCallback((textLength: number): number => {
-    if (textLength <= 10) return 1000
-    if (textLength <= 30) return 1500
-    return 2500
+    if (textLength <= 10) return 1800
+    if (textLength <= 30) return 2500
+    return 3500
   }, [])
 
   /** 自動送信タイマーをリセット */
@@ -154,6 +157,8 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       const currentText = inputTextRef.current.trim()
       if (currentText) {
         const image = cameraCaptureRef.current?.captureFrame() ?? undefined
+        // ref を即座にクリアして二重送信を防止
+        inputTextRef.current = ''
         onSendMessage(currentText, image)
         setInputText('')
       }
@@ -176,8 +181,15 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
     const text = inputTextRef.current.trim()
     if (!text) return
     const delay = getAutoSendDelay(text.length)
-    if (silenceDurationMs >= delay && !autoSendTimerRef.current) {
+    if (silenceDurationMs >= delay) {
+      // 競合するタイマーがあればキャンセル
+      if (autoSendTimerRef.current) {
+        clearTimeout(autoSendTimerRef.current)
+        autoSendTimerRef.current = null
+      }
       const image = cameraCaptureRef.current?.captureFrame() ?? undefined
+      // ref を即座にクリアして useEffect 再実行時の二重送信を防止
+      inputTextRef.current = ''
       onSendMessage(text, image)
       setInputText('')
     }
@@ -239,12 +251,14 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
     onLoadEarlier()
   }, [onLoadEarlier, isLoadingEarlier])
 
-  const isInitialScrollRef = useRef(true)
+  const prevMessageCountRef = useRef(0)
   const [showScrollButton, setShowScrollButton] = useState(false)
 
   const scrollToBottom = () => {
-    const behavior = isInitialScrollRef.current ? 'instant' as ScrollBehavior : 'smooth'
-    isInitialScrollRef.current = false
+    // 0件 → N件（初回ロード・トピック切り替え）は instant、それ以降は smooth
+    const isInitialLoad = prevMessageCountRef.current === 0 && messages.length > 0
+    const behavior = isInitialLoad ? 'instant' as ScrollBehavior : 'smooth'
+    prevMessageCountRef.current = messages.length
     messagesEndRef.current?.scrollIntoView({ behavior })
   }
 

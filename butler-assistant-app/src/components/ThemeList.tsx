@@ -15,7 +15,7 @@ interface ThemeListProps {
  * テーマ一覧画面
  */
 export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading, error }: ThemeListProps) {
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
 
   /** 検索クエリでフィルタリングされたテーマ一覧 */
@@ -27,14 +27,20 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
 
   const handleDelete = useCallback(async (e: React.MouseEvent, themeId: string) => {
     e.stopPropagation()
+    // 既に削除中なら無視（連打防止）
+    if (deletingIds.has(themeId)) return
     if (!confirm('このトピックを削除しますか？')) return
-    setDeletingId(themeId)
+    setDeletingIds((prev) => new Set(prev).add(themeId))
     try {
       await onDelete(themeId)
     } finally {
-      setDeletingId(null)
+      setDeletingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(themeId)
+        return next
+      })
     }
-  }, [onDelete])
+  }, [onDelete, deletingIds])
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
@@ -128,7 +134,7 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
                   </div>
                   <button
                     onClick={(e) => handleDelete(e, theme.themeId)}
-                    disabled={deletingId === theme.themeId}
+                    disabled={deletingIds.has(theme.themeId)}
                     className="p-1 text-gray-400 hover:text-red-500 transition-colors shrink-0"
                     title="削除"
                     data-testid={`theme-delete-${theme.themeId}`}
