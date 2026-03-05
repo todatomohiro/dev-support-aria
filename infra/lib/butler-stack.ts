@@ -12,6 +12,9 @@ import * as ssm from 'aws-cdk-lib/aws-ssm'
 import * as events from 'aws-cdk-lib/aws-events'
 import * as eventsTargets from 'aws-cdk-lib/aws-events-targets'
 import type { Construct } from 'constructs'
+import * as s3 from 'aws-cdk-lib/aws-s3'
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
+import * as cloudfrontOrigins from 'aws-cdk-lib/aws-cloudfront-origins'
 import * as path from 'path'
 
 export class ButlerStack extends cdk.Stack {
@@ -588,10 +591,9 @@ export class ButlerStack extends cdk.Stack {
       restApiName: 'Butler Assistant API',
       description: 'Butler Assistant App backend API',
       defaultCorsPreflightOptions: {
-        allowOrigins: ['http://localhost:5173', 'capacitor://localhost', 'https://butler-assistant.example.com'],
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization'],
-        allowCredentials: true,
       },
     })
 
@@ -763,6 +765,112 @@ export class ButlerStack extends cdk.Stack {
     const mcpByThemeIdResource = mcpResource.addResource('{themeId}')
     mcpByThemeIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(mcpDisconnectFn), authMethodOptions)
 
+    // ── Admin App Client（管理用 — SRP 認証、client secret なし）──
+    const adminAppClient = userPool.addClient('AdminAppClient', {
+      userPoolClientName: 'butler-admin-web',
+      generateSecret: false,
+      supportedIdentityProviders: [
+        cognito.UserPoolClientIdentityProvider.COGNITO,
+      ],
+      authFlows: {
+        userSrp: true,
+      },
+    })
+
+    // ── Admin Lambda 関数 ──
+    const adminMeFn = new lambdaNode.NodejsFunction(this, 'AdminMeFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'me.ts'),
+      functionName: 'butler-admin-me',
+    })
+
+    const adminUsersListFn = new lambdaNode.NodejsFunction(this, 'AdminUsersListFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersList.ts'),
+      functionName: 'butler-admin-users-list',
+      environment: {
+        TABLE_NAME: table.tableName,
+        USER_POOL_ID: userPool.userPoolId,
+      },
+    })
+
+    const adminUsersDetailFn = new lambdaNode.NodejsFunction(this, 'AdminUsersDetailFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersDetail.ts'),
+      functionName: 'butler-admin-users-detail',
+      environment: {
+        TABLE_NAME: table.tableName,
+        USER_POOL_ID: userPool.userPoolId,
+      },
+    })
+
+    const adminUsersRoleFn = new lambdaNode.NodejsFunction(this, 'AdminUsersRoleFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersRole.ts'),
+      functionName: 'butler-admin-users-role',
+    })
+
+    // Admin — DynamoDB 権限
+    table.grantReadData(adminMeFn)
+    table.grantReadData(adminUsersListFn)
+    table.grantReadData(adminUsersDetailFn)
+    table.grantReadWriteData(adminUsersRoleFn)
+
+    // Admin — Cognito ListUsers/AdminGetUser 権限
+    const cognitoReadPolicy = new iam.PolicyStatement({
+      actions: ['cognito-idp:ListUsers', 'cognito-idp:AdminGetUser'],
+      resources: [userPool.userPoolArn],
+    })
+    adminUsersListFn.addToRolePolicy(cognitoReadPolicy)
+    adminUsersDetailFn.addToRolePolicy(cognitoReadPolicy)
+
+    // /admin API ルート
+    const adminResource = api.root.addResource('admin')
+
+    // /admin/me
+    const adminMeResource = adminResource.addResource('me')
+    adminMeResource.addMethod('GET', new apigateway.LambdaIntegration(adminMeFn), authMethodOptions)
+
+    // /admin/users
+    const adminUsersResource = adminResource.addResource('users')
+    adminUsersResource.addMethod('GET', new apigateway.LambdaIntegration(adminUsersListFn), authMethodOptions)
+
+    // /admin/users/{userId}
+    const adminUserByIdResource = adminUsersResource.addResource('{userId}')
+    adminUserByIdResource.addMethod('GET', new apigateway.LambdaIntegration(adminUsersDetailFn), authMethodOptions)
+
+    // /admin/users/{userId}/role
+    const adminUserRoleResource = adminUserByIdResource.addResource('role')
+    adminUserRoleResource.addMethod('PUT', new apigateway.LambdaIntegration(adminUsersRoleFn), authMethodOptions)
+
+    // ── Admin S3 + CloudFront ──
+    const adminBucket = new s3.Bucket(this, 'AdminAppBucket', {
+      bucketName: `butler-admin-app-${this.account}`,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    })
+
+    const adminDistribution = new cloudfront.Distribution(this, 'AdminAppDistribution', {
+      defaultBehavior: {
+        origin: cloudfrontOrigins.S3BucketOrigin.withOriginAccessControl(adminBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      },
+      defaultRootObject: 'index.html',
+      errorResponses: [
+        {
+          httpStatus: 403,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+        },
+        {
+          httpStatus: 404,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+        },
+      ],
+    })
+
     // ── Outputs ──
     new cdk.CfnOutput(this, 'UserPoolId', {
       value: userPool.userPoolId,
@@ -787,6 +895,21 @@ export class ButlerStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'WsApiUrl', {
       value: wsStage.url,
       description: 'WebSocket API URL',
+    })
+
+    new cdk.CfnOutput(this, 'AdminAppUrl', {
+      value: `https://${adminDistribution.distributionDomainName}`,
+      description: 'Admin App CloudFront URL',
+    })
+
+    new cdk.CfnOutput(this, 'AdminAppClientId', {
+      value: adminAppClient.userPoolClientId,
+      description: 'Admin App Cognito Client ID',
+    })
+
+    new cdk.CfnOutput(this, 'AdminAppBucketName', {
+      value: adminBucket.bucketName,
+      description: 'Admin App S3 Bucket',
     })
   }
 }
