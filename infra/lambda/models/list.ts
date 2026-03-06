@@ -18,20 +18,29 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   try {
-    const result = await dynamodb.send(new ScanCommand({
-      TableName: TABLE_NAME,
-      FilterExpression: 'begins_with(PK, :prefix) AND SK = :sk AND #st = :active',
-      ExpressionAttributeValues: {
-        ':prefix': { S: 'GLOBAL_MODEL#' },
-        ':sk': { S: 'METADATA' },
-        ':active': { S: 'active' },
-      },
-      ExpressionAttributeNames: {
-        '#st': 'status',
-      },
-    }))
+    // Scan はページネーションが必要（1回の呼び出しで最大1MBまで）
+    const allItems: Record<string, any>[] = []
+    let exclusiveStartKey: Record<string, any> | undefined
 
-    const models = (result.Items ?? [])
+    do {
+      const result = await dynamodb.send(new ScanCommand({
+        TableName: TABLE_NAME,
+        FilterExpression: 'begins_with(PK, :prefix) AND SK = :sk AND #st = :active',
+        ExpressionAttributeValues: {
+          ':prefix': { S: 'GLOBAL_MODEL#' },
+          ':sk': { S: 'METADATA' },
+          ':active': { S: 'active' },
+        },
+        ExpressionAttributeNames: {
+          '#st': 'status',
+        },
+        ExclusiveStartKey: exclusiveStartKey,
+      }))
+      allItems.push(...(result.Items ?? []))
+      exclusiveStartKey = result.LastEvaluatedKey
+    } while (exclusiveStartKey)
+
+    const models = allItems
       .map((item) => {
         const m = unmarshall(item)
         const modelUrl = MODELS_CDN_BASE
