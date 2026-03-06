@@ -1,6 +1,7 @@
-# CLAUDE.md ― AI Assistant App
+# CLAUDE.md ― Ai-Ba（アイバ）
 
-> Live2D + LLM（Bedrock Claude Haiku 4.5）+ Amazon Polly TTS を活用したクロスプラットフォーム対応のアシスタントアプリ
+> **Ai-Ba**（アイバ）— 「AI」＋「相棒（Aibou）」の造語。
+> Live2D + LLM（Bedrock Claude Haiku 4.5）+ Amazon Polly TTS を活用した、ユーザーをサポートするクロスプラットフォーム対応のAIチャットアシスタントアプリ
 
 ## クイックリファレンス
 

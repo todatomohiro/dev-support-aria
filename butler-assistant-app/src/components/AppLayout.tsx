@@ -7,7 +7,7 @@ import { WorkConnectModal } from './WorkConnectModal'
 interface AppLayoutProps {
   children: React.ReactNode
   currentSessionName?: string
-  onOpenSettings: () => void
+  onOpenAiba: () => void
   headerRight?: React.ReactNode
   /** セッション名の右横に表示する追加要素 */
   headerExtra?: React.ReactNode
@@ -21,7 +21,7 @@ interface AppLayoutProps {
  * PC: サイドバー + コンテンツ
  * スマホ: コンテンツ + ボトムナビ
  */
-export function AppLayout({ children, currentSessionName, onOpenSettings, headerRight, headerExtra, onRenameSession }: AppLayoutProps) {
+export function AppLayout({ children, currentSessionName, onOpenAiba, headerRight, headerExtra, onRenameSession }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isWorkModalOpen, setIsWorkModalOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -166,8 +166,8 @@ export function AppLayout({ children, currentSessionName, onOpenSettings, header
         >
           <Sidebar
             activeTab={activeTab}
-            onOpenSettings={onOpenSettings}
             onOpenWork={() => setIsWorkModalOpen(true)}
+            onOpenAiba={onOpenAiba}
           />
         </div>
 
@@ -179,7 +179,7 @@ export function AppLayout({ children, currentSessionName, onOpenSettings, header
 
       {/* スマホ: ボトムナビ */}
       <div className="md:hidden">
-        <BottomNav activeTab={activeTab} onOpenSettings={onOpenSettings} onOpenWork={() => setIsWorkModalOpen(true)} />
+        <BottomNav activeTab={activeTab} onOpenWork={() => setIsWorkModalOpen(true)} onOpenAiba={onOpenAiba} />
       </div>
 
       {/* ワーク接続モーダル */}

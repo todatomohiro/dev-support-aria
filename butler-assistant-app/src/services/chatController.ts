@@ -14,11 +14,11 @@ import { measurePerformanceAsync } from '@/utils/performance'
  * エラー種別に対応するモーションタグ
  */
 const ERROR_MOTIONS: Record<string, string> = {
-  network: 'bow',
-  api: 'bow',
-  rateLimit: 'nervous',
-  parse: 'confused',
-  default: 'bow',
+  network: 'troubled',
+  api: 'troubled',
+  rateLimit: 'sad',
+  parse: 'surprised',
+  default: 'troubled',
 }
 
 /**

@@ -278,15 +278,19 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
     const meta = useAppStore.getState().activeModelMeta
     const defaultMotionMap: Record<string, { group: string; index: number }> = {
       idle: { group: 'Idle', index: 0 },
-      bow: { group: '', index: 0 },
-      smile: { group: '', index: 1 },
-      think: { group: '', index: 2 },
-      nod: { group: '', index: 3 },
-      wave: { group: '', index: 4 },
-      happy: { group: '', index: 1 },
-      sad: { group: '', index: 2 },
-      nervous: { group: '', index: 3 },
-      confused: { group: '', index: 2 },
+      happy: { group: '', index: 0 },
+      thinking: { group: '', index: 1 },
+      surprised: { group: '', index: 2 },
+      sad: { group: '', index: 3 },
+      embarrassed: { group: '', index: 4 },
+      troubled: { group: '', index: 5 },
+      angry: { group: '', index: 6 },
+      motion1: { group: '', index: 0 },
+      motion2: { group: '', index: 1 },
+      motion3: { group: '', index: 2 },
+      motion4: { group: '', index: 3 },
+      motion5: { group: '', index: 4 },
+      motion6: { group: '', index: 5 },
     }
     const motionMap = (meta?.motionMapping && Object.keys(meta.motionMapping).length > 0)
       ? { ...defaultMotionMap, ...meta.motionMapping }

@@ -26,6 +26,7 @@ export function Sidebar() {
             </NavLink>
             <NavLink
               to="/models"
+              end
               className={({ isActive }) =>
                 `block px-3 py-2 rounded text-sm ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`
               }

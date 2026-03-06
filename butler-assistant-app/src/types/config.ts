@@ -87,6 +87,7 @@ export const DEFAULT_MODEL_KEY: ModelKey = 'haiku'
  */
 export interface ModelReference {
   currentModelId: string
+  selectedModelId?: string
 }
 
 /**

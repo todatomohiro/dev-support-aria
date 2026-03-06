@@ -8,6 +8,8 @@ import { UserTable } from '@/components/UserTable'
 import { UserDetail } from '@/components/UserDetail'
 import { MfaSettingsPage } from '@/components/MfaSettingsPage'
 import { ModelManagement } from '@/components/ModelManagement'
+import { ModelMappingEditor } from '@/components/ModelMappingEditor'
+import { ModelCharacterEditor } from '@/components/ModelCharacterEditor'
 
 function AuthenticatedApp() {
   const status = useAuthStore((s) => s.status)
@@ -53,6 +55,8 @@ function AppRoutes() {
         <Route path="/users" element={<UserTable />} />
         <Route path="/users/:userId" element={<UserDetail />} />
         <Route path="/models" element={<ModelManagement />} />
+        <Route path="/models/:modelId/mapping" element={<ModelMappingEditor />} />
+        <Route path="/models/:modelId/character" element={<ModelCharacterEditor />} />
         <Route path="/mfa" element={<MfaSettingsPage />} />
         <Route path="*" element={<Navigate to="/users" replace />} />
       </Route>

@@ -13,6 +13,8 @@
   "dependencies": {
     "aws-amplify": "^6.16.0",
     "jszip": "^3.10.1",
+    "pixi-live2d-display": "0.4.0",
+    "pixi.js": "7.4.2",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

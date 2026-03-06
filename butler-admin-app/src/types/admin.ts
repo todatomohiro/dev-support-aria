@@ -49,6 +49,16 @@ export interface ModelMotion {
   file: string
 }
 
+/** キャラクター個性設定 */
+export interface CharacterConfig {
+  characterName: string
+  characterAge: string
+  characterGender: 'male' | 'female' | 'other' | ''
+  characterPersonality: string
+  characterSpeechStyle: string
+  characterPrompt: string
+}
+
 /** モデルメタデータ */
 export interface ModelMeta {
   modelId: string
@@ -61,6 +71,7 @@ export interface ModelMeta {
   motions: ModelMotion[]
   emotionMapping: Record<string, string>
   motionMapping: Record<string, { group: string; index: number }>
+  characterConfig?: CharacterConfig
   createdAt: string
   updatedAt: string
 }

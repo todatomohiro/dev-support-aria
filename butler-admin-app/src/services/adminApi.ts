@@ -1,4 +1,4 @@
-import type { MeResponse, UsersListResponse, UserDetailResponse, UserRole, ModelMeta, ModelsListResponse } from '@/types/admin'
+import type { MeResponse, UsersListResponse, UserDetailResponse, UserRole, ModelMeta, ModelsListResponse, CharacterConfig } from '@/types/admin'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string
 
@@ -54,16 +54,24 @@ export const adminApi = {
     return authFetch('/admin/models', token)
   },
 
-  /** モデルアップロード */
-  async uploadModel(token: string, data: { name: string; description?: string; files: Record<string, string> }): Promise<ModelMeta> {
+  /** モデルアップロード準備（Presigned URL 取得） */
+  async prepareUpload(token: string, data: { name: string; filePaths: string[] }): Promise<{ modelId: string; uploadUrls: Record<string, string> }> {
     return authFetch('/admin/models', token, {
       method: 'POST',
       body: JSON.stringify(data),
     })
   },
 
-  /** モデル更新（マッピング・ステータス等） */
-  async updateModel(token: string, modelId: string, data: Partial<Pick<ModelMeta, 'name' | 'description' | 'status' | 'emotionMapping' | 'motionMapping'>>): Promise<{ modelId: string; updated: boolean }> {
+  /** モデル登録完了（S3 アップロード後にメタデータ登録） */
+  async finalizeUpload(token: string, modelId: string, data: { name: string; description?: string; model3Path: string }): Promise<ModelMeta> {
+    return authFetch(`/admin/models/${modelId}/finalize`, token, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  /** モデル更新（マッピング・ステータス・キャラクター設定等） */
+  async updateModel(token: string, modelId: string, data: Partial<Pick<ModelMeta, 'name' | 'description' | 'status' | 'emotionMapping' | 'motionMapping'>> & { characterConfig?: CharacterConfig }): Promise<{ modelId: string; updated: boolean }> {
     return authFetch(`/admin/models/${modelId}`, token, {
       method: 'PATCH',
       body: JSON.stringify(data),

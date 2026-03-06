@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaModal } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
+import type { ServerModel } from './services/modelService'
 import { chatController } from './services/chatController'
 import { syncService } from './services/syncService'
 import { themeService } from './services/themeService'
@@ -29,6 +30,7 @@ function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isSkillsOpen, setIsSkillsOpen] = useState(false)
   const [isModelImporterOpen, setIsModelImporterOpen] = useState(false)
+  const [isAibaOpen, setIsAibaOpen] = useState(false)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [authModalInitialView, setAuthModalInitialView] = useState<AuthView>('login')
   const [isInitialized, setIsInitialized] = useState(false)
@@ -230,16 +232,30 @@ function App() {
     setCurrentExpression(name)
   }, [setCurrentExpression])
 
+  const setActiveModelMeta = useAppStore((state) => state.setActiveModelMeta)
+
   // 設定保存ハンドラー
   const handleSaveSettings = useCallback(
-    (newConfig: { ui?: Partial<UIConfig> }) => {
-      const update: Partial<{ ui: UIConfig }> = {}
+    (newConfig: { ui?: Partial<UIConfig>; model?: Partial<{ currentModelId: string; selectedModelId?: string }> }, selectedModel?: ServerModel) => {
+      const update: Record<string, unknown> = {}
       if (newConfig.ui) {
         update.ui = { ...config.ui, ...newConfig.ui }
       }
+      if (newConfig.model) {
+        update.model = { ...config.model, ...newConfig.model }
+      }
       updateConfig(update)
+
+      // 選択モデルのメタデータを activeModelMeta に反映
+      if (selectedModel) {
+        setActiveModelMeta({
+          modelId: selectedModel.modelId,
+          emotionMapping: selectedModel.emotionMapping,
+          motionMapping: selectedModel.motionMapping,
+        })
+      }
     },
-    [config, updateConfig]
+    [config, updateConfig, setActiveModelMeta]
   )
 
   // プロフィール保存ハンドラー
@@ -412,11 +428,11 @@ function App() {
       ) : (
         <AppLayout
           currentSessionName={currentSessionName}
-          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenAiba={() => setIsAibaOpen(true)}
           onRenameSession={activeThemeId ? handleRenameTheme : undefined}
           headerRight={
             <>
-              <UserMenu onOpenProfile={() => setIsProfileOpen(true)} onOpenSkills={() => setIsSkillsOpen(true)} />
+              <UserMenu onOpenProfile={() => setIsProfileOpen(true)} onOpenSkills={() => setIsSkillsOpen(true)} onOpenSettings={() => setIsSettingsOpen(true)} />
               {config.ui.developerMode && (
                 isPocPage ? (
                   <button
@@ -541,6 +557,16 @@ function App() {
         config={{ ui: config.ui }}
         onSave={handleSaveSettings}
         geolocationStatus={{ location: geoLocation, loading: geoLoading, error: geoError }}
+      />
+
+      {/* Ai-Ba モーダル */}
+      <AibaModal
+        isOpen={isAibaOpen}
+        onClose={() => setIsAibaOpen(false)}
+        config={{ model: config.model }}
+        onSave={(modelUpdate: Partial<{ currentModelId: string; selectedModelId?: string }>, selectedModel?: ServerModel) => {
+          handleSaveSettings({ model: modelUpdate }, selectedModel)
+        }}
       />
 
       {/* スキル連携モーダル */}

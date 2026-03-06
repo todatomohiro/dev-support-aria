@@ -32,6 +32,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       status?: 'active' | 'inactive'
       emotionMapping?: Record<string, string>
       motionMapping?: Record<string, { group: string; index: number }>
+      characterConfig?: {
+        characterName: string
+        characterAge: string
+        characterGender: 'male' | 'female' | 'other' | ''
+        characterPersonality: string
+        characterSpeechStyle: string
+        characterPrompt: string
+      }
     }
 
     // 更新式を動的に構築
@@ -60,6 +68,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (body.motionMapping !== undefined) {
       expressionNames.push('motionMapping = :motionMapping')
       expressionValues[':motionMapping'] = body.motionMapping
+    }
+    if (body.characterConfig !== undefined) {
+      expressionNames.push('characterConfig = :characterConfig')
+      expressionValues[':characterConfig'] = {
+        characterName: (body.characterConfig.characterName ?? '').slice(0, 50),
+        characterAge: (body.characterConfig.characterAge ?? '').slice(0, 10),
+        characterGender: body.characterConfig.characterGender ?? '',
+        characterPersonality: (body.characterConfig.characterPersonality ?? '').slice(0, 500),
+        characterSpeechStyle: (body.characterConfig.characterSpeechStyle ?? '').slice(0, 500),
+        characterPrompt: (body.characterConfig.characterPrompt ?? '').slice(0, 2000),
+      }
     }
 
     if (expressionNames.length === 0) {

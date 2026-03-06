@@ -46,9 +46,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           modelFile: m.modelFile,
           emotionMapping: m.emotionMapping ?? {},
           motionMapping: m.motionMapping ?? {},
+          characterConfig: m.characterConfig ?? undefined,
         }
       })
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name))
 
     return response(200, { models })
   } catch (error) {

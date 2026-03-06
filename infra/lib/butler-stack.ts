@@ -893,14 +893,26 @@ export class ButlerStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       versioned: true,
+      cors: [{
+        allowedOrigins: ['*'],
+        allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT],
+        allowedHeaders: ['*'],
+        maxAge: 3600,
+      }],
     })
 
-    // Models CloudFront（モデルファイル配信）
+    // Models CloudFront（モデルファイル配信 — CORS 対応）
+    const modelsCorsOriginRequestPolicy = new cloudfront.OriginRequestPolicy(this, 'ModelsCorsOriginRequestPolicy', {
+      originRequestPolicyName: 'butler-models-cors',
+      headerBehavior: cloudfront.OriginRequestHeaderBehavior.allowList('Origin', 'Access-Control-Request-Method', 'Access-Control-Request-Headers'),
+    })
     const modelsDistribution = new cloudfront.Distribution(this, 'ModelsDistribution', {
       defaultBehavior: {
         origin: cloudfrontOrigins.S3BucketOrigin.withOriginAccessControl(modelsBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        originRequestPolicy: modelsCorsOriginRequestPolicy,
+        responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS_WITH_PREFLIGHT,
       },
       comment: 'Live2D Models CDN',
     })
@@ -908,14 +920,20 @@ export class ButlerStack extends cdk.Stack {
     const modelsCdnBase = `https://${modelsDistribution.distributionDomainName}`
 
     // ── Admin Models Lambda 関数 ──
-    const adminModelsUploadFn = new lambdaNode.NodejsFunction(this, 'AdminModelsUploadFn', {
+    const adminModelsPrepareFn = new lambdaNode.NodejsFunction(this, 'AdminModelsPrepareFn', {
       ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'upload.ts'),
-      functionName: 'butler-admin-models-upload',
-      timeout: cdk.Duration.seconds(60),
-      memorySize: 512,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'prepare.ts'),
+      functionName: 'butler-admin-models-prepare',
     })
-    adminModelsUploadFn.addEnvironment('MODELS_BUCKET', modelsBucket.bucketName)
+    adminModelsPrepareFn.addEnvironment('MODELS_BUCKET', modelsBucket.bucketName)
+
+    const adminModelsFinalizeFn = new lambdaNode.NodejsFunction(this, 'AdminModelsFinalizeFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'finalize.ts'),
+      functionName: 'butler-admin-models-finalize',
+      timeout: cdk.Duration.seconds(30),
+    })
+    adminModelsFinalizeFn.addEnvironment('MODELS_BUCKET', modelsBucket.bucketName)
 
     const adminModelsListFn = new lambdaNode.NodejsFunction(this, 'AdminModelsListFn', {
       ...lambdaDefaults,
@@ -937,13 +955,15 @@ export class ButlerStack extends cdk.Stack {
     adminModelsDeleteFn.addEnvironment('MODELS_BUCKET', modelsBucket.bucketName)
 
     // Models — DynamoDB 権限
-    table.grantReadWriteData(adminModelsUploadFn)
+    table.grantReadData(adminModelsPrepareFn)
+    table.grantReadWriteData(adminModelsFinalizeFn)
     table.grantReadData(adminModelsListFn)
     table.grantReadWriteData(adminModelsUpdateFn)
     table.grantReadWriteData(adminModelsDeleteFn)
 
     // Models — S3 権限
-    modelsBucket.grantReadWrite(adminModelsUploadFn)
+    modelsBucket.grantPut(adminModelsPrepareFn)
+    modelsBucket.grantRead(adminModelsFinalizeFn)
     modelsBucket.grantRead(adminModelsListFn)
     modelsBucket.grantReadWrite(adminModelsDeleteFn)
 
@@ -959,12 +979,16 @@ export class ButlerStack extends cdk.Stack {
     // /admin/models API ルート
     const adminModelsResource = adminResource.addResource('models')
     adminModelsResource.addMethod('GET', new apigateway.LambdaIntegration(adminModelsListFn), authMethodOptions)
-    adminModelsResource.addMethod('POST', new apigateway.LambdaIntegration(adminModelsUploadFn), authMethodOptions)
+    adminModelsResource.addMethod('POST', new apigateway.LambdaIntegration(adminModelsPrepareFn), authMethodOptions)
 
     // /admin/models/{modelId}
     const adminModelByIdResource = adminModelsResource.addResource('{modelId}')
     adminModelByIdResource.addMethod('PATCH', new apigateway.LambdaIntegration(adminModelsUpdateFn), authMethodOptions)
     adminModelByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(adminModelsDeleteFn), authMethodOptions)
+
+    // /admin/models/{modelId}/finalize
+    const adminModelFinalizeResource = adminModelByIdResource.addResource('finalize')
+    adminModelFinalizeResource.addMethod('POST', new apigateway.LambdaIntegration(adminModelsFinalizeFn), authMethodOptions)
 
     // /models（ユーザー向け）
     const modelsResource = api.root.addResource('models')
