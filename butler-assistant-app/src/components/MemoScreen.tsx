@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { memoService } from '@/services/memoService'
 import type { Memo } from '@/services/memoService'
 
@@ -10,6 +12,7 @@ export function MemoScreen() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   /**
    * メモ一覧を取得
@@ -40,17 +43,19 @@ export function MemoScreen() {
   /**
    * メモ削除
    */
-  const handleDelete = useCallback(async (memoId: string) => {
+  const handleDelete = useCallback(async (memoId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
     setDeletingId(memoId)
     try {
       await memoService.deleteMemo(memoId)
       setMemos((prev) => prev.filter((m) => m.memoId !== memoId))
+      if (expandedId === memoId) setExpandedId(null)
     } catch (error) {
       console.error('[MemoScreen] メモ削除エラー:', error)
     } finally {
       setDeletingId(null)
     }
-  }, [])
+  }, [expandedId])
 
   /**
    * 日時をフォーマット
@@ -63,6 +68,8 @@ export function MemoScreen() {
     const minutes = String(d.getMinutes()).padStart(2, '0')
     return `${month}/${day} ${hours}:${minutes}`
   }
+
+  const isExpanded = (memoId: string) => expandedId === memoId
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900" data-testid="memo-screen">
@@ -111,46 +118,76 @@ export function MemoScreen() {
             {memos.map((memo) => (
               <div
                 key={memo.memoId}
-                className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
+                className={`rounded-lg border transition-colors cursor-pointer ${
+                  isExpanded(memo.memoId)
+                    ? 'border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800'
+                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:border-gray-300 dark:hover:border-gray-600'
+                }`}
+                onClick={() => setExpandedId(isExpanded(memo.memoId) ? null : memo.memoId)}
                 data-testid={`memo-item-${memo.memoId}`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                      {memo.title}
-                    </h3>
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-3 whitespace-pre-wrap">
-                      {memo.content}
-                    </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-[10px] text-gray-400">
-                        {formatDate(memo.createdAt)}
-                      </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-                        {memo.source === 'chat' ? 'AI' : 'クイック'}
-                      </span>
-                      {memo.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                        >
-                          {tag}
+                {/* ヘッダー部分（常に表示） */}
+                <div className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                        {memo.title}
+                      </h3>
+                      {!isExpanded(memo.memoId) && (
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-3 whitespace-pre-wrap">
+                          {memo.content}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[10px] text-gray-400">
+                          {formatDate(memo.createdAt)}
                         </span>
-                      ))}
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                          {memo.source === 'chat' ? 'AI' : 'クイック'}
+                        </span>
+                        {memo.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => handleDelete(memo.memoId, e)}
+                      disabled={deletingId === memo.memoId}
+                      className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                      title="削除"
+                      data-testid={`memo-delete-${memo.memoId}`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 展開時: Markdown レンダリングで全文表示 */}
+                {isExpanded(memo.memoId) && (
+                  <div className="px-3 pb-3 border-t border-gray-200 dark:border-gray-700">
+                    <div className="markdown-content text-sm mt-3">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          a: ({ href, children }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer">
+                              {children}
+                            </a>
+                          ),
+                        }}
+                      >
+                        {memo.content}
+                      </ReactMarkdown>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDelete(memo.memoId)}
-                    disabled={deletingId === memo.memoId}
-                    className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition-colors shrink-0"
-                    title="削除"
-                    data-testid={`memo-delete-${memo.memoId}`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
+                )}
               </div>
             ))}
           </div>
