@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router'
 import { useAuthStore } from '@/auth/authStore'
 import { useAppStore } from '@/stores'
 import { modelService } from '@/services/modelService'
@@ -353,8 +354,10 @@ function ShopTab() {
   )
 }
 
-/** スタジオ タブ（プレースホルダー） */
+/** スタジオ タブ */
 function StudioTab() {
+  const navigate = useNavigate()
+
   return (
     <div>
       <div className="rounded-2xl bg-gradient-to-r from-gray-700 to-gray-900 p-8 md:p-10 text-white text-center mb-6">
@@ -364,12 +367,17 @@ function StudioTab() {
       </div>
       <div className="flex flex-col md:flex-row gap-3 md:gap-4">
         {([
-          { icon: '&#128247;', title: 'フェイストラッキング', desc: 'カメラで表情をリアルタイム連動', color: 'bg-blue-50 dark:bg-blue-900/20', available: true },
-          { icon: '&#10024;', title: 'AR撮影', desc: '現実世界にAi-Baを召喚して撮影', color: 'bg-purple-50 dark:bg-purple-900/20', available: false },
-          { icon: '&#128248;', title: 'スナップ撮影', desc: 'ポーズを指定してスクリーンショット', color: 'bg-pink-50 dark:bg-pink-900/20', available: false },
+          { id: 'virtual-camera', icon: '&#127909;', title: '仮想カメラ', desc: 'Meet / Zoom でキャラクターをカメラとして使用', color: 'bg-indigo-50 dark:bg-indigo-900/20', available: true },
+          { id: 'face-tracking', icon: '&#128247;', title: 'フェイストラッキング', desc: 'カメラで表情をリアルタイム連動', color: 'bg-blue-50 dark:bg-blue-900/20', available: true },
+          { id: 'ar', icon: '&#10024;', title: 'AR撮影', desc: '現実世界にAi-Baを召喚して撮影', color: 'bg-purple-50 dark:bg-purple-900/20', available: false },
+          { id: 'snapshot', icon: '&#128248;', title: 'スナップ撮影', desc: 'ポーズを指定してスクリーンショット', color: 'bg-pink-50 dark:bg-pink-900/20', available: false },
         ]).map((item) => (
           <button
-            key={item.title}
+            key={item.id}
+            onClick={() => {
+              if (item.id === 'virtual-camera') navigate('/studio/camera')
+              if (item.id === 'face-tracking') navigate('/poc/face-tracking')
+            }}
             className={`flex md:flex-col items-center md:items-center gap-3 md:gap-0 md:text-center p-4 md:p-6 rounded-2xl border border-gray-200 dark:border-gray-600 transition-colors flex-1 ${
               item.available ? 'hover:border-blue-400 dark:hover:border-blue-600 cursor-pointer' : 'opacity-60 cursor-default'
             }`}
@@ -391,6 +399,19 @@ function StudioTab() {
             </div>
           </button>
         ))}
+      </div>
+
+      {/* Chrome 拡張の案内 */}
+      <div className="mt-6 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-200 dark:border-indigo-800">
+        <h4 className="text-sm font-semibold text-indigo-900 dark:text-indigo-200 mb-2">
+          仮想カメラの使い方
+        </h4>
+        <ol className="text-xs text-indigo-700 dark:text-indigo-300 space-y-1 list-decimal list-inside">
+          <li>Chrome 拡張「Ai-Ba Virtual Camera」をインストール</li>
+          <li>上の「仮想カメラ」を開いてトラッキングを開始</li>
+          <li>Meet / Zoom ページ右下の「Ai-Ba Camera」ボタンをクリック</li>
+          <li>タブ選択画面で「Ai-Ba Studio Camera」タブを選択</li>
+        </ol>
       </div>
     </div>
   )

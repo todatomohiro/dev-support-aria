@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen, StudioCamera } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
@@ -368,6 +368,15 @@ function App() {
             <p className="text-gray-600 dark:text-gray-400">初期化中...</p>
           </div>
         </div>
+      </AuthProvider>
+    )
+  }
+
+  // スタジオカメラは AppLayout 外の全画面表示（タブキャプチャ用）
+  if (location.pathname === '/studio/camera') {
+    return (
+      <AuthProvider>
+        <StudioCamera />
       </AuthProvider>
     )
   }

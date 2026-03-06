@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Ai-Ba Virtual Camera",
+  "version": "1.0.0",
+  "description": "Ai-Ba キャラクターを Meet / Zoom / YouTube のカメラとして使用",
+  "permissions": ["activeTab"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*",
+        "https://studio.youtube.com/*",
+        "https://www.youtube.com/*"
+      ],
+      "js": ["inject.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
