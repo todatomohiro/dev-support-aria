@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ai-Ba UI Mock</title>
+<style>
+  :root {
+    --primary: #3b82f6;
+    --primary-dark: #2563eb;
+    --bg: #f9fafb;
+    --card: #ffffff;
+    --text: #111827;
+    --text-secondary: #6b7280;
+    --border: #e5e7eb;
+    --accent-green: #10b981;
+    --accent-purple: #8b5cf6;
+    --accent-pink: #ec4899;
+    --accent-orange: #f59e0b;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif;
+    background: #1e293b;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    min-height: 100vh;
+  }
+
+  /* ===== Mock Selector ===== */
+  .mock-selector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    background: rgba(255,255,255,0.1);
+    padding: 6px;
+    border-radius: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .mock-selector button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    color: rgba(255,255,255,0.7);
+    background: transparent;
+    transition: all 0.2s;
+  }
+  .mock-selector button.active {
+    background: var(--primary);
+    color: white;
+  }
+
+  .mock-container { display: none; width: 100%; }
+  .mock-container.active { display: block; }
+
+  .mock-label {
+    color: rgba(255,255,255,0.5);
+    font-size: 12px;
+    text-align: center;
+    margin-bottom: 12px;
+    letter-spacing: 0.05em;
+  }
+
+  /* ===== Device wrapper ===== */
+  .device-pair {
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .device-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .device-label {
+    color: rgba(255,255,255,0.4);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  /* ===== Phone Frame ===== */
+  .phone {
+    width: 390px;
+    height: 780px;
+    background: var(--bg);
+    border-radius: 32px;
+    overflow: hidden;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.4);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* ===== Desktop Frame ===== */
+  .desktop {
+    width: 960px;
+    height: 640px;
+    background: var(--bg);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.4);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* ===== Header ===== */
+  .header {
+    background: var(--card);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .header h1 { font-size: 18px; font-weight: 700; }
+  .header-right { display: flex; align-items: center; gap: 8px; }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--primary); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600;
+  }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .hamburger {
+    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary); cursor: pointer; border: none; background: none; font-size: 18px;
+  }
+
+  /* ===== Sidebar (PC) ===== */
+  .pc-sidebar {
+    width: 220px;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .pc-sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border: none;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+  }
+  .pc-sidebar-item:hover { background: #f3f4f6; }
+  .pc-sidebar-item.active {
+    color: var(--primary);
+    background: #eff6ff;
+    font-weight: 600;
+  }
+  .pc-sidebar-item .si-icon { font-size: 18px; width: 24px; text-align: center; }
+  .pc-sidebar-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+  .pc-sidebar-label {
+    padding: 8px 16px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* ===== Tabs ===== */
+  .tabs {
+    display: flex;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .tab {
+    flex: 1;
+    padding: 12px 8px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .tabs-pc .tab { flex: none; padding: 12px 24px; }
+  .tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+  }
+  .tab-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+  .tab-icon-inline { font-size: 16px; margin-right: 6px; }
+
+  /* ===== Content ===== */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+  .content-pc { padding: 24px; }
+
+  /* ===== Character Grid ===== */
+  .char-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .char-grid-pc {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .char-card {
+    background: var(--card);
+    border-radius: 16px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .char-card:hover { border-color: #93c5fd; }
+  .char-card.selected {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+  }
+  .char-preview {
+    height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .char-preview-pc { height: 160px; }
+  .char-preview.bg1 { background: linear-gradient(135deg, #dbeafe, #ede9fe); }
+  .char-preview.bg2 { background: linear-gradient(135deg, #fce7f3, #fef3c7); }
+  .char-preview.bg3 { background: linear-gradient(135deg, #d1fae5, #cffafe); }
+  .char-preview.bg4 { background: linear-gradient(135deg, #fef3c7, #fed7aa); }
+  .char-silhouette {
+    width: 80px; height: 100px;
+    background: rgba(0,0,0,0.08);
+    border-radius: 40px 40px 20px 20px;
+  }
+  .char-info { padding: 12px; }
+  .char-name { font-size: 14px; font-weight: 600; }
+  .char-desc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+  .char-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--primary);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 10px;
+  }
+  .char-badge.in-use { background: var(--accent-green); }
+
+  /* ===== Shop ===== */
+  .shop-banner {
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink));
+    border-radius: 16px;
+    padding: 20px;
+    color: white;
+    margin-bottom: 16px;
+  }
+  .shop-banner-pc { padding: 28px 32px; }
+  .shop-banner h3 { font-size: 16px; font-weight: 700; }
+  .shop-banner p { font-size: 12px; opacity: 0.9; margin-top: 4px; }
+  .shop-section-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .shop-section-title a {
+    font-size: 12px;
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .shop-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .shop-grid-pc { grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .shop-card {
+    background: var(--card);
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .shop-card:hover { border-color: #93c5fd; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+  .shop-preview {
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .shop-preview.bg-a { background: linear-gradient(135deg, #fde68a, #fbbf24); }
+  .shop-preview.bg-b { background: linear-gradient(135deg, #a5f3fc, #67e8f9); }
+  .shop-preview.bg-c { background: linear-gradient(135deg, #c4b5fd, #a78bfa); }
+  .shop-preview.bg-d { background: linear-gradient(135deg, #fecaca, #fca5a5); }
+  .shop-info { padding: 10px 12px; }
+  .shop-name { font-size: 13px; font-weight: 600; }
+  .shop-price {
+    font-size: 12px;
+    color: var(--accent-purple);
+    font-weight: 700;
+    margin-top: 4px;
+  }
+
+  /* ===== Studio ===== */
+  .studio-hero {
+    background: linear-gradient(135deg, #1e293b, #334155);
+    border-radius: 16px;
+    padding: 40px 20px;
+    text-align: center;
+    color: white;
+    margin-bottom: 16px;
+  }
+  .studio-hero-icon { font-size: 48px; margin-bottom: 12px; }
+  .studio-hero h3 { font-size: 16px; font-weight: 700; }
+  .studio-hero p { font-size: 12px; opacity: 0.8; margin-top: 6px; line-height: 1.5; }
+  .studio-actions { display: flex; flex-direction: column; gap: 10px; }
+  .studio-actions-pc { flex-direction: row; }
+  .studio-action {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--card);
+    border-radius: 14px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+    flex: 1;
+  }
+  .studio-action:hover { border-color: var(--primary); }
+  .studio-action-pc { flex-direction: column; text-align: center; padding: 24px 16px; }
+  .studio-action-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+  }
+  .studio-action-pc .studio-action-icon { width: 56px; height: 56px; font-size: 28px; margin: 0 auto; }
+  .studio-action-icon.cam { background: #dbeafe; }
+  .studio-action-icon.ar { background: #ede9fe; }
+  .studio-action-icon.snap { background: #fce7f3; }
+  .studio-action-text h4 { font-size: 14px; font-weight: 600; }
+  .studio-action-text p { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+  .studio-action-pc .studio-action-text { margin-top: 12px; }
+  .studio-action-arrow { margin-left: auto; color: var(--text-secondary); font-size: 18px; }
+  .studio-action-pc .studio-action-arrow { display: none; }
+  .coming-soon {
+    display: inline-block;
+    background: #fef3c7;
+    color: #b45309;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+  }
+
+  /* ===== Bottom Nav ===== */
+  .bottom-nav {
+    display: flex;
+    background: var(--card);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    padding-bottom: 8px;
+  }
+  .nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 4px 4px;
+    font-size: 10px;
+    color: var(--text-secondary);
+    border: none;
+    background: none;
+    cursor: pointer;
+  }
+  .nav-item.active { color: var(--primary); }
+  .nav-icon { font-size: 20px; margin-bottom: 2px; }
+
+  /* ===== Tab panels ===== */
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ===== Mock 2: Dashboard Cards ===== */
+  .dash-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .dash-grid-pc { grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .dash-card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 20px 16px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+  }
+  .dash-card:hover { border-color: var(--primary); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+  .dash-card-pc { padding: 32px 20px; }
+  .dash-icon {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; margin: 0 auto 12px;
+  }
+  .dash-icon-pc { width: 64px; height: 64px; font-size: 32px; border-radius: 18px; }
+  .dash-icon.i1 { background: linear-gradient(135deg, #dbeafe, #bfdbfe); }
+  .dash-icon.i2 { background: linear-gradient(135deg, #ede9fe, #ddd6fe); }
+  .dash-icon.i3 { background: linear-gradient(135deg, #fce7f3, #fbcfe8); }
+  .dash-icon.i4 { background: linear-gradient(135deg, #d1fae5, #a7f3d0); }
+  .dash-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .dash-card p { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
+  .dash-current {
+    background: linear-gradient(135deg, #eff6ff, #f5f3ff);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border: 1px solid var(--border);
+  }
+  .dash-current-pc { padding: 20px 24px; margin-bottom: 24px; }
+  .dash-current-avatar {
+    width: 56px; height: 56px; border-radius: 16px;
+    background: linear-gradient(135deg, #dbeafe, #ede9fe);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .dash-current-info h4 { font-size: 14px; font-weight: 600; }
+  .dash-current-info p { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  /* ===== Mock 3: Modal ===== */
+  .modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 10;
+  }
+  .modal-box {
+    background: var(--card);
+    border-radius: 16px;
+    width: 100%;
+    max-height: 85%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-box-pc { max-width: 720px; max-height: 480px; }
+  .modal-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-header h2 { font-size: 18px; font-weight: 700; }
+  .modal-close {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #f3f4f6; border: none; cursor: pointer;
+    font-size: 16px; color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+  .modal-sidebar {
+    width: 110px;
+    border-right: 1px solid var(--border);
+    padding: 8px 0;
+    flex-shrink: 0;
+    background: #f9fafb;
+  }
+  .modal-sidebar-pc { width: 160px; }
+  .modal-sidebar-item {
+    display: block;
+    width: 100%;
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  .modal-sidebar-pc .modal-sidebar-item { padding: 12px 20px; font-size: 13px; }
+  .modal-sidebar-item.active {
+    color: var(--primary);
+    background: #eff6ff;
+    border-left-color: var(--primary);
+    font-weight: 600;
+  }
+  .modal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+  .modal-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+  }
+  .btn-secondary { background: #f3f4f6; color: var(--text); }
+  .btn-primary { background: var(--primary); color: white; }
+
+  /* ===== Char list (for modal) ===== */
+  .char-list-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 12px;
+    border: 2px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .char-list-item:hover { border-color: #93c5fd; }
+  .char-list-item.selected { border-color: var(--primary); background: #eff6ff; }
+  .char-list-thumb {
+    width: 48px; height: 48px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* PC chat bg */
+  .pc-chat-bg {
+    flex: 1;
+    background: linear-gradient(180deg,#dbeafe,#ede9fe);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Mock Selector -->
+<div class="mock-selector">
+  <button class="active" onclick="showMock(0)">案1: タブ型</button>
+  <button onclick="showMock(1)">案2: カード型</button>
+  <button onclick="showMock(2)">案3: モーダル型</button>
+</div>
+
+<!-- ==================== 案1: フルページ + タブ型 ==================== -->
+<div class="mock-container active" id="mock0">
+  <div class="mock-label">案1: フルページ + タブ型（推奨）</div>
+  <div class="device-pair">
+
+    <!-- スマホ -->
+    <div class="device-wrap">
+      <div class="device-label">Mobile</div>
+      <div class="phone">
+        <div class="header">
+          <h1>Ai-Ba</h1>
+          <div class="header-right"><div class="avatar">T</div></div>
+        </div>
+        <div class="tabs">
+          <button class="tab active" onclick="switchTab(this, 'sp1-my')"><span class="tab-icon">&#128100;</span>マイAi-Ba</button>
+          <button class="tab" onclick="switchTab(this, 'sp1-shop')"><span class="tab-icon">&#128722;</span>ショップ</button>
+          <button class="tab" onclick="switchTab(this, 'sp1-studio')"><span class="tab-icon">&#127909;</span>スタジオ</button>
+        </div>
+        <div class="content">
+          <div class="tab-panel active" id="sp1-my">
+            <div class="char-grid">
+              <div class="char-card selected"><div class="char-preview bg1"><div class="char-silhouette"></div><span class="char-badge in-use">使用中</span></div><div class="char-info"><div class="char-name">アリア</div><div class="char-desc">優しくて明るいパートナー</div></div></div>
+              <div class="char-card"><div class="char-preview bg2"><div class="char-silhouette"></div></div><div class="char-info"><div class="char-name">レイ</div><div class="char-desc">クールで知的なアドバイザー</div></div></div>
+              <div class="char-card"><div class="char-preview bg3"><div class="char-silhouette"></div><span class="char-badge">NEW</span></div><div class="char-info"><div class="char-name">ミント</div><div class="char-desc">元気いっぱいの応援団長</div></div></div>
+              <div class="char-card"><div class="char-preview bg4"><div class="char-silhouette" style="opacity:0.3"></div></div><div class="char-info"><div class="char-name" style="color:#9ca3af">???</div><div class="char-desc">近日公開</div></div></div>
+            </div>
+          </div>
+          <div class="tab-panel" id="sp1-shop">
+            <div class="shop-banner"><h3>春の新キャラフェア</h3><p>期間限定で新しいAi-Baが登場!</p></div>
+            <div class="shop-section-title">おすすめ <a href="#">すべて見る</a></div>
+            <div class="shop-grid">
+              <div class="shop-card"><div class="shop-preview bg-a"><div class="char-silhouette"></div></div><div class="shop-info"><div class="shop-name">サクラ</div><div class="shop-price">&yen;480</div></div></div>
+              <div class="shop-card"><div class="shop-preview bg-b"><div class="char-silhouette"></div></div><div class="shop-info"><div class="shop-name">カイ</div><div class="shop-price">&yen;480</div></div></div>
+              <div class="shop-card"><div class="shop-preview bg-c"><div class="char-silhouette"></div></div><div class="shop-info"><div class="shop-name">ルナ</div><div class="shop-price">&yen;980</div></div></div>
+            </div>
+          </div>
+          <div class="tab-panel" id="sp1-studio">
+            <div class="studio-hero"><div class="studio-hero-icon">&#127909;</div><h3>Ai-Ba スタジオ</h3><p>カメラを使ってAi-Baと一緒に<br>写真や動画を撮影しよう</p></div>
+            <div class="studio-actions">
+              <div class="studio-action"><div class="studio-action-icon cam">&#128247;</div><div class="studio-action-text"><h4>フェイストラッキング</h4><p>カメラで表情をリアルタイム連動</p></div><span class="studio-action-arrow">&rsaquo;</span></div>
+              <div class="studio-action"><div class="studio-action-icon ar">&#10024;</div><div class="studio-action-text"><h4>AR撮影 <span class="coming-soon">Coming Soon</span></h4><p>現実世界にAi-Baを召喚して撮影</p></div><span class="studio-action-arrow">&rsaquo;</span></div>
+              <div class="studio-action"><div class="studio-action-icon snap">&#128248;</div><div class="studio-action-text"><h4>スナップ撮影 <span class="coming-soon">Coming Soon</span></h4><p>ポーズを指定してスクリーンショット</p></div><span class="studio-action-arrow">&rsaquo;</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <button class="nav-item"><span class="nav-icon">&#128172;</span>チャット</button>
+          <button class="nav-item"><span class="nav-icon">#</span>トピック</button>
+          <button class="nav-item"><span class="nav-icon">&#128278;</span>メモ</button>
+          <button class="nav-item"><span class="nav-icon">&#128188;</span>ワーク</button>
+          <button class="nav-item active"><span class="nav-icon">&#128578;</span>Ai-Ba</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PC -->
+    <div class="device-wrap">
+      <div class="device-label">Desktop</div>
+      <div class="desktop">
+        <div class="header">
+          <div class="header-left">
+            <button class="hamburger">&#9776;</button>
+            <h1>Ai-Ba</h1>
+          </div>
+          <div class="header-right"><div class="avatar">T</div></div>
+        </div>
+        <div style="display:flex;flex:1;overflow:hidden;">
+          <!-- PC Sidebar -->
+          <div class="pc-sidebar">
+            <button class="pc-sidebar-item"><span class="si-icon">&#128172;</span>AIチャット</button>
+            <div class="pc-sidebar-sep"></div>
+            <div class="pc-sidebar-label">トピック</div>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128196;</span>今日の予定</button>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128196;</span>旅行プラン</button>
+            <div class="pc-sidebar-sep"></div>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128278;</span>メモ</button>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128188;</span>ワーク</button>
+            <button class="pc-sidebar-item active"><span class="si-icon">&#128578;</span>Ai-Ba</button>
+          </div>
+          <!-- Main -->
+          <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+            <div class="tabs tabs-pc">
+              <button class="tab active" onclick="switchTab(this, 'pc1-my')"><span class="tab-icon-inline">&#128100;</span>マイAi-Ba</button>
+              <button class="tab" onclick="switchTab(this, 'pc1-shop')"><span class="tab-icon-inline">&#128722;</span>ショップ</button>
+              <button class="tab" onclick="switchTab(this, 'pc1-studio')"><span class="tab-icon-inline">&#127909;</span>スタジオ</button>
+            </div>
+            <div class="content content-pc">
+              <div class="tab-panel active" id="pc1-my">
+                <div class="char-grid char-grid-pc">
+                  <div class="char-card selected"><div class="char-preview char-preview-pc bg1"><div class="char-silhouette"></div><span class="char-badge in-use">使用中</span></div><div class="char-info"><div class="char-name">アリア</div><div class="char-desc">優しくて明るいパートナー</div></div></div>
+                  <div class="char-card"><div class="char-preview char-preview-pc bg2"><div class="char-silhouette"></div></div><div class="char-info"><div class="char-name">レイ</div><div class="char-desc">クールで知的なアドバイザー</div></div></div>
+                  <div class="char-card"><div class="char-preview char-preview-pc bg3"><div class="char-silhouette"></div><span class="char-badge">NEW</span></div><div class="char-info"><div class="char-name">ミント</div><div class="char-desc">元気いっぱいの応援団長</div></div></div>
+                  <div class="char-card"><div class="char-preview char-preview-pc bg4"><div class="char-silhouette" style="opacity:0.3"></div></div><div class="char-info"><div class="char-name" style="color:#9ca3af">???</div><div class="char-desc">近日公開</div></div></div>
+                </div>
+              </div>
+              <div class="tab-panel" id="pc1-shop">
+                <div class="shop-banner shop-banner-pc"><h3>春の新キャラフェア</h3><p>期間限定で新しいAi-Baが登場!</p></div>
+                <div class="shop-section-title">おすすめ <a href="#">すべて見る</a></div>
+                <div class="shop-grid shop-grid-pc">
+                  <div class="shop-card"><div class="shop-preview bg-a"><div class="char-silhouette"></div></div><div class="shop-info"><div class="shop-name">サクラ</div><div class="shop-price">&yen;480</div></div></div>
+                  <div class="shop-card"><div class="shop-preview bg-b"><div class="char-silhouette"></div></div><div class="shop-info"><div class="shop-name">カイ</div><div class="shop-price">&yen;480</div></div></div>
+                  <div class="shop-card"><div class="shop-preview bg-c"><div class="char-silhouette"></div></div><div class="shop-info"><div class="shop-name">ルナ</div><div class="shop-price">&yen;980</div></div></div>
+                  <div class="shop-card"><div class="shop-preview bg-d"><div class="char-silhouette"></div></div><div class="shop-info"><div class="shop-name">ヒカリ</div><div class="shop-price">&yen;680</div></div></div>
+                </div>
+              </div>
+              <div class="tab-panel" id="pc1-studio">
+                <div class="studio-hero"><div class="studio-hero-icon">&#127909;</div><h3>Ai-Ba スタジオ</h3><p>カメラを使ってAi-Baと一緒に写真や動画を撮影しよう</p></div>
+                <div class="studio-actions studio-actions-pc">
+                  <div class="studio-action studio-action-pc"><div class="studio-action-icon cam">&#128247;</div><div class="studio-action-text"><h4>フェイストラッキング</h4><p>カメラで表情をリアルタイム連動</p></div></div>
+                  <div class="studio-action studio-action-pc"><div class="studio-action-icon ar">&#10024;</div><div class="studio-action-text"><h4>AR撮影</h4><p><span class="coming-soon">Coming Soon</span></p></div></div>
+                  <div class="studio-action studio-action-pc"><div class="studio-action-icon snap">&#128248;</div><div class="studio-action-text"><h4>スナップ撮影</h4><p><span class="coming-soon">Coming Soon</span></p></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== 案2: カードダッシュボード型 ==================== -->
+<div class="mock-container" id="mock1">
+  <div class="mock-label">案2: フルページ + カードダッシュボード型</div>
+  <div class="device-pair">
+
+    <!-- スマホ -->
+    <div class="device-wrap">
+      <div class="device-label">Mobile</div>
+      <div class="phone">
+        <div class="header"><h1>Ai-Ba</h1><div class="header-right"><div class="avatar">T</div></div></div>
+        <div class="content">
+          <div class="dash-current">
+            <div class="dash-current-avatar"><div class="char-silhouette" style="width:40px;height:48px;"></div></div>
+            <div class="dash-current-info"><h4>アリア</h4><p>優しくて明るいパートナー</p><p style="color:var(--accent-green);font-weight:600;font-size:11px;margin-top:4px;">&#9679; 使用中</p></div>
+          </div>
+          <div class="dash-grid">
+            <div class="dash-card"><div class="dash-icon i1">&#128100;</div><h4>マイAi-Ba</h4><p>キャラクターを変更・管理</p></div>
+            <div class="dash-card"><div class="dash-icon i2">&#128722;</div><h4>ショップ</h4><p>新しいAi-Baを見つける</p></div>
+            <div class="dash-card"><div class="dash-icon i3">&#127909;</div><h4>スタジオ</h4><p>カメラで撮影・連動</p></div>
+            <div class="dash-card"><div class="dash-icon i4">&#127912;</div><h4>着せ替え</h4><p style="color:var(--accent-orange);font-weight:600;">Coming Soon</p></div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <button class="nav-item"><span class="nav-icon">&#128172;</span>チャット</button>
+          <button class="nav-item"><span class="nav-icon">#</span>トピック</button>
+          <button class="nav-item"><span class="nav-icon">&#128278;</span>メモ</button>
+          <button class="nav-item"><span class="nav-icon">&#128188;</span>ワーク</button>
+          <button class="nav-item active"><span class="nav-icon">&#128578;</span>Ai-Ba</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PC -->
+    <div class="device-wrap">
+      <div class="device-label">Desktop</div>
+      <div class="desktop">
+        <div class="header">
+          <div class="header-left"><button class="hamburger">&#9776;</button><h1>Ai-Ba</h1></div>
+          <div class="header-right"><div class="avatar">T</div></div>
+        </div>
+        <div style="display:flex;flex:1;overflow:hidden;">
+          <div class="pc-sidebar">
+            <button class="pc-sidebar-item"><span class="si-icon">&#128172;</span>AIチャット</button>
+            <div class="pc-sidebar-sep"></div>
+            <div class="pc-sidebar-label">トピック</div>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128196;</span>今日の予定</button>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128196;</span>旅行プラン</button>
+            <div class="pc-sidebar-sep"></div>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128278;</span>メモ</button>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128188;</span>ワーク</button>
+            <button class="pc-sidebar-item active"><span class="si-icon">&#128578;</span>Ai-Ba</button>
+          </div>
+          <div class="content content-pc" style="flex:1;">
+            <div class="dash-current dash-current-pc">
+              <div class="dash-current-avatar"><div class="char-silhouette" style="width:40px;height:48px;"></div></div>
+              <div class="dash-current-info"><h4>アリア</h4><p>優しくて明るいパートナー</p><p style="color:var(--accent-green);font-weight:600;font-size:11px;margin-top:4px;">&#9679; 使用中</p></div>
+            </div>
+            <div class="dash-grid dash-grid-pc">
+              <div class="dash-card dash-card-pc"><div class="dash-icon dash-icon-pc i1">&#128100;</div><h4>マイAi-Ba</h4><p>キャラクターを変更・管理</p></div>
+              <div class="dash-card dash-card-pc"><div class="dash-icon dash-icon-pc i2">&#128722;</div><h4>ショップ</h4><p>新しいAi-Baを見つける</p></div>
+              <div class="dash-card dash-card-pc"><div class="dash-icon dash-icon-pc i3">&#127909;</div><h4>スタジオ</h4><p>カメラで撮影・連動</p></div>
+              <div class="dash-card dash-card-pc"><div class="dash-icon dash-icon-pc i4">&#127912;</div><h4>着せ替え</h4><p style="color:var(--accent-orange);font-weight:600;">Coming Soon</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== 案3: モーダル型 ==================== -->
+<div class="mock-container" id="mock2">
+  <div class="mock-label">案3: モーダル + サイドメニュー型</div>
+  <div class="device-pair">
+
+    <!-- スマホ -->
+    <div class="device-wrap">
+      <div class="device-label">Mobile</div>
+      <div class="phone">
+        <div class="header"><h1>AIチャット</h1><div class="header-right"><div class="avatar">T</div></div></div>
+        <div class="content" style="background:linear-gradient(180deg,#dbeafe,#ede9fe);display:flex;align-items:center;justify-content:center;">
+          <div style="text-align:center;color:var(--text-secondary);font-size:13px;"><div style="font-size:64px;margin-bottom:8px;opacity:0.3;">&#128100;</div>(チャット画面の背景)</div>
+        </div>
+        <div class="modal-overlay">
+          <div class="modal-box">
+            <div class="modal-header"><h2>Ai-Ba</h2><button class="modal-close">&times;</button></div>
+            <div class="modal-body">
+              <div class="modal-sidebar">
+                <button class="modal-sidebar-item active">マイAi-Ba</button>
+                <button class="modal-sidebar-item">ショップ</button>
+                <button class="modal-sidebar-item">スタジオ</button>
+                <button class="modal-sidebar-item">着せ替え</button>
+              </div>
+              <div class="modal-content">
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <div class="char-list-item selected"><div class="char-list-thumb" style="background:linear-gradient(135deg,#dbeafe,#ede9fe);"><div class="char-silhouette" style="width:28px;height:34px;"></div></div><div style="min-width:0;"><div class="char-name">アリア</div><div class="char-desc">優しくて明るいパートナー</div></div><span style="margin-left:auto;color:var(--accent-green);font-size:11px;font-weight:600;white-space:nowrap;">使用中</span></div>
+                  <div class="char-list-item"><div class="char-list-thumb" style="background:linear-gradient(135deg,#fce7f3,#fef3c7);"><div class="char-silhouette" style="width:28px;height:34px;"></div></div><div style="min-width:0;"><div class="char-name">レイ</div><div class="char-desc">クールで知的なアドバイザー</div></div></div>
+                  <div class="char-list-item"><div class="char-list-thumb" style="background:linear-gradient(135deg,#d1fae5,#cffafe);"><div class="char-silhouette" style="width:28px;height:34px;"></div></div><div style="min-width:0;"><div class="char-name">ミント</div><div class="char-desc">元気いっぱいの応援団長</div></div><span class="char-badge" style="position:static;">NEW</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-secondary">キャンセル</button><button class="btn btn-primary">変更を保存</button></div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <button class="nav-item"><span class="nav-icon">&#128172;</span>チャット</button>
+          <button class="nav-item"><span class="nav-icon">#</span>トピック</button>
+          <button class="nav-item"><span class="nav-icon">&#128278;</span>メモ</button>
+          <button class="nav-item"><span class="nav-icon">&#128188;</span>ワーク</button>
+          <button class="nav-item active"><span class="nav-icon">&#128578;</span>Ai-Ba</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PC -->
+    <div class="device-wrap">
+      <div class="device-label">Desktop</div>
+      <div class="desktop">
+        <div class="header">
+          <div class="header-left"><button class="hamburger">&#9776;</button><h1>AIチャット</h1></div>
+          <div class="header-right"><div class="avatar">T</div></div>
+        </div>
+        <div style="display:flex;flex:1;overflow:hidden;">
+          <div class="pc-sidebar">
+            <button class="pc-sidebar-item active"><span class="si-icon">&#128172;</span>AIチャット</button>
+            <div class="pc-sidebar-sep"></div>
+            <div class="pc-sidebar-label">トピック</div>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128196;</span>今日の予定</button>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128196;</span>旅行プラン</button>
+            <div class="pc-sidebar-sep"></div>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128278;</span>メモ</button>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128188;</span>ワーク</button>
+            <button class="pc-sidebar-item"><span class="si-icon">&#128578;</span>Ai-Ba</button>
+          </div>
+          <div class="pc-chat-bg" style="position:relative;">
+            <div style="text-align:center;"><div style="font-size:64px;margin-bottom:8px;opacity:0.3;">&#128100;</div>(チャット画面の背景)</div>
+            <div class="modal-overlay">
+              <div class="modal-box modal-box-pc">
+                <div class="modal-header"><h2>Ai-Ba</h2><button class="modal-close">&times;</button></div>
+                <div class="modal-body">
+                  <div class="modal-sidebar modal-sidebar-pc">
+                    <button class="modal-sidebar-item active">マイAi-Ba</button>
+                    <button class="modal-sidebar-item">ショップ</button>
+                    <button class="modal-sidebar-item">スタジオ</button>
+                    <button class="modal-sidebar-item">着せ替え</button>
+                  </div>
+                  <div class="modal-content">
+                    <div class="char-grid" style="grid-template-columns: 1fr 1fr;">
+                      <div class="char-card selected"><div class="char-preview bg1" style="height:110px;"><div class="char-silhouette" style="width:60px;height:75px;"></div><span class="char-badge in-use">使用中</span></div><div class="char-info"><div class="char-name">アリア</div><div class="char-desc">優しくて明るいパートナー</div></div></div>
+                      <div class="char-card"><div class="char-preview bg2" style="height:110px;"><div class="char-silhouette" style="width:60px;height:75px;"></div></div><div class="char-info"><div class="char-name">レイ</div><div class="char-desc">クールで知的なアドバイザー</div></div></div>
+                      <div class="char-card"><div class="char-preview bg3" style="height:110px;"><div class="char-silhouette" style="width:60px;height:75px;"></div><span class="char-badge">NEW</span></div><div class="char-info"><div class="char-name">ミント</div><div class="char-desc">元気いっぱいの応援団長</div></div></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-footer"><button class="btn btn-secondary">キャンセル</button><button class="btn btn-primary">変更を保存</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showMock(index) {
+  document.querySelectorAll('.mock-container').forEach((el, i) => {
+    el.classList.toggle('active', i === index);
+  });
+  document.querySelectorAll('.mock-selector button').forEach((btn, i) => {
+    btn.classList.toggle('active', i === index);
+  });
+}
+
+function switchTab(btn, panelId) {
+  const device = btn.closest('.phone, .desktop');
+  device.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  device.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  device.querySelector('#' + panelId).classList.add('active');
+}
+</script>
+</body>
+</html>

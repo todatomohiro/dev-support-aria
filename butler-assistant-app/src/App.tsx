@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, SkillsModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaModal } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, ModelImporter, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
-import type { ServerModel } from './services/modelService'
 import { chatController } from './services/chatController'
 import { syncService } from './services/syncService'
 import { themeService } from './services/themeService'
@@ -28,9 +27,7 @@ function App() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
-  const [isSkillsOpen, setIsSkillsOpen] = useState(false)
   const [isModelImporterOpen, setIsModelImporterOpen] = useState(false)
-  const [isAibaOpen, setIsAibaOpen] = useState(false)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [authModalInitialView, setAuthModalInitialView] = useState<AuthView>('login')
   const [isInitialized, setIsInitialized] = useState(false)
@@ -75,13 +72,15 @@ function App() {
   const themeThemes = useThemeStore((s) => s.themes)
 
   // 現在のセッション名を判定（設計書: ヘッダーにはセッション名のみ表示）
-  const currentSessionName = location.pathname.startsWith('/themes') && activeThemeId
-    ? themeThemes.find(t => t.themeId === activeThemeId)?.themeName ?? 'トピック'
-    : location.pathname.startsWith('/themes')
-      ? 'トピック'
-      : location.pathname.startsWith('/groups')
-        ? 'グループチャット'
-        : 'AIチャット'
+  const currentSessionName = location.pathname.startsWith('/aiba')
+    ? 'Ai-Ba'
+    : location.pathname.startsWith('/themes') && activeThemeId
+      ? themeThemes.find(t => t.themeId === activeThemeId)?.themeName ?? 'トピック'
+      : location.pathname.startsWith('/themes')
+        ? 'トピック'
+        : location.pathname.startsWith('/groups')
+          ? 'グループチャット'
+          : 'AIチャット'
 
   // 初期化処理
   useEffect(() => {
@@ -232,30 +231,16 @@ function App() {
     setCurrentExpression(name)
   }, [setCurrentExpression])
 
-  const setActiveModelMeta = useAppStore((state) => state.setActiveModelMeta)
-
   // 設定保存ハンドラー
   const handleSaveSettings = useCallback(
-    (newConfig: { ui?: Partial<UIConfig>; model?: Partial<{ currentModelId: string; selectedModelId?: string }> }, selectedModel?: ServerModel) => {
+    (newConfig: { ui?: Partial<UIConfig> }) => {
       const update: Record<string, unknown> = {}
       if (newConfig.ui) {
         update.ui = { ...config.ui, ...newConfig.ui }
       }
-      if (newConfig.model) {
-        update.model = { ...config.model, ...newConfig.model }
-      }
       updateConfig(update)
-
-      // 選択モデルのメタデータを activeModelMeta に反映
-      if (selectedModel) {
-        setActiveModelMeta({
-          modelId: selectedModel.modelId,
-          emotionMapping: selectedModel.emotionMapping,
-          motionMapping: selectedModel.motionMapping,
-        })
-      }
     },
-    [config, updateConfig, setActiveModelMeta]
+    [config, updateConfig]
   )
 
   // プロフィール保存ハンドラー
@@ -428,11 +413,10 @@ function App() {
       ) : (
         <AppLayout
           currentSessionName={currentSessionName}
-          onOpenAiba={() => setIsAibaOpen(true)}
           onRenameSession={activeThemeId ? handleRenameTheme : undefined}
           headerRight={
             <>
-              <UserMenu onOpenProfile={() => setIsProfileOpen(true)} onOpenSkills={() => setIsSkillsOpen(true)} onOpenSettings={() => setIsSettingsOpen(true)} />
+              <UserMenu onOpenProfile={() => setIsProfileOpen(true)} onOpenSettings={() => setIsSettingsOpen(true)} />
               {config.ui.developerMode && (
                 isPocPage ? (
                   <button
@@ -525,6 +509,7 @@ function App() {
                 <Route path="/themes/:themeId" element={<ThemeScreen />} />
                 <Route path="/themes" element={<ThemeScreen />} />
                 <Route path="/memos" element={<MemoScreen />} />
+                <Route path="/aiba" element={<AibaScreen />} />
                 <Route path="*" element={
                   <div className="flex-1 flex flex-col min-h-0" style={{ fontSize: `${config.ui.fontSize}px` }}>
                     <ChatUI
@@ -557,22 +542,6 @@ function App() {
         config={{ ui: config.ui }}
         onSave={handleSaveSettings}
         geolocationStatus={{ location: geoLocation, loading: geoLoading, error: geoError }}
-      />
-
-      {/* Ai-Ba モーダル */}
-      <AibaModal
-        isOpen={isAibaOpen}
-        onClose={() => setIsAibaOpen(false)}
-        config={{ model: config.model }}
-        onSave={(modelUpdate: Partial<{ currentModelId: string; selectedModelId?: string }>, selectedModel?: ServerModel) => {
-          handleSaveSettings({ model: modelUpdate }, selectedModel)
-        }}
-      />
-
-      {/* スキル連携モーダル */}
-      <SkillsModal
-        isOpen={isSkillsOpen}
-        onClose={() => setIsSkillsOpen(false)}
       />
 
       {/* プロフィールモーダル */}

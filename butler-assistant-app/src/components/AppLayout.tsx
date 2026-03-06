@@ -7,7 +7,6 @@ import { WorkConnectModal } from './WorkConnectModal'
 interface AppLayoutProps {
   children: React.ReactNode
   currentSessionName?: string
-  onOpenAiba: () => void
   headerRight?: React.ReactNode
   /** セッション名の右横に表示する追加要素 */
   headerExtra?: React.ReactNode
@@ -21,7 +20,7 @@ interface AppLayoutProps {
  * PC: サイドバー + コンテンツ
  * スマホ: コンテンツ + ボトムナビ
  */
-export function AppLayout({ children, currentSessionName, onOpenAiba, headerRight, headerExtra, onRenameSession }: AppLayoutProps) {
+export function AppLayout({ children, currentSessionName, headerRight, headerExtra, onRenameSession }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isWorkModalOpen, setIsWorkModalOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -38,13 +37,15 @@ export function AppLayout({ children, currentSessionName, onOpenAiba, headerRigh
   }, [])
 
   // 現在のアクティブタブを判定
-  const activeTab = location.pathname.startsWith('/themes')
-    ? 'themes'
-    : location.pathname.startsWith('/memos')
-      ? 'memos'
-      : location.pathname.startsWith('/groups')
-        ? 'groups'
-        : 'chat'
+  const activeTab = location.pathname.startsWith('/aiba')
+    ? 'aiba'
+    : location.pathname.startsWith('/themes')
+      ? 'themes'
+      : location.pathname.startsWith('/memos')
+        ? 'memos'
+        : location.pathname.startsWith('/groups')
+          ? 'groups'
+          : 'chat'
 
   /** 編集開始 */
   const handleStartEdit = useCallback(() => {
@@ -167,7 +168,6 @@ export function AppLayout({ children, currentSessionName, onOpenAiba, headerRigh
           <Sidebar
             activeTab={activeTab}
             onOpenWork={() => setIsWorkModalOpen(true)}
-            onOpenAiba={onOpenAiba}
           />
         </div>
 
@@ -179,7 +179,7 @@ export function AppLayout({ children, currentSessionName, onOpenAiba, headerRigh
 
       {/* スマホ: ボトムナビ */}
       <div className="md:hidden">
-        <BottomNav activeTab={activeTab} onOpenWork={() => setIsWorkModalOpen(true)} onOpenAiba={onOpenAiba} />
+        <BottomNav activeTab={activeTab} onOpenWork={() => setIsWorkModalOpen(true)} />
       </div>
 
       {/* ワーク接続モーダル */}

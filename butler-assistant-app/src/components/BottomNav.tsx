@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router'
 interface BottomNavProps {
   activeTab: string
   onOpenWork: () => void
-  onOpenAiba: () => void
 }
 
 /**
- * スマホ版ボトムナビ（4タブ）
+ * スマホ版ボトムナビ
  */
-export function BottomNav({ activeTab, onOpenWork, onOpenAiba }: BottomNavProps) {
+export function BottomNav({ activeTab, onOpenWork }: BottomNavProps) {
   const navigate = useNavigate()
 
   const tabs = [
@@ -56,7 +55,7 @@ export function BottomNav({ activeTab, onOpenWork, onOpenAiba }: BottomNavProps)
     {
       id: 'aiba',
       label: 'Ai-Ba',
-      action: onOpenAiba,
+      action: () => navigate('/aiba'),
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

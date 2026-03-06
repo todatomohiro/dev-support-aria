@@ -6,13 +6,12 @@ import { themeService } from '@/services'
 interface SidebarProps {
   activeTab: string
   onOpenWork: () => void
-  onOpenAiba: () => void
 }
 
 /**
  * PC 版サイドバー
  */
-export function Sidebar({ activeTab, onOpenWork, onOpenAiba }: SidebarProps) {
+export function Sidebar({ activeTab, onOpenWork }: SidebarProps) {
   const navigate = useNavigate()
   const themes = useThemeStore((s) => s.themes)
   const activeThemeId = useThemeStore((s) => s.activeThemeId)
@@ -119,8 +118,12 @@ export function Sidebar({ activeTab, onOpenWork, onOpenAiba }: SidebarProps) {
       {/* Ai-Ba */}
       <div className="border-t border-gray-200 dark:border-gray-700">
         <button
-          onClick={onOpenAiba}
-          className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          onClick={() => navigate('/aiba')}
+          className={`w-full flex items-center gap-2 px-4 py-3 text-left text-sm transition-colors ${
+            activeTab === 'aiba'
+              ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+          }`}
           data-testid="sidebar-aiba"
         >
           <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
