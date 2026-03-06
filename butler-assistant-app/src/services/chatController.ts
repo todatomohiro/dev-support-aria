@@ -413,6 +413,59 @@ class ChatControllerImpl {
   }
 
   /**
+   * プロアクティブ・ブリーフィングを要求
+   * ユーザーメッセージは表示せず、AIからの自発的な発言として処理する
+   */
+  async requestBriefing(userLocation?: { lat: number; lng: number }): Promise<void> {
+    const store = useAppStore.getState()
+
+    // ローディング中は実行しない
+    if (store.isLoading) return
+
+    store.setLoading(true)
+
+    try {
+      const structuredResponse = await llmClient.sendMessage(
+        '__briefing__',
+        store.sessionId,
+        undefined,
+        undefined,
+        userLocation,
+        undefined,
+        false
+      )
+
+      // アシスタントメッセージを作成（ユーザーメッセージは追加しない）
+      const assistantMessage: Message = {
+        id: uuidv4(),
+        role: 'assistant',
+        content: structuredResponse.text ?? '',
+        timestamp: Date.now(),
+        motion: structuredResponse.motion,
+        suggestedReplies: structuredResponse.suggestedReplies,
+      }
+
+      store.addMessage(assistantMessage)
+      syncService.saveMessage(assistantMessage)
+
+      // TTS 自動再生
+      if (store.config.ui.ttsEnabled) {
+        ttsService.synthesizeAndPlay(assistantMessage.content)
+      }
+
+      // モーションと表情を再生
+      this.playExpression(structuredResponse)
+
+      store.setError(null)
+    } catch (error) {
+      // ブリーフィング失敗は静かに無視（ユーザー操作ではないため）
+      console.warn('[ChatController] ブリーフィング取得エラー:', error)
+    } finally {
+      store.setLoading(false)
+    }
+  }
+
+  /**
    * 会話履歴をクリア
    */
   clearHistory(): void {

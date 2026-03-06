@@ -1068,9 +1068,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return response(400, { error: 'Invalid JSON' })
   }
 
+  // ブリーフィングモード判定
+  const isBriefingMode = message === '__briefing__'
+  if (isBriefingMode) {
+    console.log('[LLM] ブリーフィングモード開始')
+  }
+
   // メモリ検索 + 永久記憶 + プロフィール取得（並列、失敗してもチャットは続行）
   const [memoryRecords, permanentFacts, userProfile] = await Promise.all([
-    retrieveMemoryRecords(userId, message),
+    isBriefingMode ? Promise.resolve([]) : retrieveMemoryRecords(userId, message),
     getPermanentFacts(userId),
     getUserProfile(userId),
   ])
@@ -1180,6 +1186,79 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     messages = toConverseMessages(history, message, imageBase64)
   }
 
+  // ── ブリーフィングモード: ツールを事前呼び出しして結果をプロンプトに注入 ──
+  if (isBriefingMode) {
+    const briefingParts: string[] = []
+
+    // カレンダー取得（失敗しても続行）
+    try {
+      const now = new Date()
+      const jstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+      const todayStart = new Date(jstNow)
+      todayStart.setHours(0, 0, 0, 0)
+      const tomorrowEnd = new Date(todayStart)
+      tomorrowEnd.setDate(tomorrowEnd.getDate() + 2)
+
+      const calendarResult = await executeSkill('list_events', {
+        timeMin: todayStart.toISOString(),
+        timeMax: tomorrowEnd.toISOString(),
+        maxResults: 10,
+      }, 'briefing-cal', userId)
+      const calText = calendarResult.content?.[0] && 'text' in calendarResult.content[0] ? calendarResult.content[0].text : ''
+      if (calText && !calText.includes('エラー') && !calText.includes('未連携')) {
+        briefingParts.push(`<calendar>\n${calText}\n</calendar>`)
+      }
+    } catch (e) {
+      console.warn('[Briefing] カレンダー取得スキップ:', e)
+    }
+
+    // 天気取得（失敗しても続行）
+    try {
+      const weatherInput: Record<string, unknown> = {}
+      // userLocation があればそれを使用、なければ永久記憶から推測
+      if (userLocation) {
+        weatherInput.latitude = userLocation.lat
+        weatherInput.longitude = userLocation.lng
+      }
+      const weatherResult = await executeSkill('get_weather', weatherInput, 'briefing-weather', userId, undefined, userLocation)
+      const weatherText = weatherResult.content?.[0] && 'text' in weatherResult.content[0] ? weatherResult.content[0].text : ''
+      if (weatherText && !weatherText.includes('失敗') && !weatherText.includes('位置情報が取得できません')) {
+        briefingParts.push(`<weather>\n${weatherText}\n</weather>`)
+      }
+    } catch (e) {
+      console.warn('[Briefing] 天気取得スキップ:', e)
+    }
+
+    // 永久記憶をブリーフィングコンテキストに追加
+    if (permanentFacts.length > 0) {
+      briefingParts.push(`<user_facts>\n${permanentFacts.map(f => `- ${f}`).join('\n')}\n</user_facts>`)
+    }
+
+    // 時間帯判定
+    const jstHour = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })).getHours()
+    const timeOfDay = jstHour < 11 ? '朝' : jstHour < 17 ? '昼' : jstHour < 21 ? '夕方' : '夜'
+
+    // ブリーフィング専用のユーザーメッセージを構築
+    const briefingUserMessage = `【ブリーフィングモード】
+以下の情報をもとに、ユーザーに自然に話しかけてください。
+現在の時間帯: ${timeOfDay}
+
+${briefingParts.join('\n\n')}
+
+ルール:
+- 全部の情報を詰め込まない。重要なもの2〜3個に絞って自然に伝える
+- 予定がなければ天気の話、天気が平穏なら予定の話、のように臨機応変に
+- 情報がほとんどない場合は、時間帯に合った短い挨拶だけでよい
+- キャラクターの口調を守る
+- 押し付けがましくならないように。さりげなく自然に
+- 通常の JSON レスポンス形式（text, emotion, motion, suggestedReplies）で返すこと`
+
+    // ブリーフィングメッセージで messages を上書き（会話履歴は不要）
+    messages = [{ role: 'user', content: [{ text: briefingUserMessage }] }]
+
+    console.log(`[Briefing] コンテキスト: ${briefingParts.length} 件（カレンダー, 天気, 永久記憶）`)
+  }
+
   // MCP ツールを動的注入（接続が有効な場合のみ）
   const mcpTools = mcpConn && !mcpConn.isExpired
     ? mcpConn.tools.map((t) => convertMCPToolToBedrock(t))
@@ -1274,8 +1353,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       // DynamoDB にはテキスト部分のみ保存（JSON 構造体を除去）
       const textForStorage = extractTextFieldFromJson(content)
 
-      // セッションモードの場合: メッセージ保存 + 要約トリガー
-      if (sessionId) {
+      // セッションモードの場合: メッセージ保存 + 要約トリガー（ブリーフィングは保存しない）
+      if (sessionId && !isBriefingMode) {
         try {
           const sessionOverrides = themeId
             ? { msgPK: `USER#${userId}#THEME#${themeId}`, sessionSK: `THEME_SESSION#${themeId}`, themeId }

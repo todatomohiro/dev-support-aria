@@ -10,6 +10,7 @@ import { themeService } from './services/themeService'
 import { greetingService } from './services/greetingService'
 import { sentimentService } from './services/sentimentService'
 import { useGeolocation } from './hooks/useGeolocation'
+import { useBriefing } from './hooks/useBriefing'
 import { logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
 import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
@@ -65,6 +66,9 @@ function App() {
 
   // 位置情報フック
   const { location: geoLocation, loading: geoLoading, error: geoError, requestLocation, clearLocation } = useGeolocation()
+
+  // プロアクティブ・ブリーフィング（起動時・復帰時にAIから話しかける）
+  useBriefing()
   const setCurrentLocation = useAppStore((state) => state.setCurrentLocation)
 
   // Theme store
