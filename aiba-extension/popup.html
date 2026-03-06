@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 300px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f9fafb;
+      color: #1f2937;
+    }
+    .header {
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      padding: 14px 16px;
+      color: #fff;
+    }
+    .header h1 { font-size: 15px; font-weight: 700; }
+    .header p { font-size: 11px; opacity: 0.85; margin-top: 4px; }
+    .content { padding: 14px 16px; }
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .status-item:last-child { border-bottom: none; }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #d1d5db;
+      flex-shrink: 0;
+    }
+    .status-dot.ok { background: #22c55e; }
+    .status-dot.error { background: #ef4444; }
+    .status-dot.loading { background: #f59e0b; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .status-label { font-size: 12px; font-weight: 600; min-width: 80px; }
+    .status-text { font-size: 11px; color: #6b7280; flex: 1; }
+    .actions { margin-top: 12px; display: flex; gap: 6px; }
+    .action-btn {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #fff;
+      color: #374151;
+      transition: all 0.15s;
+    }
+    .action-btn:hover { background: #f9fafb; border-color: #d1d5db; }
+    .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .action-btn.danger { color: #dc2626; }
+    .progress {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f0fdf4;
+      border-radius: 8px;
+      font-size: 11px;
+      color: #166534;
+      text-align: center;
+      display: none;
+    }
+    .progress.error { background: #fef2f2; color: #991b1b; }
+    .hint {
+      margin-top: 10px;
+      font-size: 10px;
+      color: #9ca3af;
+      text-align: center;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Ai-Ba Tools</h1>
+    <p>拡張アイコンをクリックで自動セットアップ</p>
+  </div>
+  <div class="content">
+    <div class="status-item">
+      <div class="status-dot" id="dotCapture"></div>
+      <span class="status-label">タブ音声</span>
+      <span class="status-text" id="textCapture">確認中...</span>
+    </div>
+    <div class="status-item">
+      <div class="status-dot" id="dotAuth"></div>
+      <span class="status-label">Ai-Ba 連携</span>
+      <span class="status-text" id="textAuth">確認中...</span>
+    </div>
+    <div id="progress" class="progress"></div>
+    <div class="actions">
+      <button class="action-btn" id="btnRetry">再セットアップ</button>
+      <button class="action-btn danger" id="btnStop" disabled>停止</button>
+    </div>
+    <div class="hint">
+      会議ページで拡張アイコンをクリックすると<br>
+      タブ音声キャプチャと Ai-Ba 連携を自動実行します
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

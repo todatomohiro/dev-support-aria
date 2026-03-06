@@ -994,6 +994,57 @@ export class ButlerStack extends cdk.Stack {
     const modelsResource = api.root.addResource('models')
     modelsResource.addMethod('GET', new apigateway.LambdaIntegration(modelsListFn), authMethodOptions)
 
+    // ── Transcribe Streaming（Meeting Noter 用 — PoC） ──
+    const transcribeStreamUrlFn = new lambdaNode.NodejsFunction(this, 'TranscribeStreamUrlFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'transcribe', 'getStreamUrl.ts'),
+      functionName: 'butler-transcribe-stream-url',
+    })
+    transcribeStreamUrlFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['transcribe:StartStreamTranscription', 'transcribe:StartStreamTranscriptionWebSocket'],
+      resources: ['*'],
+    }))
+    // 認証不要の Function URL（PoC 用 — Chrome 拡張から直接呼び出し）
+    const transcribeFnUrl = transcribeStreamUrlFn.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,
+      cors: {
+        allowedOrigins: ['*'],
+        allowedMethods: [lambda.HttpMethod.GET],
+        allowedHeaders: ['Content-Type'],
+      },
+    })
+
+    new cdk.CfnOutput(this, 'TranscribeStreamUrlFnUrl', {
+      value: transcribeFnUrl.url,
+      description: 'Transcribe Streaming presigned URL endpoint (PoC)',
+    })
+
+    // ── Meeting Noter API（PoC） ──
+    const meetingNoterFn = new lambdaNode.NodejsFunction(this, 'MeetingNoterFn', {
+      ...lambdaDefaults,
+      timeout: cdk.Duration.seconds(30),
+      entry: path.join(__dirname, '..', 'lambda', 'meeting-noter', 'handler.ts'),
+      functionName: 'butler-meeting-noter',
+    })
+    table.grantReadWriteData(meetingNoterFn)
+    meetingNoterFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel', 'bedrock:Converse'],
+      resources: ['*'],
+    }))
+    const meetingNoterFnUrl = meetingNoterFn.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,
+      cors: {
+        allowedOrigins: ['*'],
+        allowedMethods: [lambda.HttpMethod.POST],
+        allowedHeaders: ['Content-Type'],
+      },
+    })
+
+    new cdk.CfnOutput(this, 'MeetingNoterFnUrl', {
+      value: meetingNoterFnUrl.url,
+      description: 'Meeting Noter API endpoint (PoC)',
+    })
+
     // ── Admin S3 + CloudFront ──
     const adminBucket = new s3.Bucket(this, 'AdminAppBucket', {
       bucketName: `butler-admin-app-${this.account}`,

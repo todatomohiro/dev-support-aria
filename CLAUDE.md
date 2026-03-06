@@ -11,6 +11,8 @@ cd butler-assistant-app
 pnpm test             # 全テスト実行（Vitest + jsdom）
 pnpm dev              # 開発サーバー（http://localhost:5173）
 pnpm typecheck        # 型チェック
+
+
 pnpm lint             # ESLint
 pnpm build            # プロダクションビルド
 pnpm test:coverage    # カバレッジ計測

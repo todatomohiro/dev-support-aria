@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Ai-Ba Tools",
+  "version": "0.3.0",
+  "description": "Ai-Ba 会議ツール — 仮想カメラ + リアルタイム文字起こし + AI要約",
+  "permissions": ["tabCapture", "offscreen", "scripting", "storage"],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "https://*.zoom.us/*",
+    "https://teams.microsoft.com/*",
+    "https://*.lambda-url.ap-northeast-1.on.aws/*",
+    "http://localhost:5173/*",
+    "https://wpripgjmae.execute-api.ap-northeast-1.amazonaws.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*",
+        "https://teams.microsoft.com/*"
+      ],
+      "js": ["toolbar.js", "tool-camera.js", "tool-noter.js"],
+      "css": ["toolbar.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Ai-Ba Tools",
+    "default_popup": "popup.html"
+  },
+  "icons": {}
+}
