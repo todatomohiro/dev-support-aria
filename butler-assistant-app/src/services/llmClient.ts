@@ -144,6 +144,27 @@ function extractBalancedJson(text: string): string | null {
 }
 
 /**
+ * text フィールドに混入した JSON フラグメント（suggestedReplies 等）を除去
+ *
+ * LLM がテキスト末尾に `{"suggestedReplies": [...]}` を文字列として
+ * 含めてしまうケースに対応。検出したフィールドは parsed に移動する。
+ */
+function cleanEmbeddedJson(text: string, parsed: StructuredResponse): string {
+  // {"suggestedReplies": [...]} パターンを検出
+  const match = text.match(/\{[\s\n]*"suggestedReplies"\s*:\s*\[[\s\S]*?\]\s*\}/)
+  if (!match) return text
+
+  try {
+    const embedded = JSON.parse(match[0]) as { suggestedReplies?: string[] }
+    if (Array.isArray(embedded.suggestedReplies) && !parsed.suggestedReplies) {
+      parsed.suggestedReplies = embedded.suggestedReplies
+    }
+  } catch { /* パース失敗は無視 */ }
+
+  return text.replace(match[0], '').trim()
+}
+
+/**
  * LLM Client Service 実装（Bedrock Lambda プロキシ経由）
  */
 class LLMClientImpl implements LLMClientService {
@@ -201,6 +222,10 @@ class LLMClientImpl implements LLMClientService {
         // motion / emotion が欠落している場合のデフォルト値
         if (!parsed.motion) parsed.motion = 'idle'
         if (!parsed.emotion) parsed.emotion = 'neutral'
+        // text 内に混入した suggestedReplies JSON を除去
+        if (typeof parsed.text === 'string') {
+          parsed.text = cleanEmbeddedJson(parsed.text, parsed)
+        }
         if (data.enhancedSystemPrompt) {
           parsed.enhancedSystemPrompt = data.enhancedSystemPrompt
         }

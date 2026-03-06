@@ -632,7 +632,15 @@ function extractTextFieldFromJson(content: string): string {
     return content.slice(0, idx).trim()
   }
 
-  return content
+  // テキスト内に混入した {"suggestedReplies": ...} を除去
+  return stripEmbeddedJsonFragments(content)
+}
+
+/**
+ * テキスト内に混入した JSON フラグメント（suggestedReplies 等）を除去
+ */
+function stripEmbeddedJsonFragments(text: string): string {
+  return text.replace(/\{[\s\n]*"suggestedReplies"\s*:\s*\[[\s\S]*?\]\s*\}/g, '').trim()
 }
 
 /**
