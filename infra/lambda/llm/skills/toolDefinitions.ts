@@ -108,6 +108,27 @@ export const TOOL_DEFINITIONS: Tool[] = [
       },
     },
   },
+  {
+    toolSpec: {
+      name: 'get_weather',
+      description: '天気予報を取得します。ユーザーが「天気を教えて」「明日の天気は？」「傘いる？」などと聞いた場合に使用してください。',
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            latitude: {
+              type: 'number',
+              description: '緯度（指定しない場合はユーザーの現在地を使用）',
+            },
+            longitude: {
+              type: 'number',
+              description: '経度（指定しない場合はユーザーの現在地を使用）',
+            },
+          },
+        },
+      },
+    },
+  },
 ]
 
 /**

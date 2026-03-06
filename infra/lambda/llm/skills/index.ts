@@ -5,6 +5,7 @@ import * as crypto from 'crypto'
 import { listEvents, createEvent } from './googleCalendar'
 import { searchPlaces } from './places'
 import { webSearch } from './webSearch'
+import { getWeather } from './weather'
 import { callMCPTool } from '../../mcp/mcpClient'
 
 const memoDynamo = new DynamoDBClient({})
@@ -77,6 +78,9 @@ export async function executeSkill(
       }
       case 'web_search':
         resultText = await webSearch(input)
+        break
+      case 'get_weather':
+        resultText = await getWeather(input, userLocation)
         break
       case 'save_memo':
         resultText = await saveMemo(userId, input)
