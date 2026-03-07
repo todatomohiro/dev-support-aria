@@ -152,14 +152,16 @@ test.prop([fc.string()])(
 
 ```
 ユーザー発言 → chatController
-  ├→ llmClient → Lambda /llm/chat
+  ├→ llmClient → Lambda /llm/chat（selectedModelId 付き）
   │   ↓ システムプロンプトはバックエンドで完全生成（フロントエンドから送信しない）
-  │   ↓ DynamoDB からプロフィール・永久記憶を取得、3層記憶を並列取得 → systemPrompt に注入
+  │   ↓ DynamoDB からプロフィール・永久記憶・モデルメタデータを並列取得 → systemPrompt に注入
+  │   ↓ モデルメタデータ: characterConfig（キャラクター設定）+ emotionMapping + motionMapping
   │   ↓ Prompt Caching: 静的プロンプト → cachePoint → ユーザー固有 → cachePoint → 動的コンテキスト
   │   ↓ Bedrock Claude Haiku 4.5（Converse API + Tool Use）
   │   ↓ ツール実行: list_events / create_event / search_places / web_search / get_weather
   │   ↓ メッセージ保存 + 5ターンごとに要約 Lambda 非同期起動
-  │   → レスポンス返却（text, emotion, mapData?, permanentFacts?, sessionSummary?, themeName?)
+  │   → レスポンス返却（text, emotion, motion?, mapData?, permanentFacts?, sessionSummary?, themeName?)
+  ├→ chatController: emotion → 表情変更、motion → モーション再生（省略時はスキップ）
   ├→ fire-and-forget: /memory/events → AgentCore Memory
   └→ EventBridge rate(15min) → sessionFinalizer → extractFacts（永久事実抽出）
 
@@ -181,13 +183,31 @@ test.prop([fc.string()])(
 - トークン管理: `infra/lambda/llm/skills/tokenManager.ts`（Google OAuth）
 - デバッグ情報（`enhancedSystemPrompt`）は `includeDebug=true`（開発者モード）時のみ返却
 
+### マルチモデル設定反映
+
+```
+管理画面で設定 → DynamoDB GLOBAL_MODEL#{modelId} METADATA
+  ├→ characterConfig: キャラクター設定（構造化フィールド + 自由記述プロンプト）
+  │   構造化フィールド（characterName/Personality/SpeechStyle）優先 → characterPrompt は追加指示
+  │   何も設定なし → デフォルトキャラクター（DEFAULT_CHARACTER_PROMPT）
+  │   共通ルール（入力・会話ルール）は常に含む
+  ├→ emotionMapping: 感情→表情マッピング（空文字=未設定はスキップ）
+  │   → LLM の emotion 候補リスト + フロントエンド表情変更に使用
+  └→ motionMapping: モーション→アニメーションマッピング（空文字 group も有効）
+      → LLM の motion フィールド（省略可）+ 開発者モードのモーションボタン + アイドル自律行動
+
+アイドル自律行動（Live2DCanvas.tsx）:
+  15秒後: 初回モーション再生 → 100秒後: 30秒間隔ループ
+  モーション候補: motionMapping の motion1〜motion6（未設定時はデフォルトにフォールバック）
+```
+
 ### システムプロンプト構造（XMLタグ + Prompt Caching）
 
 ```
-[キャッシュブロック1: 全ユーザー共通]
-  <ai_config>         キャラクター設定・会話ルール・感情選択基準
+[キャッシュブロック1: 全ユーザー共通（モデル設定反映済み）]
+  <ai_config>         キャラクター設定（モデルメタ or デフォルト）・共通ルール・感情選択基準
   <skills>            ツール使用ルール（日時を除く静的部分）
-  <response_format>   JSON出力形式指示
+  <response_format>   JSON出力形式指示（motion はモデルに motionMapping がある場合のみ含む）
   ── cachePoint ──
 [キャッシュブロック2: ユーザー固有]
   <user_profile>      ユーザー名・性別・AI名（DynamoDB SETTINGS から取得）

@@ -24,8 +24,9 @@
 ## 主要機能
 
 ### 1. AI チャット（コア機能）
-- Live2D キャラクターが感情表現（8種）とモーション（12種）付きで応答
-- LLM レスポンスは JSON 構造化（text, emotion, motion, suggestedReplies, mapData）
+- Live2D キャラクターが感情表現（表情）とモーション（体の動き）付きで応答
+- emotion（表情）は毎回必須、motion（モーション）は省略可 — モデルの設定に応じて動的に決定
+- LLM レスポンスは JSON 構造化（text, emotion, motion?, suggestedReplies, mapData）
 - 音声入力（VAD 対応・自動送信）→ AI 応答 → 音声読み上げ（Polly）の一連のフロー
 - Markdown レンダリング対応の応答表示
 
@@ -56,9 +57,13 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 - グループ作成・メンバー管理
 - WebSocket によるリアルタイムメッセージング
 
-### 6. マルチモデル管理
-- 管理画面から Live2D モデルのアップロード・設定が可能
-- 感情→表情、モーション→アニメーションのマッピング設定
+### 6. マルチモデル管理・キャラクター設定反映
+- 管理画面から Live2D モデルのアップロード・キャラクター設定・マッピング設定が可能
+- **キャラクター設定**: 構造化フィールド（名前/性格/話し方）→ LLM システムプロンプトに自動反映
+- **感情マッピング**: emotion → 表情名。LLM の emotion 候補リスト + フロントエンド表情変更に使用
+- **モーションマッピング**: モーションタグ → group/index。LLM が motion を返すとモーション再生（省略可）
+- 開発者モードのモーション/表情ボタンも管理画面設定を反映
+- アイドル自律行動: motion1〜motion6 の設定済みモーションからランダム再生（15秒後初回→100秒後30秒間隔ループ）
 - S3 + CloudFront CDN 配信
 
 ### 7. MCP（Model Context Protocol）連携
@@ -227,10 +232,10 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 ## システムプロンプト構造（XML タグ + Prompt Caching）
 
 ```
-[キャッシュブロック1: 全ユーザー共通]
-  <ai_config>       キャラクター設定・会話ルール・感情選択基準
+[キャッシュブロック1: 全ユーザー共通（モデル設定反映済み）]
+  <ai_config>       キャラクター設定（モデルメタ or デフォルト）・共通ルール・感情選択基準
   <skills>          ツール使用ルール（カレンダー、天気、検索、メモ等）
-  <response_format>  JSON 出力形式指示
+  <response_format>  JSON 出力形式指示（motion はモデル設定時のみ含む）
   ── cachePoint ──
 
 [キャッシュブロック2: ユーザー固有]
@@ -254,13 +259,14 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 ```
 ユーザー発言（テキスト/音声）
-  → chatController → Lambda /llm/chat
-    → DynamoDB からプロフィール・永久記憶を並列取得
+  → chatController → Lambda /llm/chat（selectedModelId 付き）
+    → DynamoDB からプロフィール・永久記憶・モデルメタデータを並列取得
+    → モデルメタデータからキャラクター設定・感情/モーション候補を動的生成
     → システムプロンプト構築 + Prompt Caching
     → Bedrock Claude Haiku 4.5（Converse API + Tool Use）
     → ツール実行（カレンダー / 天気 / 検索 / メモ等）
-    → レスポンス返却（text, emotion, motion, mapData...）
-  → Live2D アニメーション + Polly TTS 音声再生
+    → レスポンス返却（text, emotion, motion?, mapData...）
+  → emotion → 表情変更 / motion → モーション再生 + Polly TTS 音声再生
   → fire-and-forget: AgentCore Memory に中期記憶保存
   → 5ターンごと: ローリング要約 Lambda 非同期起動
   → 15分無操作: EventBridge → 永久事実自動抽出
