@@ -27,8 +27,10 @@
 - Live2D キャラクターが感情表現（表情）とモーション（体の動き）付きで応答
 - emotion（表情）は毎回必須、motion（モーション）は省略可 — モデルの設定に応じて動的に決定
 - LLM レスポンスは JSON 構造化（text, emotion, motion?, suggestedReplies, mapData）
+- **WebSocket ストリーミング**: REST トリガー + WebSocket プッシュでリアルタイムタイプライター表示（メイン・トピック両対応）
 - 音声入力（VAD 対応・自動送信）→ AI 応答 → 音声読み上げ（Polly）の一連のフロー
 - Markdown レンダリング対応の応答表示
+- **キャラクター表示切替**: Live2D の表示/非表示をトグル可能（非表示時は GPU 節約、天気は折りたたみバーで継続表示）
 
 ### 2. スキル（Tool Use）
 LLM がユーザーの意図に応じて自動的にツールを呼び出す:
@@ -283,7 +285,7 @@ EventBridge rate(15 minutes) → sessionFinalizer Lambda
 
 ```
 butler-assistant-app/     ← メインアプリ（React + Vite）
-├── コンポーネント 34個 / サービス 20個 / フック 10個 / ストア 3個
+├── コンポーネント 34個 / サービス 20個 / フック 11個 / ストア 3個
 ├── プラットフォーム抽象化（Web / Tauri / Capacitor）
 ├── Live2D レンダリング + フェイストラッキング（MediaPipe + Kalidokit）
 └── PoC（音声認識、GPS、感情分析、フェイストラッキング等）
@@ -325,7 +327,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── WorkBadge.tsx       # MCP接続バッジ
 │   │   ├── WeatherOverlay.tsx  # 天気アイコン+気温オーバーレイ
 │   │   └── ...                 # モーダル、ナビゲーション等
-│   ├── hooks/              # カスタムフック 10個
+│   ├── hooks/              # カスタムフック 11個
 │   │   ├── useSpeechRecognition.ts  # 音声認識（Web Speech API）
 │   │   ├── useVAD.ts               # Voice Activity Detection
 │   │   ├── useCamera.ts            # カメラ制御
@@ -335,7 +337,8 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── useThemePolling.ts      # トピック ポーリング
 │   │   ├── useQRScanner.ts         # QR コード読み込み
 │   │   ├── useBriefing.ts          # プロアクティブ・ブリーフィング
-│   │   └── useWeatherIcon.ts       # 天気アイコン表示（Open-Meteo API）
+│   │   ├── useWeatherIcon.ts       # 天気アイコン表示（Open-Meteo API）
+│   │   └── useStreamChat.ts        # WebSocket ストリーミングチャット
 │   ├── services/           # ビジネスロジック 19個（camelCase.ts）
 │   │   ├── llmClient.ts        # LLM (Bedrock Claude) 通信
 │   │   ├── chatController.ts   # チャットコントローラー
@@ -453,7 +456,16 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 **エンドポイント**: `POST /llm/chat`
 **認証**: Cognito JWT（`Authorization: Bearer {idToken}`）
 **Lambda タイムアウト**: 90秒
-**通信方式**: 同期 HTTP（非ストリーミング）— フロントエンドは fetch でリクエストし、レスポンス全体を待つ
+**通信方式**: WebSocket ストリーミング（REST トリガー + WebSocket プッシュ）
+
+```
+1. REST POST /llm/chat（streaming: true）→ HTTP 202 即時返却（Lambda 非同期起動）
+2. Lambda → WebSocket chat_delta: テキスト差分をリアルタイム送信
+3. Lambda → WebSocket chat_complete: 完了通知 + メタデータ（themeName 等）
+4. フロントエンド: chat_delta → streamingText 蓄積 → タイプライター表示
+5. フロントエンド: chat_complete → メタデータ抽出 → メッセージ確定
+※ WebSocket 未接続時は同期 HTTP フォールバック（レスポンス全体を待つ）
+```
 
 #### リクエストボディ
 
@@ -466,6 +478,8 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
   "userLocation": { "lat": 35.68, "lng": 139.76 },
   "modelKey": "haiku|sonnet|opus（デフォルト: haiku）",
   "selectedModelId": "Live2DモデルID（キャラ設定取得用）",
+  "streaming": true,
+  "connectionId": "WebSocket接続ID（ストリーミング時必須）",
   "includeDebug": true
 }
 ```
@@ -479,6 +493,8 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 | `userLocation` | × | GPS座標。場所検索・天気のコンテキストに使用 |
 | `modelKey` | × | LLMモデル選択（haiku/sonnet/opus）。未指定=haiku |
 | `selectedModelId` | × | DynamoDB `GLOBAL_MODEL#{id}` からキャラ設定を取得 |
+| `streaming` | × | `true` で WebSocket ストリーミングモード。HTTP 202 即時返却 |
+| `connectionId` | × | WebSocket 接続ID。`streaming: true` 時に必須 |
 | `includeDebug` | × | `true` でシステムプロンプトをレスポンスに含める（管理者のみ） |
 
 #### レスポンスボディ
@@ -531,9 +547,20 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 #### フロントエンドでのレスポンスパース処理
 
+**ストリーミングモード（chat_delta → chat_complete）**:
+```
+1. chat_delta: rawContent に蓄積 → extractStreamingText() で JSON 除去 → タイプライター表示
+2. chat_complete: parseStreamedContent() で最終パース
+   a. extractStreamingText(): 最初の '{"' 出現位置以降を除去 → テキスト抽出
+   b. findJsonObjects(): ブレース深度追跡パーサーで全 JSON オブジェクトを抽出
+   c. 末尾から逆順に JSON を走査、text フィールドを含む最後のオブジェクトを優先
+   d. emotion/motion/mapData/suggestedReplies 等のメタデータ抽出
+```
+
+**同期モード（フォールバック）**:
 ```
 1. content からマークダウンコードブロック（```json ... ```）を除去
-2. extractBalancedJson() でネスト対応の JSON 抽出（貪欲正規表現ではなくブレース深度カウント）
+2. extractBalancedJson() でネスト対応の JSON 抽出（ブレース深度カウント）
 3. JSON.parse → StructuredResponse 型にキャスト
 4. motion/emotion のデフォルト値補完（motion='idle', emotion='neutral'）
 5. text 内に混入した suggestedReplies JSON を検出・除去して parsed に移動
@@ -558,12 +585,15 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
      - ツール結果を messages に追加して再呼び出し
    ↓ stopReason === 'end_turn' の場合:
      - テキストレスポンスを抽出
-6. 後処理:
+6. ストリーミング送信（streaming: true 時）:
+   - テキスト生成中: WebSocket chat_delta で差分をリアルタイム送信
+   - 生成完了: WebSocket chat_complete でメタデータ付き完了通知
+7. 後処理:
    - メッセージ保存（DynamoDB MSG#）
    - ターンカウント更新 → 5ターンで要約 Lambda 非同期起動
    - ACTIVE_SESSION upsert（TTL: 24時間）
    - 新規トピック時の自動命名
-7. レスポンス返却
+8. レスポンス返却（同期モード時）/ 完了（ストリーミングモード時）
 ```
 
 ### Bedrock 推論設定
@@ -621,8 +651,9 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 ```
 ユーザー発言
-  ├─ [同期] POST /llm/chat → LLM応答待ち（最大90秒）
-  │    └─ レスポンス受信後:
+  ├─ [REST] POST /llm/chat（streaming: true）→ HTTP 202 即時返却
+  │    ├─ [WebSocket] chat_delta → streamingText 蓄積 → タイプライター表示
+  │    └─ [WebSocket] chat_complete → メタデータ抽出:
   │         ├─ emotion → Live2D 表情変更
   │         ├─ motion → Live2D モーション再生
   │         ├─ mapData → MapView 表示
@@ -649,7 +680,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 ### 現在の課題（レスポンス改善の観点）
 
-1. **同期 HTTP 方式**: レスポンス全体を待つため、ユーザーは LLM 生成完了まで何も表示されない
+1. ~~**同期 HTTP 方式**~~: ✅ WebSocket ストリーミングで解決済み（chat_delta でリアルタイム表示）
 2. **Tool Use ループ**: ツール使用時は複数回の Bedrock 呼び出しが直列で発生し、待ち時間が増加
 3. **TTS の直列化**: LLM レスポンス受信後に TTS API を呼び出すため、音声再生開始がさらに遅れる
 4. **JSON パース依存**: LLM が JSON 形式で応答する必要があり、パース失敗時はフォールバックで情報が欠落
@@ -658,14 +689,16 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 ```
 ユーザー発言（テキスト/音声）
-  → chatController → Lambda /llm/chat（selectedModelId 付き）
+  → chatController → REST POST /llm/chat（streaming: true, selectedModelId 付き）
     → DynamoDB からプロフィール・永久記憶・モデルメタデータを並列取得
     → モデルメタデータからキャラクター設定・感情/モーション候補を動的生成
     → システムプロンプト構築 + Prompt Caching
     → Bedrock Claude Haiku 4.5（Converse API + Tool Use）
     → ツール実行（カレンダー / 天気 / 検索 / メモ等）
-    → レスポンス返却（text, emotion, motion?, mapData...）
-  → emotion → 表情変更 / motion → モーション再生 + Polly TTS 音声再生
+    → WebSocket chat_delta でテキスト差分をリアルタイム送信
+    → WebSocket chat_complete で完了通知（メタデータ付き）
+  → chat_delta → タイプライター表示
+  → chat_complete → emotion 表情変更 / motion モーション再生 + Polly TTS 音声再生
   → fire-and-forget: AgentCore Memory に中期記憶保存
   → 5ターンごと: ローリング要約 Lambda 非同期起動
   → 15分無操作: EventBridge → 永久事実自動抽出
@@ -699,7 +732,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 | 項目 | 数量 |
 |------|------|
 | フロントエンド コンポーネント | 34個 |
-| カスタムフック | 10個 |
+| カスタムフック | 11個 |
 | サービス | 20個 |
 | Zustand ストア | 3個 |
 | Lambda 関数 | 35個 |

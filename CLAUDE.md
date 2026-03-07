@@ -44,7 +44,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 ├── src/
 │   ├── auth/               # 認証（Cognito + AWS Amplify）
 │   ├── components/         # React コンポーネント（PascalCase.tsx）
-│   ├── hooks/              # カスタムフック（useSpeechRecognition, useCamera, useWebSocket, useGeolocation, useBriefing, useWeatherIcon）
+│   ├── hooks/              # カスタムフック（useSpeechRecognition, useCamera, useWebSocket, useGeolocation, useBriefing, useWeatherIcon, useStreamChat）
 │   ├── services/           # ビジネスロジック（camelCase.ts）
 │   ├── stores/             # Zustand 状態管理（appStore, themeStore, groupChatStore）
 │   ├── types/              # 型定義・エラークラス・サービスインターフェース
@@ -148,22 +148,35 @@ test.prop([fc.string()])(
 
 ## アーキテクチャ
 
-### LLM 通信フロー
+### LLM 通信フロー（WebSocket ストリーミング対応）
 
 ```
 ユーザー発言 → chatController
-  ├→ llmClient → Lambda /llm/chat（selectedModelId 付き）
+  ├→ llmClient → Lambda /llm/chat（streaming: true, selectedModelId 付き）
   │   ↓ システムプロンプトはバックエンドで完全生成（フロントエンドから送信しない）
   │   ↓ DynamoDB からプロフィール・永久記憶・モデルメタデータを並列取得 → systemPrompt に注入
-  │   ↓ モデルメタデータ: characterConfig（キャラクター設定）+ emotionMapping + motionMapping
   │   ↓ Prompt Caching: 静的プロンプト → cachePoint → ユーザー固有 → cachePoint → 動的コンテキスト
   │   ↓ Bedrock Claude Haiku 4.5（Converse API + Tool Use）
   │   ↓ ツール実行: list_events / create_event / search_places / web_search / get_weather
+  │   ↓ WebSocket で chat_delta（テキスト差分）をリアルタイム送信
   │   ↓ メッセージ保存 + 5ターンごとに要約 Lambda 非同期起動
-  │   → レスポンス返却（text, emotion, motion?, mapData?, permanentFacts?, sessionSummary?, themeName?)
-  ├→ chatController: emotion → 表情変更、motion → モーション再生（省略時はスキップ）
+  │   → chat_complete イベント（メタデータ付き）で完了通知
+  ├→ chatController: extractStreamingText() で JSON メタデータを除去してリアルタイム表示
+  ├→ chatController: parseStreamedContent() で emotion/motion/mapData 等を抽出
   ├→ fire-and-forget: /memory/events → AgentCore Memory
   └→ EventBridge rate(15min) → sessionFinalizer → extractFacts（永久事実抽出）
+
+ストリーミングプロトコル（WebSocket）:
+  1. REST POST /llm/chat（streaming: true）→ Lambda 起動、HTTP 202 即時返却
+  2. Lambda → WebSocket chat_delta: { type, content }（テキスト差分を逐次送信）
+  3. Lambda → WebSocket chat_complete: { type, content, themeName?, ... }（完了通知）
+  4. フロントエンド: chat_delta → appStore.streamingText に蓄積 → タイプライター表示
+  5. フロントエンド: chat_complete → parseStreamedContent() でメタデータ抽出 → メッセージ確定
+
+テキスト抽出（chatController.ts）:
+  extractStreamingText(): LLM 出力から最初の JSON（'{"' 出現位置）以降を除去
+  findJsonObjects(): ブレース深度追跡パーサーで複数の JSON オブジェクトを正確に抽出
+  parseStreamedContent(): テキスト + メタデータ（emotion, motion, mapData 等）を統合パース
 
 プロアクティブ・ブリーフィング（フロントエンド起動）:
   useBriefing hook（認証完了後3秒 / visibilitychange / 30分ポーリング）
@@ -199,6 +212,17 @@ test.prop([fc.string()])(
 アイドル自律行動（Live2DCanvas.tsx）:
   15秒後: 初回モーション再生 → 100秒後: 30秒間隔ループ
   モーション候補: motionMapping の motion1〜motion6（未設定時はデフォルトにフォールバック）
+```
+
+### キャラクター表示切替
+
+```
+config.ui.characterVisible（Zustand persist）
+  true（デフォルト）: Live2D キャンバス表示、天気アイコン重畳
+  false: Live2D 非表示（PixiJS app.stop() で GPU 節約）
+    → 折りたたみバー表示（天気アイコン + 人型アイコンで再表示）
+    → チャットエリアは全画面に拡大
+Live2DCanvasHandle: stopRendering() / startRendering() で PixiJS 描画を制御
 ```
 
 ### システムプロンプト構造（XMLタグ + Prompt Caching）
@@ -262,7 +286,7 @@ Cognito + Amplify（SRP 認証フロー）。`src/auth/` に集約。
 
 ### 状態管理（Zustand）
 
-- **appStore.ts**: メッセージ、モーション、設定（persist あり）
+- **appStore.ts**: メッセージ、モーション、設定、streamingText（persist あり）
 - **themeStore.ts**: トピック一覧、アクティブトピック、テーマメッセージ（persist なし、サーバーが信頼元）
 - **groupChatStore.ts**: フレンド、グループ、WS ステータス（persist なし、サーバーが信頼元）
 
