@@ -4,6 +4,8 @@ import { getIdToken } from '@/auth'
  * TTS サービス
  * Amazon Polly API を呼び出してアシスタント返信を音声再生する
  * 音声データを事前デコードして音量エンベロープを計算しリップシンクに利用
+ *
+ * Phase 2: テキストを文単位に分割し、最初の文を先行 TTS → 残りを並列取得 → AudioQueue で順次再生
  */
 class TtsServiceImpl {
   /** 現在再生中の Audio インスタンス */
@@ -18,6 +20,8 @@ class TtsServiceImpl {
   private animationFrameId: number | null = null
   /** リップシンク用音量コールバック */
   private volumeCallback: ((volume: number) => void) | null = null
+  /** 再生キャンセルフラグ */
+  private aborted = false
 
   /** 音量エンベロープの FPS */
   private static readonly ENVELOPE_FPS = 60
@@ -44,8 +48,122 @@ class TtsServiceImpl {
   }
 
   /**
-   * テキストを音声合成して再生
-   * 再生中に新しいリクエストが来たら前の再生を停止して新しい方を再生
+   * テキストを文単位のチャンクに分割
+   *
+   * 句読点（。！？\n）で区切り、短すぎるチャンクは次と結合する。
+   */
+  private splitIntoChunks(text: string): string[] {
+    // Markdown 記法（見出し、リスト、テーブル、コードブロック等）を除去
+    const plain = text
+      .replace(/```[\s\S]*?```/g, '')       // コードブロック
+      .replace(/^\s*#{1,6}\s+/gm, '')       // 見出し
+      .replace(/^\s*[-*]\s+/gm, '')         // リスト
+      .replace(/^\s*\d+\.\s+/gm, '')        // 番号リスト
+      .replace(/^\s*>\s+/gm, '')            // 引用
+      .replace(/\|[^|]*\|/g, '')            // テーブル
+      .replace(/\*\*([^*]+)\*\*/g, '$1')    // 太字
+      .replace(/\*([^*]+)\*/g, '$1')        // イタリック
+      .replace(/`([^`]+)`/g, '$1')          // インラインコード
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // リンク
+
+    // 句読点で分割（句読点を保持）
+    const raw = plain.split(/(?<=[。！？\n])/g)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+
+    if (raw.length === 0) return [text]
+
+    // 短すぎるチャンク（10文字未満）は次と結合
+    const chunks: string[] = []
+    let buffer = ''
+    for (const segment of raw) {
+      buffer += segment
+      if (buffer.length >= 10) {
+        chunks.push(buffer)
+        buffer = ''
+      }
+    }
+    if (buffer) {
+      if (chunks.length > 0) {
+        chunks[chunks.length - 1] += buffer
+      } else {
+        chunks.push(buffer)
+      }
+    }
+
+    return chunks
+  }
+
+  /**
+   * 単一チャンクの TTS 合成（Polly API 呼び出し）
+   *
+   * @returns 音声バイナリ（Uint8Array）。失敗時は null。
+   */
+  private async synthesizeChunk(text: string, apiBaseUrl: string, accessToken: string): Promise<Uint8Array | null> {
+    try {
+      const res = await fetch(`${apiBaseUrl}/tts/synthesize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          text,
+          voiceId: 'Tomoko',
+          engine: 'neural',
+        }),
+      })
+
+      if (!res.ok) return null
+
+      const data = await res.json()
+      const binary = atob(data.audio)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i)
+      }
+      return bytes
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 音声バイナリを再生し、完了まで待機
+   */
+  private async playAudioBytes(bytes: Uint8Array): Promise<void> {
+    // 音量エンベロープを事前計算
+    await this.computeVolumeEnvelope(bytes)
+
+    // Blob → Object URL → 再生
+    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'audio/mpeg' })
+    const url = URL.createObjectURL(blob)
+
+    this.currentUrl = url
+    const audio = new Audio(url)
+    this.currentAudio = audio
+
+    await audio.play()
+    this.startVolumeLoop(audio)
+
+    // 再生完了まで待機
+    await new Promise<void>((resolve) => {
+      audio.addEventListener('ended', () => {
+        this.stopVolumeLoop()
+        this.cleanupCurrent()
+        resolve()
+      }, { once: true })
+      audio.addEventListener('pause', () => resolve(), { once: true })
+    })
+  }
+
+  /**
+   * テキストを音声合成して再生（チャンク並列取得 + 順次再生）
+   *
+   * 1. テキストを文単位に分割
+   * 2. 最初のチャンクを先行して TTS 合成・再生開始
+   * 3. 残りのチャンクは並列で TTS 合成（バックグラウンド）
+   * 4. 先行チャンクの再生が終わったら次のチャンクを順次再生
    */
   async synthesizeAndPlay(text: string): Promise<void> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
@@ -69,62 +187,53 @@ class TtsServiceImpl {
 
     // 前の再生を停止
     this.stop()
+    this.aborted = false
 
+    const chunks = this.splitIntoChunks(ttsText)
+    console.log(`[TTS] チャンク分割: ${chunks.length} 件`)
+
+    // 1チャンクの場合は従来通り一括処理
+    if (chunks.length <= 1) {
+      try {
+        const bytes = await this.synthesizeChunk(ttsText, apiBaseUrl, accessToken)
+        if (!bytes || this.aborted) return
+        await this.playAudioBytes(bytes)
+      } catch (e) {
+        console.warn('[TTS] 音声合成/再生に失敗:', e)
+        this.stopVolumeLoop()
+        this.cleanupCurrent()
+      }
+      return
+    }
+
+    // 複数チャンクの場合: 最初のチャンクを先行取得、残りは並列取得
     try {
-      const res = await fetch(`${apiBaseUrl}/tts/synthesize`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          text: ttsText,
-          voiceId: 'Tomoko',
-          engine: 'neural',
-        }),
-      })
+      // 最初のチャンクを先行合成
+      const firstPromise = this.synthesizeChunk(chunks[0], apiBaseUrl, accessToken)
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error ?? `HTTP ${res.status}`)
+      // 残りのチャンクを並列合成（先行チャンクの再生中にバックグラウンドで取得）
+      const restPromises = chunks.slice(1).map((chunk) =>
+        this.synthesizeChunk(chunk, apiBaseUrl, accessToken)
+      )
+
+      // 最初のチャンクが来たら即再生
+      const firstBytes = await firstPromise
+      if (!firstBytes || this.aborted) return
+
+      console.log(`[TTS] 先行チャンク再生開始（残り ${restPromises.length} チャンク並列取得中）`)
+      await this.playAudioBytes(firstBytes)
+
+      // 残りのチャンクを順次再生
+      const restResults = await Promise.all(restPromises)
+      for (const bytes of restResults) {
+        if (this.aborted) break
+        if (!bytes) continue
+        await this.playAudioBytes(bytes)
       }
-
-      const data = await res.json()
-
-      // base64 → Uint8Array
-      const binary = atob(data.audio)
-      const bytes = new Uint8Array(binary.length)
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i)
-      }
-
-      // 音量エンベロープを事前計算（createMediaElementSource を使わない方式）
-      await this.computeVolumeEnvelope(bytes)
-
-      // Blob → Object URL → 再生
-      const blob = new Blob([bytes], { type: 'audio/mpeg' })
-      const url = URL.createObjectURL(blob)
-
-      this.currentUrl = url
-      const audio = new Audio(url)
-      this.currentAudio = audio
-
-      await audio.play()
-      this.startVolumeLoop(audio)
-
-      // 再生完了または停止まで待機
-      await new Promise<void>((resolve) => {
-        audio.addEventListener('ended', () => {
-          this.stopVolumeLoop()
-          this.cleanup()
-          resolve()
-        }, { once: true })
-        audio.addEventListener('pause', () => resolve(), { once: true })
-      })
     } catch (e) {
-      console.warn('[TTS] 音声合成/再生に失敗:', e)
+      console.warn('[TTS] チャンク再生エラー:', e)
       this.stopVolumeLoop()
-      this.cleanup()
+      this.cleanupCurrent()
     }
   }
 
@@ -203,18 +312,19 @@ class TtsServiceImpl {
    * 現在の再生を停止
    */
   stop(): void {
+    this.aborted = true
     this.stopVolumeLoop()
     if (this.currentAudio) {
       this.currentAudio.pause()
       this.currentAudio.currentTime = 0
     }
-    this.cleanup()
+    this.cleanupCurrent()
   }
 
   /**
-   * リソースをクリーンアップ
+   * 現在再生中のリソースをクリーンアップ
    */
-  private cleanup(): void {
+  private cleanupCurrent(): void {
     this.volumeEnvelope = null
     if (this.currentUrl) {
       URL.revokeObjectURL(this.currentUrl)

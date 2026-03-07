@@ -42,14 +42,47 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 
 | 層 | 保存先 | 保持期間 | 用途 |
 |----|--------|---------|------|
-| 永久記憶 | DynamoDB `PERMANENT_FACTS` | 無期限 | ユーザーの好み・事実（最大50件×50文字） |
+| 永久記憶 | DynamoDB `PERMANENT_FACTS` | 無期限 | FACTS（客観的事実 最大40件）+ PREFERENCES（対話設定 最大15件）各50文字 |
 | 中期記憶 | Amazon Bedrock AgentCore Memory | 30日 | 会話トピック・コンテキスト（セマンティック検索） |
 | 短期記憶 | DynamoDB `SESSION#` + `MSG#` | 7日（TTL） | セッション内会話履歴・ローリング要約・チェックポイント |
 
-#### 3-1. 永久記憶（Permanent Facts）
+#### 3-1. 永久記憶（Permanent Memory）
 
 **保存先**: DynamoDB `PK=USER#{userId}`, `SK=PERMANENT_FACTS`
-**形式**: `facts` フィールドに文字列配列（List型）、最大50件、各50文字以内
+**形式**: 2カテゴリに分離して保存
+
+| カテゴリ | DynamoDB属性 | 上限 | 統合閾値 | 内容 |
+|---------|-------------|------|---------|------|
+| FACTS | `facts` (List型) | 40件 | 30件 | ユーザーの客観的事実（48カテゴリ） |
+| PREFERENCES | `preferences` (List型) | 15件 | 12件 | AIとの対話スタイル設定 |
+
+各項目は50文字以内の文字列。
+
+**FACTS 抽出対象（48カテゴリ）**:
+- 基本属性（生年月日/年齢/血液型/国籍/出身地）
+- 居住（居住地/住居形態/最寄り駅/同居人）
+- 家族（婚姻/配偶者/子供/両親/兄弟/ペット/記念日）
+- 仕事（勤務先/職種/業界/勤務形態/通勤/副業）
+- 学歴・資格（学歴/資格/学習中スキル）
+- 健康（アレルギー/持病/服薬/食事制限/視力/身体的制約）
+- 生活（生活リズム/喫煙飲酒/運動/車両/交通手段/宗教）
+- 嗜好・価値観（食の好み/音楽/趣味/苦手/価値観）
+- 経済（家計方針/経済目標）
+- その他（言語/行きつけ/人生イベント/利き手）
+
+**PREFERENCES 抽出対象**:
+- 呼び方の希望（「○○と呼んで」「敬語で話して」「タメ口でいい」）
+- 応答スタイルの好み（「詳しく説明して」「簡潔に」「例を多く」）
+- 話題の好み（「政治の話はしないで」「毎朝天気を教えて」）
+- AIへの要望（「褒めて」「厳しく」「冗談を入れて」）
+
+**関連人物の抽出**: ユーザー自身だけでなく、会話に登場する重要な他者（家族、恋人、友人、ペットなど）の名前・関係性・好み・状況も積極的に抽出
+- 例: 「妻の花子はガーデニングが趣味」「柴犬のポチを飼っている」
+
+**状況変化の検出**: 記録済み内容から状況が変化・進展している場合は、最新の事実として抽出
+- 例: 「転職活動中」→「株式会社○○に就職」
+
+**抽出しない情報**: 一時的な興味、その場限りの希望、相談内容そのもの
 
 **抽出タイミング**: セッション終了時に自動抽出
 - EventBridge `rate(15 minutes)` → `sessionFinalizer` Lambda
@@ -58,16 +91,30 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 
 **抽出ロジック** (`extractFacts.ts`):
 1. 対象セッションの全メッセージを DynamoDB から取得
-2. 既存の永久記憶を取得（重複排除のため）
-3. Haiku 4.5 に「既に記録済みの事実 + 会話テキスト」を送信
-4. 48カテゴリの抽出対象（基本属性/家族/仕事/健康/嗜好等）に該当する事実のみ抽出
-5. 1回最大10個、1行1事実、ユーザーが明言した事実のみ（推測は含めない）
-6. 既存事実とマージし、上限50個を超えたら古いものから押し出し
-7. `ACTIVE_SESSION` レコードを削除
+2. 既存の永久記憶を取得（facts + preferences、重複排除のため）
+3. Haiku 4.5 に「既に記録済みの FACTS/PREFERENCES + 会話テキスト」を送信
+4. **JSON出力**: `{"facts":["事実1","事実2"],"preferences":["設定1","設定2"]}` 形式で抽出
+5. 1回最大: FACTS 10個、PREFERENCES 5個。ユーザーが明言した内容のみ（推測は含めない）
+6. 既存とマージ、カテゴリ別に統合閾値チェック → LLM で自動統合（60〜70%に圧縮）
+7. 上限を超えたら古いものから押し出し（統合後のフォールバック）
+8. `ACTIVE_SESSION` レコードを削除
 
-**抽出しない情報**: 一時的な興味、その場限りの希望、相談内容そのもの
+**JSONパースのフォールバック**: LLM が JSON を出力できなかった場合、旧フォーマット（1行1事実）として全て FACTS 扱いで取り込む
 
-**プロンプト注入**: `<permanent_profile>` タグでシステムプロンプトのキャッシュブロック2（ユーザー固有）に含める
+**マージ時の重複排除**: `Set` による完全一致の重複排除を実施（LLM統合の無駄な発動を防止）
+
+**自動統合（consolidation）**:
+- カテゴリ別に独立して実行（FACTS: 30件以上、PREFERENCES: 12件以上で発動）
+- Haiku 4.5 に統合プロンプトを送信し、意味的に関連する項目をマージ
+- リストは時系列順（末尾が最新）で提供され、以下のルールで統合:
+  - **表現揺れの統合**: 同じ内容の異なる表現（例: "東京在住" と "東京に住んでいる"）→ より具体的で簡潔な1表現にマージ
+  - **矛盾・時間的変化の解決**: 最新（リスト末尾側）の情報を正として古い情報を破棄・更新
+  - **関連情報の統合**: 意味的に関連する複数の事実を1つの論理的な文に統合
+- コアアイデンティティ情報（家族/健康/仕事）は統合時も削除しない
+- Few-shot 例示で出力安定性を確保
+- 統合結果が不正（0件 or 元の件数超過）の場合はフォールバック（元のリスト維持）
+
+**プロンプト注入**: キャッシュブロック2（ユーザー固有）に2タグで注入
 ```
 <permanent_profile>
 ユーザーについて知っている事実：
@@ -75,6 +122,12 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 - 妻と2人暮らし
 - ソフトウェアエンジニア
 </permanent_profile>
+
+<user_preferences>
+ユーザーが希望するAIとの対話スタイル：
+- タメ口で話してほしい
+- 返事は簡潔に
+</user_preferences>
 ```
 
 #### 3-2. 中期記憶（AgentCore Memory）
@@ -92,7 +145,7 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 **読み出し**: LLM Lambda 内で `RetrieveMemoryRecordsCommand` を使用
 - ユーザーの最新メッセージを `searchQuery` としてセマンティック検索
 - `maxResults: 10` 件取得
-- 永久記憶との重複排除: 空白除去した部分文字列一致で判定（`deduplicateRecords`）
+- 永久記憶との重複排除: FACTS + PREFERENCES 両方に対して空白除去した部分文字列一致で判定（`deduplicateRecords`）
 
 **プロンプト注入**: `<user_context>` タグで動的コンテキスト（キャッシュ対象外）に含める
 ```
@@ -148,8 +201,9 @@ EventBridge rate(15 minutes) → sessionFinalizer Lambda
 
 ```
 [キャッシュブロック2: ユーザー固有]
-  <user_profile>       ← ユーザー名・性別等（DynamoDB SETTINGS）
-  <permanent_profile>  ← 永久記憶（DynamoDB PERMANENT_FACTS）
+  <user_profile>        ← ユーザー名・性別等（DynamoDB SETTINGS）
+  <permanent_profile>   ← 永久記憶 FACTS（DynamoDB PERMANENT_FACTS.facts）
+  <user_preferences>    ← 永久記憶 PREFERENCES（DynamoDB PERMANENT_FACTS.preferences）
   ── cachePoint ──
 
 [動的コンテキスト: キャッシュなし]
@@ -168,7 +222,7 @@ EventBridge rate(15 minutes) → sessionFinalizer Lambda
 
 バックエンドの並列取得（Promise.all）:
   1. AgentCore Memory 検索（中期記憶）← ユーザーメッセージを searchQuery に使用
-  2. DynamoDB PERMANENT_FACTS（永久記憶）
+  2. DynamoDB PERMANENT_FACTS（永久記憶: facts + preferences）
   3. DynamoDB SETTINGS → UserProfile
   4. DynamoDB GLOBAL_MODEL#{modelId} → ModelMeta
 
@@ -375,8 +429,9 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
   ── cachePoint ──
 
 [キャッシュブロック2: ユーザー固有]
-  <user_profile>       ユーザー名・性別・AI名
-  <permanent_profile>  永久記憶（事実）
+  <user_profile>        ユーザー名・性別・AI名
+  <permanent_profile>   永久記憶 FACTS（客観的事実）
+  <user_preferences>    永久記憶 PREFERENCES（対話スタイル設定）
   ── cachePoint ──
 
 [動的コンテキスト: キャッシュなし]
@@ -390,6 +445,214 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
   <category_context>         カテゴリ別プロンプト
   <work_context>             MCP 接続情報
 ```
+
+## クライアント・サーバー通信仕様
+
+### チャット API（メイン通信）
+
+**エンドポイント**: `POST /llm/chat`
+**認証**: Cognito JWT（`Authorization: Bearer {idToken}`）
+**Lambda タイムアウト**: 90秒
+**通信方式**: 同期 HTTP（非ストリーミング）— フロントエンドは fetch でリクエストし、レスポンス全体を待つ
+
+#### リクエストボディ
+
+```json
+{
+  "message": "ユーザーのメッセージ（必須）",
+  "sessionId": "セッションID（フロントエンド生成UUID）",
+  "imageBase64": "画像のBase64文字列（任意、上限5MB）",
+  "themeId": "トピックID（トピックチャット時のみ）",
+  "userLocation": { "lat": 35.68, "lng": 139.76 },
+  "modelKey": "haiku|sonnet|opus（デフォルト: haiku）",
+  "selectedModelId": "Live2DモデルID（キャラ設定取得用）",
+  "includeDebug": true
+}
+```
+
+| フィールド | 必須 | 説明 |
+|-----------|------|------|
+| `message` | ○ | ユーザーメッセージ。ブリーフィング時は `__briefing__` |
+| `sessionId` | △ | フロントで生成した UUID。未指定時はセッション管理なし |
+| `imageBase64` | × | 画像添付（Bedrock に画像として送信） |
+| `themeId` | × | トピック別チャット時。メッセージの名前空間が変わる |
+| `userLocation` | × | GPS座標。場所検索・天気のコンテキストに使用 |
+| `modelKey` | × | LLMモデル選択（haiku/sonnet/opus）。未指定=haiku |
+| `selectedModelId` | × | DynamoDB `GLOBAL_MODEL#{id}` からキャラ設定を取得 |
+| `includeDebug` | × | `true` でシステムプロンプトをレスポンスに含める（管理者のみ） |
+
+#### レスポンスボディ
+
+```json
+{
+  "content": "{\"text\":\"回答テキスト\",\"emotion\":\"happy\",\"motion\":\"happy\",\"suggestedReplies\":[\"はい\",\"いいえ\"]}",
+  "enhancedSystemPrompt": "（includeDebug時のみ）",
+  "sessionSummary": "セッション要約テキスト",
+  "permanentFacts": ["事実1", "事実2"],
+  "permanentPreferences": ["設定1"],
+  "themeName": "自動生成トピック名",
+  "workStatus": { "active": true, "expiresAt": "ISO8601", "toolCount": 3 }
+}
+```
+
+| フィールド | 常時 | 説明 |
+|-----------|------|------|
+| `content` | ○ | LLM の生出力（JSON文字列）。フロントでパースする |
+| `enhancedSystemPrompt` | × | デバッグ用の完全システムプロンプト |
+| `sessionSummary` | × | 要約が存在する場合のセッション要約 |
+| `permanentFacts` | × | 永久記憶 FACTS（存在する場合） |
+| `permanentPreferences` | × | 永久記憶 PREFERENCES（存在する場合） |
+| `themeName` | × | 新規トピック時の自動命名結果 |
+| `workStatus` | × | MCP接続状態 |
+
+#### `content` 内部の JSON 構造（LLM 出力）
+
+```json
+{
+  "text": "回答テキスト（Markdown可）",
+  "emotion": "happy",
+  "motion": "happy",
+  "mapData": { "center": { "lat": 35.68, "lng": 139.76 }, "zoom": 15, "markers": [...] },
+  "suggestedTheme": { "themeName": "テーマ名" },
+  "suggestedReplies": ["はい", "いいえ"],
+  "topicName": "トピック名"
+}
+```
+
+| フィールド | 常時 | 説明 |
+|-----------|------|------|
+| `text` | ○ | 応答テキスト。Markdown記法対応 |
+| `emotion` | ○ | 表情タグ。モデルの emotionMapping に応じて動的決定 |
+| `motion` | × | モーションタグ。motionMapping 設定時のみ LLM が出力可能 |
+| `mapData` | × | 場所検索結果の地図データ（search_places 使用時） |
+| `suggestedTheme` | × | メイン会話でのトピック提案（トピックチャット時は不含） |
+| `suggestedReplies` | × | クイックリプライ候補（2〜4個、各10文字以内） |
+| `topicName` | × | 新規トピック時の LLM 生成名 |
+
+#### フロントエンドでのレスポンスパース処理
+
+```
+1. content からマークダウンコードブロック（```json ... ```）を除去
+2. extractBalancedJson() でネスト対応の JSON 抽出（貪欲正規表現ではなくブレース深度カウント）
+3. JSON.parse → StructuredResponse 型にキャスト
+4. motion/emotion のデフォルト値補完（motion='idle', emotion='neutral'）
+5. text 内に混入した suggestedReplies JSON を検出・除去して parsed に移動
+6. Lambda レスポンスのメタデータ（enhancedSystemPrompt, sessionSummary 等）を統合
+7. パース失敗時: content 全体を text として扱うフォールバック
+```
+
+### バックエンドの処理フロー（Tool Use ループ）
+
+```
+1. リクエストパース + バリデーション
+2. 並列取得（Promise.all）:
+   - AgentCore Memory セマンティック検索（中期記憶）
+   - DynamoDB PERMANENT_FACTS（永久記憶: facts + preferences）
+   - DynamoDB SETTINGS（ユーザープロフィール）
+   - DynamoDB GLOBAL_MODEL#{id}（モデルメタ: キャラ設定/感情/モーション）
+3. システムプロンプト構築（3ブロック + cachePoint 2箇所）
+4. セッションコンテキスト取得（要約 + 直近10メッセージ + チェックポイント）
+5. Bedrock Converse API 呼び出し（Tool Use ループ、最大5回）
+   ↓ stopReason === 'tool_use' の場合:
+     - ツール実行（カレンダー/場所検索/Web検索/天気/メモ/MCP）
+     - ツール結果を messages に追加して再呼び出し
+   ↓ stopReason === 'end_turn' の場合:
+     - テキストレスポンスを抽出
+6. 後処理:
+   - メッセージ保存（DynamoDB MSG#）
+   - ターンカウント更新 → 5ターンで要約 Lambda 非同期起動
+   - ACTIVE_SESSION upsert（TTL: 24時間）
+   - 新規トピック時の自動命名
+7. レスポンス返却
+```
+
+### Bedrock 推論設定
+
+| モデル | モデルID | maxTokens | maxTokens(画像) | temperature |
+|--------|---------|-----------|----------------|-------------|
+| haiku | `jp.anthropic.claude-haiku-4-5-20251001-v1:0` | 1024 | 2048 | 0.7 |
+| sonnet | `jp.anthropic.claude-sonnet-4-6` | 2048 | 4096 | 0.7 |
+| opus | `global.anthropic.claude-opus-4-6-v1` | 4096 | 4096 | 0.7 |
+
+### TTS API
+
+**エンドポイント**: `POST /tts/synthesize`
+**通信方式**: 同期 HTTP
+**処理**: フロントエンドから fire-and-forget で呼び出し（chatController から非同期実行）
+
+```json
+// リクエスト
+{ "text": "読み上げテキスト", "voiceId": "Tomoko", "engine": "neural" }
+
+// レスポンス
+{ "audioContent": "base64エンコードされた音声データ" }
+```
+
+- URL を除去してから送信（`stripUrls()`）
+- 前の再生を停止してから新しい音声を再生
+- base64 → Uint8Array → AudioBuffer → AudioContext で再生
+
+### メモリイベント API
+
+**エンドポイント**: `POST /memory/events`
+**通信方式**: fire-and-forget（chatController から非同期、エラーは無視）
+
+```json
+{
+  "messages": [
+    { "role": "user", "content": "ユーザーメッセージ" },
+    { "role": "assistant", "content": "アシスタントメッセージ" }
+  ]
+}
+```
+
+- 各会話ターンを AgentCore Memory に送信
+- AgentCore が自動で要約・セマンティックインデックスを構築
+
+### メッセージ同期 API
+
+**エンドポイント**: `PUT /messages`
+**通信方式**: fire-and-forget（syncService から非同期）
+- ユーザー/アシスタント両方のメッセージをサーバーに保存
+- BroadcastChannel で他タブにも即時通知
+- ID ベースの重複排除 + timestamp 順ソート
+
+### フロントエンドの通信全体像
+
+```
+ユーザー発言
+  ├─ [同期] POST /llm/chat → LLM応答待ち（最大90秒）
+  │    └─ レスポンス受信後:
+  │         ├─ emotion → Live2D 表情変更
+  │         ├─ motion → Live2D モーション再生
+  │         ├─ mapData → MapView 表示
+  │         ├─ suggestedReplies → クイックリプライボタン表示
+  │         └─ suggestedTheme → トピック提案バナー表示
+  ├─ [非同期] POST /tts/synthesize → 音声再生（fire-and-forget）
+  ├─ [非同期] PUT /messages → メッセージ保存（fire-and-forget）
+  └─ [非同期] POST /memory/events → 中期記憶保存（fire-and-forget）
+```
+
+### エラーハンドリング
+
+| HTTP | フロント側エラー型 | ユーザー表示 |
+|------|-------------------|-------------|
+| ネットワーク断 | `NetworkError` | 「ネットがつながらないみたい…」 |
+| 429 | `RateLimitError` | 「混み合ってるみたい。少し待って…」 |
+| 401/403 | `APIError` | 「認証エラーです。再ログインしてください。」 |
+| 500+ | `APIError` | 「うまくいかなかった…時間をおいて…」 |
+| JSONパース失敗 | `ParseError` | 「うまく返事できなかった…もう一回聞いて？」 |
+
+- エラー時は対応する表情モーション（troubled/sad/surprised）を再生
+- エラーメッセージをアシスタントメッセージとしてチャットに表示
+- TTS が有効ならエラーメッセージも読み上げ
+
+### 現在の課題（レスポンス改善の観点）
+
+1. **同期 HTTP 方式**: レスポンス全体を待つため、ユーザーは LLM 生成完了まで何も表示されない
+2. **Tool Use ループ**: ツール使用時は複数回の Bedrock 呼び出しが直列で発生し、待ち時間が増加
+3. **TTS の直列化**: LLM レスポンス受信後に TTS API を呼び出すため、音声再生開始がさらに遅れる
+4. **JSON パース依存**: LLM が JSON 形式で応答する必要があり、パース失敗時はフォールバックで情報が欠落
 
 ## データフロー
 
