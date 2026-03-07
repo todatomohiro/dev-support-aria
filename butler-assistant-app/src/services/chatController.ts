@@ -99,14 +99,22 @@ class ChatControllerImpl {
   }
 
   /**
-   * 感情に基づいて表情を再生
+   * 感情・モーションに基づいて表情とモーションを再生
    */
   private playExpression(response: StructuredResponse): void {
+    const store = useAppStore.getState()
+
+    // 表情（emotion）を再生
     if (response.emotion) {
-      const store = useAppStore.getState()
       const expressionName = this.emotionToExpression(response.emotion)
       console.log(`[ChatController] emotion=${response.emotion} → expression=${expressionName}`)
       store.setCurrentExpression(expressionName)
+    }
+
+    // モーション（motion）を再生（LLM が指定した場合のみ）
+    if (response.motion && response.motion !== 'idle') {
+      console.log(`[ChatController] motion=${response.motion}`)
+      store.setCurrentMotion(response.motion)
     }
   }
 

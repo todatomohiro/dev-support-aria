@@ -386,7 +386,8 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
   const IDLE_TIMEOUT_MS = 3000
 
   // アイドル自律行動
-  const IDLE_MOTIONS = ['bow', 'smile', 'think'] as const
+  /** デフォルトのアイドルモーション候補（motionMapping 未設定時のフォールバック） */
+  const DEFAULT_IDLE_MOTIONS = ['bow', 'smile', 'think'] as const
   /** 初回アイドルモーション再生までの時間 */
   const IDLE_FIRST_MOTION_MS = 15000
   /** ループ開始までの時間 */
@@ -436,7 +437,16 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
   /** アイドルモーションをランダム再生（TTS 再生中はスキップ） */
   const playRandomIdleMotion = useCallback(() => {
     if (ttsService.isSpeaking) return
-    const motion = IDLE_MOTIONS[Math.floor(Math.random() * IDLE_MOTIONS.length)]
+
+    // motionMapping から motion1〜motion6 で設定済みのタグを取得
+    const meta = useAppStore.getState().activeModelMeta
+    const motionKeys = ['motion1', 'motion2', 'motion3', 'motion4', 'motion5', 'motion6'] as const
+    const available = meta?.motionMapping
+      ? motionKeys.filter((k) => meta.motionMapping[k] != null)
+      : []
+
+    const candidates = available.length > 0 ? available : DEFAULT_IDLE_MOTIONS
+    const motion = candidates[Math.floor(Math.random() * candidates.length)]
     useAppStore.getState().setCurrentMotion(motion)
   }, [])
 
@@ -475,9 +485,9 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       idleLoopTimerRef.current = null
     }
 
-    // ループ中だった場合は復帰モーション
+    // ループ中だった場合は復帰モーション（idle に戻す）
     if (isIdleSleepingRef.current) {
-      useAppStore.getState().setCurrentMotion('bow')
+      useAppStore.getState().setCurrentMotion('idle')
       isIdleSleepingRef.current = false
     }
   }, [])
