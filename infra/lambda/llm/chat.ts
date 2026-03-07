@@ -599,6 +599,16 @@ async function getSessionContext(userId: string, sessionId: string, overrides?: 
       content: item.content?.S ?? '',
       createdAt: item.createdAt?.S,
     }))
+    // 同一タイムスタンプで保存された user/assistant の会話順を修正
+    // DynamoDB SK 辞書順では #assistant < #user だが、会話順は user → assistant
+    .sort((a, b) => {
+      const tsA = a.createdAt ?? ''
+      const tsB = b.createdAt ?? ''
+      if (tsA !== tsB) return tsA.localeCompare(tsB)
+      if (a.role === 'user' && b.role === 'assistant') return -1
+      if (a.role === 'assistant' && b.role === 'user') return 1
+      return 0
+    })
 
   const checkpoints = (checkpointsResult.Items ?? []).map((item) => ({
     timestamp: item.createdAt?.S ?? '',
@@ -620,15 +630,18 @@ async function updateSessionAndMaybeSummarize(
   assistantMessage: string,
   overrides?: { msgPK?: string; sessionSK?: string; themeId?: string }
 ): Promise<void> {
-  const now = new Date().toISOString()
+  const nowDate = new Date()
+  const now = nowDate.toISOString()
   const ttlExpiry = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
   const msgPK = overrides?.msgPK ?? `USER#${userId}#SESSION#${sessionId}`
   const sessionSK = overrides?.sessionSK ?? `SESSION#${sessionId}`
 
   // メッセージを DynamoDB に保存（user + assistant）
-  const msgTimestamp = now
-  const userMsgSK = `MSG#${msgTimestamp}#user`
-  const assistantMsgSK = `MSG#${msgTimestamp}#assistant`
+  // assistant に +1ms オフセットを付与して SK 辞書順で user → assistant の会話順を保証
+  const userTimestamp = now
+  const assistantTimestamp = new Date(nowDate.getTime() + 1).toISOString()
+  const userMsgSK = `MSG#${userTimestamp}#user`
+  const assistantMsgSK = `MSG#${assistantTimestamp}#assistant`
 
   // 並列保存
   await Promise.all([
@@ -668,7 +681,7 @@ async function updateSessionAndMaybeSummarize(
       ExpressionAttributeValues: {
         ':role': { S: 'assistant' },
         ':content': { S: assistantMessage },
-        ':ts': { S: now },
+        ':ts': { S: assistantTimestamp },
         ':ttl': { N: String(ttlExpiry) },
       },
     })),
