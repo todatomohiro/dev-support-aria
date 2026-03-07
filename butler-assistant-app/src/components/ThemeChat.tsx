@@ -29,6 +29,7 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
   const isSending = useThemeStore((s) => s.isSending)
   const themes = useThemeStore((s) => s.themes)
   const config = useAppStore((s) => s.config)
+  const streamingText = useAppStore((s) => s.streamingText)
   const workConnection = useThemeStore((s) => s.activeWorkConnection)
   const expiredNotifiedRef = useRef(false)
 
@@ -230,6 +231,7 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
           messages={messages}
           isLoading={isSending}
           onSendMessage={handleSendMessage}
+          streamingText={streamingText}
           ttsEnabled={config.ui.ttsEnabled}
           onToggleTts={(enabled) => useAppStore.getState().updateConfig({ ui: { ...config.ui, ttsEnabled: enabled } })}
           cameraEnabled={config.ui.cameraEnabled}

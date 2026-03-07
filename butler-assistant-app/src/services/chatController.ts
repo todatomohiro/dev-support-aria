@@ -532,6 +532,20 @@ class ChatControllerImpl {
     // ローディング状態を開始
     store.setSending(true)
 
+    // WebSocket 接続中ならストリーミングモードを使用
+    const useStreaming = wsService.isConnected()
+
+    if (useStreaming) {
+      try {
+        await this.sendThemeMessageStreaming(content.trim(), themeId, imageBase64)
+      } catch (error) {
+        await this.handleThemeError(error, store)
+      } finally {
+        store.setSending(false)
+      }
+      return
+    }
+
     try {
       // LLMにメッセージを送信（themeId でテーマコンテキスト注入）
       const appStore = useAppStore.getState()
@@ -542,56 +556,7 @@ class ChatControllerImpl {
         () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, themeId, appStore.currentLocation ?? undefined, themeModelKey, appStore.config.ui.developerMode)
       )
 
-      // アシスタントメッセージを作成
-      const assistantMessage: Message = {
-        id: uuidv4(),
-        role: 'assistant',
-        content: structuredResponse.text ?? '',
-        timestamp: Date.now(),
-        motion: structuredResponse.motion,
-        rawResponse: JSON.stringify(structuredResponse, null, 2),
-        mapData: structuredResponse.mapData,
-        suggestedReplies: structuredResponse.suggestedReplies,
-      }
-
-      // トピック自動命名: レスポンスに themeName があれば store を更新
-      if (structuredResponse.themeName) {
-        store.updateThemeName(themeId, structuredResponse.themeName)
-      }
-
-      // ワーク（MCP）接続状態を更新（既存の接続情報を保持しつつ有効期限を更新）
-      if (structuredResponse.workStatus) {
-        if (structuredResponse.workStatus.active) {
-          const existing = store.activeWorkConnection
-          store.setWorkConnection({
-            ...existing,
-            themeId,
-            active: true,
-            expiresAt: structuredResponse.workStatus.expiresAt,
-            tools: existing?.tools ?? [],
-            serverUrl: existing?.serverUrl ?? '',
-          })
-        } else {
-          store.clearWorkConnection()
-        }
-      }
-
-      // ストアにアシスタントメッセージを追加
-      store.addMessage(assistantMessage)
-
-      // TTS 自動再生（fire-and-forget）
-      if (appStore.config.ui.ttsEnabled) {
-        ttsService.synthesizeAndPlay(assistantMessage.content)
-      }
-
-      // メモリイベント保存（fire-and-forget）
-      this.storeMemoryEvent(content.trim(), structuredResponse.text)
-
-      // モーションと表情を再生
-      this.playExpression(structuredResponse)
-
-      // エラーをクリア
-      store.setError(null)
+      this.processThemeResponse(structuredResponse, content.trim(), themeId, store)
     } catch (error) {
       // エラーハンドリング
       await this.handleThemeError(error, store)
@@ -599,6 +564,135 @@ class ChatControllerImpl {
       // ローディング状態を終了
       store.setSending(false)
     }
+  }
+
+  /**
+   * テーマメッセージのストリーミング送信
+   */
+  private async sendThemeMessageStreaming(content: string, themeId: string, imageBase64?: string): Promise<void> {
+    const appStore = useAppStore.getState()
+    const store = useThemeStore.getState()
+    const activeTheme = store.themes.find((t) => t.themeId === themeId)
+    const themeModelKey = activeTheme?.modelKey
+
+    // ストリーミング状態を初期化
+    appStore.setStreamingRequestId('pending')
+    appStore.setStreamingText('')
+
+    return new Promise<void>((resolve, reject) => {
+      let completed = false
+      let rawAccumulated = ''
+
+      const handleStreamEvent = (event: ChatStreamEvent) => {
+        switch (event.type) {
+          case 'chat_delta': {
+            rawAccumulated += event.delta
+            const displayText = extractStreamingText(rawAccumulated)
+            useAppStore.getState().setStreamingText(displayText)
+            break
+          }
+
+          case 'chat_tool_start':
+            console.log(`[Streaming] ツール実行中: ${event.tool}`)
+            break
+
+          case 'chat_tool_result':
+            console.log(`[Streaming] ツール結果: ${event.tool}`)
+            break
+
+          case 'chat_complete': {
+            completed = true
+            wsService.onChatStream(null)
+
+            const finalAppStore = useAppStore.getState()
+            finalAppStore.setStreamingText(null)
+            finalAppStore.setStreamingRequestId(null)
+
+            const structuredResponse = this.parseStreamedContent(
+              event.content ?? rawAccumulated,
+              event,
+            )
+
+            this.processThemeResponse(structuredResponse, content, themeId, useThemeStore.getState())
+
+            finalAppStore.setLoading(false)
+            resolve()
+            break
+          }
+
+          case 'chat_error':
+            completed = true
+            wsService.onChatStream(null)
+            useAppStore.getState().setStreamingText(null)
+            useAppStore.getState().setStreamingRequestId(null)
+            reject(new APIError(event.error, 500))
+            break
+        }
+      }
+
+      wsService.onChatStream(handleStreamEvent)
+
+      llmClient.sendMessage(content, store.sessionId, imageBase64, themeId, appStore.currentLocation ?? undefined, themeModelKey, appStore.config.ui.developerMode, true)
+        .catch((error) => {
+          if (!completed) {
+            wsService.onChatStream(null)
+            useAppStore.getState().setStreamingText(null)
+            useAppStore.getState().setStreamingRequestId(null)
+            reject(error)
+          }
+        })
+    })
+  }
+
+  /**
+   * テーマレスポンスの共通処理（ストリーミング・非ストリーミング共用）
+   */
+  private processThemeResponse(structuredResponse: StructuredResponse, content: string, themeId: string, store: ReturnType<typeof useThemeStore.getState>): void {
+    const appStore = useAppStore.getState()
+
+    // アシスタントメッセージを作成
+    const assistantMessage: Message = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: structuredResponse.text ?? '',
+      timestamp: Date.now(),
+      motion: structuredResponse.motion,
+      rawResponse: JSON.stringify(structuredResponse, null, 2),
+      mapData: structuredResponse.mapData,
+      suggestedReplies: structuredResponse.suggestedReplies,
+    }
+
+    // トピック自動命名
+    if (structuredResponse.themeName) {
+      store.updateThemeName(themeId, structuredResponse.themeName)
+    }
+
+    // ワーク（MCP）接続状態を更新
+    if (structuredResponse.workStatus) {
+      if (structuredResponse.workStatus.active) {
+        const existing = store.activeWorkConnection
+        store.setWorkConnection({
+          ...existing,
+          themeId,
+          active: true,
+          expiresAt: structuredResponse.workStatus.expiresAt,
+          tools: existing?.tools ?? [],
+          serverUrl: existing?.serverUrl ?? '',
+        })
+      } else {
+        store.clearWorkConnection()
+      }
+    }
+
+    store.addMessage(assistantMessage)
+
+    if (appStore.config.ui.ttsEnabled) {
+      ttsService.synthesizeAndPlay(assistantMessage.content)
+    }
+
+    this.storeMemoryEvent(content, structuredResponse.text)
+    this.playExpression(structuredResponse)
+    store.setError(null)
   }
 
   /**
