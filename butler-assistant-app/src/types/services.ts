@@ -9,7 +9,7 @@ export interface LLMClientService {
   /**
    * LLMにメッセージを送信し、構造化された回答を取得
    */
-  sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey, debug?: boolean, streaming?: boolean): Promise<StructuredResponse>
+  sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey, debug?: boolean, streaming?: boolean, lastBriefingContext?: string): Promise<StructuredResponse>
 }
 
 /**

@@ -131,7 +131,9 @@ describe('ChatController', () => {
         undefined,
         undefined,
         undefined,
-        false
+        false,
+        undefined,
+        undefined
       )
 
       const state = useAppStore.getState()
@@ -156,7 +158,9 @@ describe('ChatController', () => {
         undefined,
         { lat: 35.6812, lng: 139.7671 },
         undefined,
-        false
+        false,
+        undefined,
+        undefined
       )
     })
 
@@ -177,7 +181,9 @@ describe('ChatController', () => {
         undefined,
         undefined,
         undefined,
-        false
+        false,
+        undefined,
+        undefined
       )
     })
 

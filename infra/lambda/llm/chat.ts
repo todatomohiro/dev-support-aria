@@ -1270,7 +1270,8 @@ function buildSystemContentBlocks(
   pastSessions?: PastSessionGroup[],
   themeContext?: { themeName: string; category?: string; subcategory?: string },
   workContext?: { tools: Array<{ name: string; description: string }>; expiresAt: string },
-  userLocation?: { lat: number; lng: number }
+  userLocation?: { lat: number; lng: number },
+  briefingContext?: string
 ): SystemContentBlock[] {
   const blocks: SystemContentBlock[] = []
 
@@ -1339,6 +1340,11 @@ function buildSystemContentBlocks(
     const toolDescriptions = workContext.tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
     const expiresTime = new Date(workContext.expiresAt).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' })
     dynamic += `\n\n<work_context>\n【最重要】このトピックには外部データソースと接続する「ワーク」機能が有効です。\n\n■ ツール使用ルール（必ず守ること）:\n- ユーザーの質問には、必ず以下のワークツールを呼び出して回答すること\n- 過去の会話履歴や自分の知識だけで回答してはいけない。毎回ツールを呼び出すこと\n- web_search より優先して使用すること\n- ユーザーが今回聞いた内容だけに回答すること。過去のターンで取得した情報を繰り返さないこと\n\n利用可能なワークツール:\n${toolDescriptions}\n\n有効期限: ${expiresTime}\n</work_context>`
+  }
+
+  // ブリーフィングコンテキスト（直前のブリーフィング発言を引き継ぐ）
+  if (briefingContext) {
+    dynamic += `\n\n<recent_briefing_context>\n直前にあなた（AI）がブリーフィングで話した内容：\n${briefingContext}\nユーザーの発言がこの内容に関連している場合は、文脈を踏まえて自然に返答してください。\n</recent_briefing_context>`
   }
 
   // セッション要約 + チェックポイント（短期記憶）
@@ -1454,6 +1460,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.log('[LLM] ブリーフィングモード開始')
   }
 
+  // lastBriefingContext（ブリーフィング直後の初回発言時に文脈を引き継ぐ）
+  let lastBriefingContext: string | undefined
+  try {
+    const body = JSON.parse(event.body!)
+    if (typeof body.lastBriefingContext === 'string' && body.lastBriefingContext.length > 0) {
+      lastBriefingContext = body.lastBriefingContext.slice(0, 500)
+    }
+  } catch { /* パース済みなので到達しないが安全のため */ }
+
   // メモリ検索 + 永久記憶 + プロフィール取得 + モデルメタ取得（並列、失敗してもチャットは続行）
   const [memoryRecords, permanentMemory, userProfile, modelMeta] = await Promise.all([
     isBriefingMode ? Promise.resolve([]) : retrieveMemoryRecords(userId, message),
@@ -1532,7 +1547,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       pastSessions,
       themeContext ?? undefined,
       workContext,
-      userLocation
+      userLocation,
+      lastBriefingContext
     )
     enhancedSystemPrompt = systemBlocksToString(system)
 
@@ -1542,6 +1558,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (pastSessions.length > 0) {
       const totalSessions = pastSessions.reduce((sum, g) => sum + g.sessions.length, 0)
       console.log(`[LLM] 過去セッション ${totalSessions} 件（${pastSessions.length} 日分）をプロンプトに注入`)
+    }
+    if (lastBriefingContext) {
+      console.log(`[LLM] ブリーフィングコンテキスト注入: ${lastBriefingContext.length} 文字`)
     }
 
     // ワーク（MCP）接続時: 会話履歴を含めず現在のメッセージのみで推論（過去のツール結果による汚染を完全防止）
@@ -1561,15 +1580,57 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       undefined,
       undefined,
       undefined,
-      userLocation
+      userLocation,
+      lastBriefingContext
     )
     enhancedSystemPrompt = systemBlocksToString(system)
     messages = toConverseMessages(history, message, imageBase64)
   }
 
-  // ── ブリーフィングモード: ツールを事前呼び出しして結果をプロンプトに注入 ──
+  // ── ブリーフィングモード: ツールを事前呼び出し + 記憶コンテキストをプロンプトに注入 ──
   if (isBriefingMode) {
     const briefingParts: string[] = []
+
+    // 中期記憶 + 過去セッション要約を並列取得（ブリーフィングの「記憶クロスオーバー」用）
+    const [briefingMemoryRecords, briefingPastSessions, briefingSessionContext] = await Promise.all([
+      retrieveMemoryRecords(userId, '最近の会話の話題や気になっていたこと').catch(() => []),
+      sessionId ? getRecentSessionSummaries(userId, sessionId).catch(() => []) : Promise.resolve([]),
+      sessionId ? getSessionContext(userId, sessionId).catch(() => ({ summary: '', checkpoints: [], recentMessages: [], turnsSinceSummary: 0, totalTurns: 0, sessionCreatedAt: '' })) : Promise.resolve(null),
+    ])
+
+    // 中期記憶（重複排除済み）
+    const briefingDedupedRecords = deduplicateRecords(briefingMemoryRecords, permanentMemory)
+    const briefingMemoryContext = formatMemoryContext(briefingDedupedRecords)
+    if (briefingMemoryContext) {
+      briefingParts.push(`<recent_conversations>\nユーザーとの最近の会話から覚えていること：\n${briefingMemoryContext}\n</recent_conversations>`)
+    }
+
+    // 過去セッション要約
+    if (briefingPastSessions.length > 0) {
+      const groups = briefingPastSessions.map((g) => {
+        const lines = g.sessions.map((s: string) => `・${s}`)
+        return `【${g.date}（${g.label}）】\n${lines.join('\n')}`
+      })
+      briefingParts.push(`<past_sessions>\n直近の会話要約：\n${groups.join('\n\n')}\n</past_sessions>`)
+    }
+
+    // 現セッション要約 + チェックポイント
+    if (briefingSessionContext) {
+      const sessionParts: string[] = []
+      if (briefingSessionContext.summary) {
+        sessionParts.push(briefingSessionContext.summary)
+      }
+      if (briefingSessionContext.checkpoints.length > 0) {
+        const cpLines = briefingSessionContext.checkpoints.map((cp: { timestamp: string; keywords: string[]; summary: string }) => {
+          const kw = cp.keywords.join('・')
+          return `[${kw}] ${cp.summary}`
+        })
+        sessionParts.push(cpLines.join('\n'))
+      }
+      if (sessionParts.length > 0) {
+        briefingParts.push(`<current_session>\n今日の会話：\n${sessionParts.join('\n')}\n</current_session>`)
+      }
+    }
 
     // カレンダー取得（失敗しても続行）
     try {
@@ -1596,7 +1657,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 天気取得（失敗しても続行）
     try {
       const weatherInput: Record<string, unknown> = {}
-      // userLocation があればそれを使用、なければ永久記憶から推測
       if (userLocation) {
         weatherInput.latitude = userLocation.lat
         weatherInput.longitude = userLocation.lng
@@ -1624,14 +1684,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     // ブリーフィング専用のユーザーメッセージを構築
     const briefingUserMessage = `【ブリーフィングモード】
-以下の情報をもとに、ユーザーに自然に話しかけてください。
+あなたはユーザーの「相棒」です。ユーザーがアプリを開いたので、自然に話しかけてください。
 現在の時間帯: ${timeOfDay}
 
 ${briefingParts.join('\n\n')}
 
 ルール:
-- 全部の情報を詰め込まない。重要なもの2〜3個に絞って自然に伝える
-- 予定がなければ天気の話、天気が平穏なら予定の話、のように臨機応変に
+- 単なる「天気と予定の報告」ではなく、過去の会話の文脈を活かした気遣いを入れること
+  - 例: 昨日悩んでいた案件がある → 「あの件、どうなった？」と自然に触れる
+  - 例: 最近の会話で興味を示した話題 → 「そういえばあの話だけど」と引き継ぐ
+- ユーザーがアプリを閉じていた間も考えていたように振る舞うこと（「非同期思考の演出」）
+  - ただし実際に調べていない情報を断言してはいけない
+  - 「〜調べようか？」「〜気になったんだけど、詳しく見てみる？」と提案に留めること
+- suggestedReplies で具体的なアクションを提案すること（例: 「近くのお店を調べて」「今日の予定を詳しく」）
+- 全部の情報を詰め込まない。重要なもの1〜2個に絞って自然に伝える
+- 予定がなければ天気の話、天気が平穏なら過去の会話の話題、のように臨機応変に
+- 過去の会話情報がない場合は、無理に引き継がず時間帯に合った短い挨拶でよい
 - 情報がほとんどない場合は、時間帯に合った短い挨拶だけでよい
 - キャラクターの口調を守る
 - 押し付けがましくならないように。さりげなく自然に
@@ -1640,7 +1708,12 @@ ${briefingParts.join('\n\n')}
     // ブリーフィングメッセージで messages を上書き（会話履歴は不要）
     messages = [{ role: 'user', content: [{ text: briefingUserMessage }] }]
 
-    console.log(`[Briefing] コンテキスト: ${briefingParts.length} 件（カレンダー, 天気, 永久記憶）`)
+    const memorySources = [
+      briefingMemoryContext ? '中期記憶' : null,
+      briefingPastSessions.length > 0 ? '過去セッション' : null,
+      briefingSessionContext?.summary ? '現セッション' : null,
+    ].filter(Boolean)
+    console.log(`[Briefing] コンテキスト: ${briefingParts.length} 件（カレンダー, 天気, 永久記憶, ${memorySources.join(', ') || 'なし'}）`)
   }
 
   // MCP ツールを動的注入（接続が有効な場合のみ）

@@ -49,6 +49,9 @@ export interface AppState {
   streamingText: string | null
   streamingRequestId: string | null
 
+  // ブリーフィングコンテキスト（直前のブリーフィング発言を次の送信時に引き継ぐ、非永続）
+  lastBriefingContext: string | null
+
   // エラー関連
   lastError: AppError | null
 
@@ -72,6 +75,7 @@ export interface AppState {
   setStreamingText: (text: string | null) => void
   setStreamingRequestId: (id: string | null) => void
   appendStreamingText: (delta: string) => void
+  setLastBriefingContext: (context: string | null) => void
   clearMessages: () => void
   resetSession: () => void
 }
@@ -111,6 +115,7 @@ export const useAppStore = create<AppState>()(
       config: defaultConfig,
       streamingText: null,
       streamingRequestId: null,
+      lastBriefingContext: null,
       lastError: null,
 
       // メッセージアクション（履歴制限付き）
@@ -202,6 +207,7 @@ export const useAppStore = create<AppState>()(
       appendStreamingText: (delta: string) => set((state) => ({
         streamingText: (state.streamingText ?? '') + delta,
       })),
+      setLastBriefingContext: (context: string | null) => set({ lastBriefingContext: context }),
     }),
     {
       name: 'butler-app-storage',

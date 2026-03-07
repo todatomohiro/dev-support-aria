@@ -142,11 +142,17 @@ class ChatControllerImpl {
     // ローディング状態を開始
     store.setLoading(true)
 
+    // ブリーフィングコンテキストを取得してクリア（初回送信時のみ）
+    const briefingContext = store.lastBriefingContext
+    if (briefingContext) {
+      store.setLastBriefingContext(null)
+    }
+
     // WebSocket 接続中ならストリーミングモードを使用
     const useStreaming = wsService.isConnected()
     if (useStreaming) {
       try {
-        await this.sendMessageStreaming(content.trim(), imageBase64)
+        await this.sendMessageStreaming(content.trim(), imageBase64, briefingContext ?? undefined)
       } catch (error) {
         await this.handleError(error)
       } finally {
@@ -159,7 +165,7 @@ class ChatControllerImpl {
       // LLMにメッセージを送信（sessionId でサーバー側コンテキスト構築）
       const structuredResponse = await measurePerformanceAsync(
         'LLM送信→レスポンス受信',
-        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode)
+        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode, undefined, briefingContext ?? undefined)
       )
 
       // アシスタントメッセージを作成
@@ -205,7 +211,7 @@ class ChatControllerImpl {
    * ストリーミングモードでメッセージを送信
    * REST で送信し、WebSocket 経由でリアルタイムにテキストを受信
    */
-  private async sendMessageStreaming(content: string, imageBase64?: string): Promise<void> {
+  private async sendMessageStreaming(content: string, imageBase64?: string, briefingContext?: string): Promise<void> {
     const store = useAppStore.getState()
 
     // ストリーミング状態を初期化
@@ -296,7 +302,7 @@ class ChatControllerImpl {
       wsService.onChatStream(handleStreamEvent)
 
       // REST リクエストを送信（streaming: true）
-      llmClient.sendMessage(content, store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode, true)
+      llmClient.sendMessage(content, store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode, true, briefingContext)
         .catch((error) => {
           // REST エラー（タイムアウト含む）: ストリーミングが完了していなければエラー
           if (!completed) {
@@ -819,6 +825,11 @@ class ChatControllerImpl {
 
       store.addMessage(assistantMessage)
       syncService.saveMessage(assistantMessage)
+
+      // ブリーフィング発言をコンテキストとして保持（次の初回送信時に引き継ぐ）
+      if (assistantMessage.content) {
+        store.setLastBriefingContext(assistantMessage.content)
+      }
 
       // TTS 自動再生
       if (store.config.ui.ttsEnabled) {
