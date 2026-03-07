@@ -503,9 +503,9 @@ export class ButlerStack extends cdk.Stack {
       },
     })
 
-    // Bedrock Converse 権限（inference profile + foundation model）
+    // Bedrock Converse 権限（inference profile + foundation model、ストリーミング含む）
     llmChatFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['bedrock:InvokeModel', 'bedrock:Converse'],
+      actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream', 'bedrock:Converse', 'bedrock:ConverseStream'],
       resources: [
         'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
         `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
@@ -523,6 +523,13 @@ export class ButlerStack extends cdk.Stack {
 
     // 要約 Lambda 非同期起動権限
     llmSummarizeFn.grantInvoke(llmChatFn)
+
+    // LLM Chat Lambda に WebSocket ストリーミング権限を付与
+    llmChatFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [`arn:aws:execute-api:${this.region}:${this.account}:${wsApi.apiId}/*`],
+    }))
+    llmChatFn.addEnvironment('WEBSOCKET_ENDPOINT', wsStage.callbackUrl)
 
     // Memory Events Lambda（AgentCore Memory にイベント記録）
     const memoryEventsFn = new lambdaNode.NodejsFunction(this, 'MemoryEventsFn', {

@@ -216,7 +216,7 @@ class LLMClientImpl implements LLMClientService {
   /**
    * Lambda /llm/chat を経由して Bedrock Claude にメッセージを送信
    */
-  async sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey, debug?: boolean): Promise<StructuredResponse> {
+  async sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey, debug?: boolean, streaming?: boolean): Promise<StructuredResponse> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     const accessToken = await getIdToken()
 
@@ -244,6 +244,7 @@ class LLMClientImpl implements LLMClientService {
           ...(modelKey && modelKey !== 'haiku' ? { modelKey } : {}),
           ...(debug ? { includeDebug: true } : {}),
           ...(selectedModelId ? { selectedModelId } : {}),
+          ...(streaming ? { streaming: true } : {}),
         }),
       })
 
@@ -252,7 +253,12 @@ class LLMClientImpl implements LLMClientService {
         throw await this.handleAPIError(res, errorBody)
       }
 
-      const data = (await res.json()) as { content: string; enhancedSystemPrompt?: string; sessionSummary?: string; permanentFacts?: string[]; themeName?: string; workStatus?: { active: boolean; expiresAt: string; toolCount: number } }
+      const data = (await res.json()) as { streamed?: boolean; requestId?: string; content: string; enhancedSystemPrompt?: string; sessionSummary?: string; permanentFacts?: string[]; themeName?: string; workStatus?: { active: boolean; expiresAt: string; toolCount: number } }
+
+      // ストリーミングモード: REST レスポンスはデータを含まない（WebSocket 経由で受信済み）
+      if (data.streamed) {
+        return { text: '__streamed__', emotion: 'neutral', motion: 'idle', _streamed: true, _requestId: data.requestId } as StructuredResponse & { _streamed: boolean; _requestId?: string }
+      }
 
       // JSON を抽出（マークダウンコードブロック対応）
       let cleanJson = data.content.trim()

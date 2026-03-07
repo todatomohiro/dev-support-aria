@@ -9,6 +9,17 @@ const MAX_RECONNECT_ATTEMPTS = 5
 /** 再接続バックオフ上限（ミリ秒） */
 const MAX_BACKOFF_MS = 30000
 
+/** チャットストリーミングイベント */
+export type ChatStreamEvent =
+  | { type: 'chat_delta'; requestId: string; delta: string }
+  | { type: 'chat_tool_start'; requestId: string; tool: string }
+  | { type: 'chat_tool_result'; requestId: string; tool: string }
+  | { type: 'chat_complete'; requestId: string; content: string; [key: string]: unknown }
+  | { type: 'chat_error'; requestId: string; error: string }
+
+/** チャットストリーミングコールバック */
+export type ChatStreamCallback = (event: ChatStreamEvent) => void
+
 /**
  * WebSocket サービスのインターフェース
  */
@@ -18,6 +29,8 @@ export interface WsServiceType {
   reconnect(): void | Promise<void>
   subscribe(groupId: string): void
   unsubscribe(groupId: string): void
+  isConnected(): boolean
+  onChatStream(callback: ChatStreamCallback | null): void
 }
 
 /**
@@ -32,6 +45,7 @@ export class WsServiceImpl implements WsServiceType {
   private reconnectAttempts = 0
   private subscribedGroups = new Set<string>()
   private currentToken: string | null = null
+  private chatStreamCallback: ChatStreamCallback | null = null
 
   /**
    * WebSocket 接続を開始
@@ -133,9 +147,29 @@ export class WsServiceImpl implements WsServiceType {
   }
 
   /**
+   * WebSocket 接続中かどうかを返す
+   */
+  isConnected(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN
+  }
+
+  /**
+   * チャットストリーミングコールバックを登録
+   */
+  onChatStream(callback: ChatStreamCallback | null): void {
+    this.chatStreamCallback = callback
+  }
+
+  /**
    * 受信メッセージを処理
    */
-  private handleMessage(data: { type: string; conversationId?: string; groupId?: string; message?: unknown; lastMessage?: string; updatedAt?: number; userId?: string; nickname?: string; lastReadAt?: number }): void {
+  private handleMessage(data: { type: string; conversationId?: string; groupId?: string; message?: unknown; lastMessage?: string; updatedAt?: number; userId?: string; nickname?: string; lastReadAt?: number; requestId?: string; delta?: string; tool?: string; content?: string; error?: string }): void {
+    // チャットストリーミングイベント
+    if (data.type.startsWith('chat_') && this.chatStreamCallback) {
+      this.chatStreamCallback(data as ChatStreamEvent)
+      return
+    }
+
     const store = useGroupChatStore.getState()
     // conversationId と groupId の両方をサポート（後方互換）
     const targetId = data.groupId ?? data.conversationId

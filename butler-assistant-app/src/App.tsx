@@ -12,6 +12,7 @@ import { sentimentService } from './services/sentimentService'
 import { useGeolocation } from './hooks/useGeolocation'
 import { useBriefing } from './hooks/useBriefing'
 import { useWeatherIcon } from './hooks/useWeatherIcon'
+import { useWebSocket } from './hooks/useWebSocket'
 import { logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
 import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
@@ -73,6 +74,10 @@ function App() {
   // 天気アイコン（位置情報ベース、LLM不使用）
   const weatherInfo = useWeatherIcon()
   const setCurrentLocation = useAppStore((state) => state.setCurrentLocation)
+  const streamingText = useAppStore((state) => state.streamingText)
+
+  // メインチャットでも WebSocket 接続を維持（ストリーミング用）
+  useWebSocket(null)
 
   // Theme store
   const activeThemeId = useThemeStore((s) => s.activeThemeId)
@@ -518,6 +523,7 @@ function App() {
                       onLoadEarlier={handleLoadEarlier}
                       onCreateTheme={handleCreateThemeFromSuggestion}
                       onInputSentimentChange={handleInputSentimentChange}
+                      streamingText={streamingText}
                     />
                   </div>
                 } />

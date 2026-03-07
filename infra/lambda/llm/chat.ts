@@ -1,6 +1,7 @@
 import {
   BedrockRuntimeClient,
   ConverseCommand,
+  ConverseStreamCommand,
   type Message as BedrockMessage,
   type ContentBlock,
   type SystemContentBlock,
@@ -18,6 +19,7 @@ import {
   UpdateItemCommand,
 } from '@aws-sdk/client-dynamodb'
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda'
+import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import { executeSkill } from './skills'
 import { TOOL_DEFINITIONS, MEMO_TOOL_DEFINITIONS } from './skills/toolDefinitions'
@@ -31,6 +33,7 @@ const lambdaClient = new LambdaClient({})
 const MEMORY_ID = process.env.MEMORY_ID ?? ''
 const TABLE_NAME = process.env.TABLE_NAME ?? ''
 const SUMMARIZE_FUNCTION_NAME = process.env.SUMMARIZE_FUNCTION_NAME ?? ''
+const WEBSOCKET_ENDPOINT = process.env.WEBSOCKET_ENDPOINT ?? ''
 const MAX_TOOL_USE_ITERATIONS = 5
 
 /** モデルキーから Bedrock 推論プロファイル ID へのマッピング */
@@ -787,6 +790,172 @@ function extractTextFromOutput(output: { message?: BedrockMessage }): string {
 }
 
 /**
+ * ユーザーの WebSocket 接続 ID を DynamoDB から取得
+ */
+async function getUserConnectionIds(userId: string): Promise<string[]> {
+  try {
+    const result = await dynamo.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      IndexName: 'GSI1',
+      KeyConditionExpression: 'GSI1PK = :pk AND begins_with(GSI1SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': { S: `USER#${userId}` },
+        ':sk': { S: 'WS_CONN#' },
+      },
+    }))
+    return (result.Items ?? [])
+      .map((item: Record<string, { S?: string }>) => item.connectionId?.S)
+      .filter((id: string | undefined): id is string => !!id)
+  } catch (error) {
+    console.warn('[Stream] WebSocket 接続 ID 取得エラー:', error)
+    return []
+  }
+}
+
+/**
+ * WebSocket 接続にメッセージを送信（接続切れは無視）
+ */
+async function wsPush(wsClient: ApiGatewayManagementApiClient, connectionId: string, data: unknown): Promise<boolean> {
+  try {
+    await wsClient.send(new PostToConnectionCommand({
+      ConnectionId: connectionId,
+      Data: new TextEncoder().encode(JSON.stringify(data)),
+    }))
+    return true
+  } catch (err: any) {
+    if (err.statusCode === 410 || err.name === 'GoneException') {
+      await dynamo.send(new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: 'PK = :pk AND SK = :sk',
+        ExpressionAttributeValues: {
+          ':pk': { S: `WS_CONN#${connectionId}` },
+          ':sk': { S: 'META' },
+        },
+      })).catch(() => {})
+    }
+    console.warn(`[Stream] WebSocket プッシュ失敗 (${connectionId}):`, err.name)
+    return false
+  }
+}
+
+/**
+ * 全接続に一斉プッシュ
+ */
+async function wsPushAll(wsClient: ApiGatewayManagementApiClient, connectionIds: string[], data: unknown): Promise<void> {
+  await Promise.allSettled(connectionIds.map((id) => wsPush(wsClient, id, data)))
+}
+
+/**
+ * ConverseStreamCommand でストリーミング応答を生成し、WebSocket 経由でチャンク送信
+ *
+ * @returns テキスト全文（セッション保存用）。ツール使用の場合は null（ループ続行）。
+ */
+async function streamConverseIteration(
+  resolvedModelId: string,
+  currentMessages: BedrockMessage[],
+  system: SystemContentBlock[],
+  inferenceConfig: { maxTokens: number; temperature: number },
+  toolConfig: ToolConfiguration,
+  wsClient: ApiGatewayManagementApiClient,
+  connectionIds: string[],
+  requestId: string,
+): Promise<{
+  fullText: string
+  stopReason: string
+  toolUseBlocks: Array<{ toolUseId: string; name: string; input: Record<string, unknown> }>
+  assistantContentBlocks: ContentBlock[]
+}> {
+  const result = await bedrock.send(new ConverseStreamCommand({
+    modelId: resolvedModelId,
+    messages: currentMessages,
+    system,
+    inferenceConfig,
+    toolConfig,
+  }))
+
+  let fullText = ''
+  let stopReason = ''
+  const toolUseBlocks: Array<{ toolUseId: string; name: string; input: Record<string, unknown> }> = []
+  let currentToolUse: { toolUseId: string; name: string; inputJson: string } | null = null
+  const assistantContentBlocks: ContentBlock[] = []
+
+  if (!result.stream) {
+    throw new Error('ConverseStreamCommand returned no stream')
+  }
+
+  for await (const event of result.stream) {
+    // テキストブロック開始
+    if (event.contentBlockStart?.start?.toolUse) {
+      const tu = event.contentBlockStart.start.toolUse
+      currentToolUse = {
+        toolUseId: tu.toolUseId ?? '',
+        name: tu.name ?? '',
+        inputJson: '',
+      }
+      // ツール開始をクライアントに通知
+      await wsPushAll(wsClient, connectionIds, {
+        type: 'chat_tool_start',
+        requestId,
+        tool: currentToolUse.name,
+      })
+    }
+
+    // テキストデルタ
+    if (event.contentBlockDelta?.delta) {
+      const delta = event.contentBlockDelta.delta as Record<string, unknown>
+      if (typeof delta.text === 'string') {
+        fullText += delta.text
+        await wsPushAll(wsClient, connectionIds, {
+          type: 'chat_delta',
+          requestId,
+          delta: delta.text,
+        })
+      }
+      // ツール入力デルタ
+      if (delta.toolUse && typeof (delta.toolUse as Record<string, unknown>).input === 'string') {
+        if (currentToolUse) {
+          currentToolUse.inputJson += (delta.toolUse as Record<string, unknown>).input as string
+        }
+      }
+    }
+
+    // ブロック終了
+    if (event.contentBlockStop !== undefined) {
+      if (currentToolUse) {
+        try {
+          const input = currentToolUse.inputJson ? JSON.parse(currentToolUse.inputJson) : {}
+          toolUseBlocks.push({
+            toolUseId: currentToolUse.toolUseId,
+            name: currentToolUse.name,
+            input,
+          })
+          // ContentBlock として保持（会話履歴用）
+          assistantContentBlocks.push({
+            toolUse: {
+              toolUseId: currentToolUse.toolUseId,
+              name: currentToolUse.name,
+              input,
+            },
+          } as ContentBlock)
+        } catch {
+          console.warn('[Stream] ツール入力JSON パース失敗:', currentToolUse.inputJson.slice(0, 100))
+        }
+        currentToolUse = null
+      } else if (fullText) {
+        assistantContentBlocks.push({ text: fullText } as ContentBlock)
+      }
+    }
+
+    // メッセージ終了
+    if (event.messageStop) {
+      stopReason = event.messageStop.stopReason ?? ''
+    }
+  }
+
+  return { fullText, stopReason, toolUseBlocks, assistantContentBlocks }
+}
+
+/**
  * LLM レスポンス（JSON 文字列）から text フィールドを抽出
  *
  * LLM が複数テキストブロック（平文 + JSON）を返した場合に
@@ -1218,6 +1387,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let modelKey = 'haiku'
   let selectedModelId: string | undefined
   let includeDebug = false
+  let streaming = false
 
   try {
     const body = JSON.parse(event.body)
@@ -1247,6 +1417,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // デバッグ情報の返却フラグ
     if (body.includeDebug === true) {
       includeDebug = true
+    }
+
+    // ストリーミングモード
+    if (body.streaming === true) {
+      streaming = true
     }
 
     if (!message || typeof message !== 'string') {
@@ -1471,6 +1646,140 @@ ${briefingParts.join('\n\n')}
     const inferenceConf = MODEL_INFERENCE_CONFIG[modelKey] ?? MODEL_INFERENCE_CONFIG.haiku
     const cachePoints = system.filter((b) => 'cachePoint' in b).length
     console.log(`[LLM] モデル: ${modelKey} (${resolvedModelId}), システムブロック: ${system.length} (cachePoint: ${cachePoints})`)
+
+    // ── ストリーミングモード ──
+    if (streaming && WEBSOCKET_ENDPOINT && !isBriefingMode) {
+      const connectionIds = await getUserConnectionIds(userId)
+      if (connectionIds.length > 0) {
+        console.log(`[Stream] ストリーミング開始 (接続数: ${connectionIds.length})`)
+        const wsClient = new ApiGatewayManagementApiClient({ endpoint: WEBSOCKET_ENDPOINT })
+        const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const streamInferenceConfig = {
+          maxTokens: imageBase64 ? inferenceConf.imageMaxTokens : inferenceConf.maxTokens,
+          temperature: 0.7,
+        }
+
+        let streamedContent = ''
+
+        for (let iteration = 0; iteration < MAX_TOOL_USE_ITERATIONS; iteration++) {
+          const streamResult = await streamConverseIteration(
+            resolvedModelId,
+            currentMessages,
+            system,
+            streamInferenceConfig,
+            toolConfig,
+            wsClient,
+            connectionIds,
+            requestId,
+          )
+
+          console.log(`[Stream] Iteration ${iteration}, stopReason: ${streamResult.stopReason}, text: ${streamResult.fullText.length} chars, tools: ${streamResult.toolUseBlocks.length}`)
+
+          if (streamResult.stopReason === 'tool_use' && streamResult.toolUseBlocks.length > 0) {
+            // アシスタントメッセージを会話に追加
+            currentMessages.push({
+              role: 'assistant',
+              content: streamResult.assistantContentBlocks,
+            })
+
+            // ツール実行
+            const toolResults: ToolResultContentBlock[] = []
+            for (const block of streamResult.toolUseBlocks) {
+              console.log(`[Stream] Tool use: ${block.name}`, JSON.stringify(block.input))
+              const toolResult = await executeSkill(block.name, block.input, block.toolUseId, userId, mcpConn ?? undefined, userLocation)
+              console.log(`[Stream] Tool result:`, JSON.stringify(toolResult))
+              toolResults.push(toolResult)
+
+              // ツール結果をクライアントに通知
+              await wsPushAll(wsClient, connectionIds, {
+                type: 'chat_tool_result',
+                requestId,
+                tool: block.name,
+              })
+            }
+
+            // ツール結果を user ロールで追加
+            currentMessages.push({
+              role: 'user',
+              content: toolResults.map((tr) => ({ toolResult: tr })),
+            })
+            continue
+          }
+
+          // テキスト応答完了
+          streamedContent = streamResult.fullText
+          break
+        }
+
+        // ── 後処理（非ストリーミングと共通）──
+
+        // DynamoDB にはテキスト部分のみ保存
+        const textForStorage = extractTextFieldFromJson(streamedContent)
+
+        // セッション更新 + 要約トリガー
+        if (sessionId && !isBriefingMode) {
+          try {
+            const sessionOverrides = themeId
+              ? { msgPK: `USER#${userId}#THEME#${themeId}`, sessionSK: `THEME_SESSION#${themeId}`, themeId }
+              : undefined
+            await updateSessionAndMaybeSummarize(userId, sessionId, sessionTurnsSinceSummary, message, textForStorage, sessionOverrides)
+          } catch (error) {
+            console.warn('[Stream] セッション更新エラー（スキップ）:', error)
+          }
+        }
+
+        // トピック自動命名
+        let generatedThemeName: string | undefined
+        if (themeId && themeContext?.themeName === '新規トピック') {
+          try {
+            const jsonMatch = streamedContent.match(/\{[\s\S]*\}/)
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0])
+              if (typeof parsed.topicName === 'string' && parsed.topicName.trim()) {
+                generatedThemeName = parsed.topicName.trim().slice(0, 15)
+              }
+            }
+            if (!generatedThemeName) {
+              const trimmed = message.trim().replace(/\n/g, ' ')
+              generatedThemeName = trimmed.length > 15 ? trimmed.slice(0, 15) + '…' : trimmed
+            }
+            await dynamo.send(new UpdateItemCommand({
+              TableName: TABLE_NAME,
+              Key: { PK: { S: `USER#${userId}` }, SK: { S: `THEME_SESSION#${themeId}` } },
+              UpdateExpression: 'SET themeName = :name',
+              ExpressionAttributeValues: { ':name': { S: generatedThemeName } },
+            }))
+          } catch (err) {
+            console.warn('[Stream] トピック自動命名エラー（スキップ）:', err)
+          }
+        }
+
+        // ワーク状態
+        const workStatus = mcpConn
+          ? { active: !mcpConn.isExpired, expiresAt: mcpConn.expiresAt, toolCount: mcpConn.tools.length }
+          : undefined
+
+        // 完了イベントをクライアントにプッシュ（emotion/motion は content から抽出）
+        await wsPushAll(wsClient, connectionIds, {
+          type: 'chat_complete',
+          requestId,
+          content: streamedContent,
+          ...(includeDebug ? { enhancedSystemPrompt } : {}),
+          ...(sessionSummary ? { sessionSummary } : {}),
+          ...(permanentMemory.facts.length > 0 ? { permanentFacts: permanentMemory.facts } : {}),
+          ...(permanentMemory.preferences.length > 0 ? { permanentPreferences: permanentMemory.preferences } : {}),
+          ...(generatedThemeName ? { themeName: generatedThemeName } : {}),
+          ...(workStatus ? { workStatus } : {}),
+        })
+
+        console.log(`[Stream] ストリーミング完了 (${streamedContent.length} chars)`)
+
+        // REST レスポンス（ストリーミング済みを示す）
+        return response(200, { streamed: true, requestId })
+      } else {
+        console.log('[Stream] WebSocket 接続なし、非ストリーミングにフォールバック')
+      }
+    }
 
     for (let iteration = 0; iteration < MAX_TOOL_USE_ITERATIONS; iteration++) {
       const result = await bedrock.send(new ConverseCommand({

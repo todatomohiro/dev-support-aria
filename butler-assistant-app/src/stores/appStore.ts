@@ -45,6 +45,10 @@ export interface AppState {
   // 最終アクティブ時刻（挨拶の不在期間判定用）
   lastActiveTimestamp: number | null
 
+  // ストリーミング関連
+  streamingText: string | null
+  streamingRequestId: string | null
+
   // エラー関連
   lastError: AppError | null
 
@@ -65,6 +69,9 @@ export interface AppState {
   updateConfig: (config: Partial<AppConfig>) => void
   updateLastActive: () => void
   setError: (error: AppError | null) => void
+  setStreamingText: (text: string | null) => void
+  setStreamingRequestId: (id: string | null) => void
+  appendStreamingText: (delta: string) => void
   clearMessages: () => void
   resetSession: () => void
 }
@@ -102,6 +109,8 @@ export const useAppStore = create<AppState>()(
       activeModelMeta: null,
       lastActiveTimestamp: null,
       config: defaultConfig,
+      streamingText: null,
+      streamingRequestId: null,
       lastError: null,
 
       // メッセージアクション（履歴制限付き）
@@ -188,6 +197,11 @@ export const useAppStore = create<AppState>()(
 
       // エラーアクション
       setError: (error: AppError | null) => set({ lastError: error }),
+      setStreamingText: (text: string | null) => set({ streamingText: text }),
+      setStreamingRequestId: (id: string | null) => set({ streamingRequestId: id }),
+      appendStreamingText: (delta: string) => set((state) => ({
+        streamingText: (state.streamingText ?? '') + delta,
+      })),
     }),
     {
       name: 'butler-app-storage',

@@ -3,12 +3,60 @@ import { llmClient } from './llmClient'
 import { motionController } from './motionController'
 import { syncService } from './syncService'
 import { ttsService } from './ttsService'
+import { wsService } from './wsService'
+import type { ChatStreamEvent } from './wsService'
 import { useAppStore } from '@/stores/appStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { getIdToken } from '@/auth'
 import type { Message, StructuredResponse, AppError } from '@/types'
+import type { EmotionType } from '@/types/response'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
 import { measurePerformanceAsync } from '@/utils/performance'
+
+/**
+ * ストリーミング中の累積テキストから表示用テキストを抽出
+ *
+ * LLM の出力パターン:
+ *   パターンA: 平文テキスト（JSON なし、または JSON が後ろに来る）
+ *   パターンB: {"text": "...", "emotion": "...", ...} の JSON 形式
+ *
+ * 平文テキスト部分のみを抽出し、JSON メタデータ部分は除外する。
+ */
+function extractStreamingText(raw: string): string {
+  // JSON オブジェクトの開始位置を探す（末尾の {"emotion":...} 部分を除外）
+  // 最後の `{"` を探して、それ以降を除外
+  const jsonStart = raw.lastIndexOf('{"')
+  if (jsonStart > 0) {
+    // JSON 前の平文テキストを返す
+    return raw.slice(0, jsonStart).trim()
+  }
+
+  // 先頭が `{` で始まる場合は JSON 形式 → "text" フィールドを抽出
+  if (raw.trimStart().startsWith('{')) {
+    const textFieldMatch = raw.match(/"text"\s*:\s*"/)
+    if (textFieldMatch && textFieldMatch.index !== undefined) {
+      const valueStart = textFieldMatch.index + textFieldMatch[0].length
+      const rest = raw.slice(valueStart)
+      let result = ''
+      for (let i = 0; i < rest.length; i++) {
+        if (rest[i] === '\\' && i + 1 < rest.length) {
+          const next = rest[i + 1]
+          if (next === 'n') { result += '\n'; i++; continue }
+          if (next === '"') { result += '"'; i++; continue }
+          if (next === '\\') { result += '\\'; i++; continue }
+          result += next; i++; continue
+        }
+        if (rest[i] === '"') break
+        result += rest[i]
+      }
+      return result
+    }
+    return ''
+  }
+
+  // 完全に平文のみ（JSON なし）
+  return raw.trim()
+}
 
 /**
  * エラー種別に対応するモーションタグ
@@ -51,6 +99,19 @@ class ChatControllerImpl {
 
     // ローディング状態を開始
     store.setLoading(true)
+
+    // WebSocket 接続中ならストリーミングモードを使用
+    const useStreaming = wsService.isConnected()
+    if (useStreaming) {
+      try {
+        await this.sendMessageStreaming(content.trim(), imageBase64)
+      } catch (error) {
+        await this.handleError(error)
+      } finally {
+        store.setLoading(false)
+      }
+      return
+    }
 
     try {
       // LLMにメッセージを送信（sessionId でサーバー側コンテキスト構築）
@@ -95,6 +156,153 @@ class ChatControllerImpl {
     } finally {
       // ローディング状態を終了
       store.setLoading(false)
+    }
+  }
+
+  /**
+   * ストリーミングモードでメッセージを送信
+   * REST で送信し、WebSocket 経由でリアルタイムにテキストを受信
+   */
+  private async sendMessageStreaming(content: string, imageBase64?: string): Promise<void> {
+    const store = useAppStore.getState()
+
+    // ストリーミング状態を初期化
+    store.setStreamingRequestId('pending')
+    store.setStreamingText('')
+
+    return new Promise<void>((resolve, reject) => {
+      let completed = false
+      let rawAccumulated = ''
+
+      // WebSocket コールバックを登録
+      const handleStreamEvent = (event: ChatStreamEvent) => {
+
+        switch (event.type) {
+          case 'chat_delta': {
+            rawAccumulated += event.delta
+            const displayText = extractStreamingText(rawAccumulated)
+            useAppStore.getState().setStreamingText(displayText)
+            break
+          }
+
+          case 'chat_tool_start':
+            console.log(`[Streaming] ツール実行中: ${event.tool}`)
+            break
+
+          case 'chat_tool_result':
+            console.log(`[Streaming] ツール結果: ${event.tool}`)
+            break
+
+          case 'chat_complete': {
+            completed = true
+            wsService.onChatStream(null)
+
+            // ストリーミング状態をクリア
+            const finalStore = useAppStore.getState()
+            finalStore.setStreamingText(null)
+            finalStore.setStreamingRequestId(null)
+
+            // chat_complete の content は raw LLM JSON → パースして構造化
+            const structuredResponse = this.parseStreamedContent(
+              event.content ?? rawAccumulated,
+              event,
+            )
+
+            // アシスタントメッセージを作成
+            const assistantMessage: Message = {
+              id: uuidv4(),
+              role: 'assistant',
+              content: structuredResponse.text ?? '',
+              timestamp: Date.now(),
+              motion: structuredResponse.motion,
+              rawResponse: JSON.stringify(structuredResponse, null, 2),
+              mapData: structuredResponse.mapData,
+              suggestedTheme: structuredResponse.suggestedTheme,
+              suggestedReplies: structuredResponse.suggestedReplies,
+            }
+
+            finalStore.addMessage(assistantMessage)
+            syncService.saveMessage(assistantMessage)
+
+            // TTS 自動再生
+            if (finalStore.config.ui.ttsEnabled) {
+              ttsService.synthesizeAndPlay(assistantMessage.content)
+            }
+
+            // メモリイベント保存
+            this.storeMemoryEvent(content, structuredResponse.text)
+
+            // モーションと表情を再生
+            this.playExpression(structuredResponse)
+
+            finalStore.setError(null)
+            finalStore.setLoading(false)
+            resolve()
+            break
+          }
+
+          case 'chat_error':
+            completed = true
+            wsService.onChatStream(null)
+            useAppStore.getState().setStreamingText(null)
+            useAppStore.getState().setStreamingRequestId(null)
+            reject(new APIError(event.error, 500))
+            break
+        }
+      }
+
+      wsService.onChatStream(handleStreamEvent)
+
+      // REST リクエストを送信（streaming: true）
+      llmClient.sendMessage(content, store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode, true)
+        .catch((error) => {
+          // REST エラー（タイムアウト含む）: ストリーミングが完了していなければエラー
+          if (!completed) {
+            wsService.onChatStream(null)
+            useAppStore.getState().setStreamingText(null)
+            useAppStore.getState().setStreamingRequestId(null)
+            reject(error)
+          }
+        })
+    })
+  }
+
+  /**
+   * ストリーミング完了時の raw content をパースして StructuredResponse を生成
+   */
+  private parseStreamedContent(rawContent: string, event: ChatStreamEvent & { type: 'chat_complete' }): StructuredResponse {
+    let text = rawContent
+    let emotion: EmotionType = 'neutral'
+    let motion = 'idle'
+    let mapData: StructuredResponse['mapData'] = undefined
+    let suggestedTheme: StructuredResponse['suggestedTheme'] = undefined
+    let suggestedReplies: StructuredResponse['suggestedReplies'] = undefined
+
+    try {
+      const jsonMatch = rawContent.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0])
+        if (parsed.text) text = parsed.text
+        if (parsed.emotion) emotion = parsed.emotion as EmotionType
+        if (parsed.motion) motion = parsed.motion
+        if (parsed.mapData) mapData = parsed.mapData
+        if (parsed.suggestedTheme) suggestedTheme = parsed.suggestedTheme
+        if (parsed.suggestedReplies) suggestedReplies = parsed.suggestedReplies
+      }
+    } catch {
+      console.warn('[Streaming] レスポンスJSONのパースに失敗、テキストをそのまま使用')
+    }
+
+    return {
+      text,
+      emotion,
+      motion,
+      mapData,
+      suggestedTheme,
+      suggestedReplies,
+      themeName: event.themeName as string | undefined,
+      workStatus: event.workStatus as StructuredResponse['workStatus'],
+      enhancedSystemPrompt: event.enhancedSystemPrompt as string | undefined,
     }
   }
 

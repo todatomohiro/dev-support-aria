@@ -80,12 +80,14 @@ interface ChatUIProps {
   persistentReplies?: string[]
   /** クイックリプライ送信テンプレート（{reply} がラベルに置換） */
   persistentRepliesTemplate?: string
+  /** ストリーミング中のテキスト（タイプライター表示用） */
+  streamingText?: string | null
 }
 
 /**
  * チャットUI コンポーネント
  */
-export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme, onInputSentimentChange, inputExtra, extraOptions = [], persistentReplies, persistentRepliesTemplate }: ChatUIProps) {
+export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggleTts, cameraEnabled, onToggleCamera, developerMode = false, hasEarlierMessages = false, isLoadingEarlier = false, onLoadEarlier, onCreateTheme, onInputSentimentChange, inputExtra, extraOptions = [], persistentReplies, persistentRepliesTemplate, streamingText }: ChatUIProps) {
   const [inputText, setInputText] = useState('')
   const [autoSendEnabled, setAutoSendEnabled] = useState(false)
   const [isPopoverOpen, setIsPopoverOpen] = useState(false)
@@ -226,6 +228,13 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       }
     }
   }, [])
+
+  // ストリーミング中は最下部へスクロール（テキストが増えるたびに）
+  useEffect(() => {
+    if (streamingText != null && streamingText.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [streamingText])
 
   // メッセージ変更時: 過去読み込み時はスクロール位置復元、それ以外は最下部へスクロール
   useEffect(() => {
@@ -376,8 +385,22 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
           </div>
         ))}
 
-        {/* スケルトンメッセージ（ローディング中） */}
-        {isLoading && <SkeletonMessage />}
+        {/* ストリーミングテキスト（タイプライター表示） */}
+        {streamingText != null && streamingText.length > 0 && (
+          <div className="flex justify-start" data-testid="streaming-message">
+            <div className="max-w-[85%] sm:max-w-[70%] rounded-lg p-2 sm:p-3 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+              <div className="markdown-content text-sm sm:text-base">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {streamingText}
+                </ReactMarkdown>
+              </div>
+              <span className="inline-block w-1.5 h-4 ml-0.5 bg-gray-500 dark:bg-gray-400 animate-pulse align-text-bottom" />
+            </div>
+          </div>
+        )}
+
+        {/* スケルトンメッセージ（ローディング中、ストリーミング中は非表示） */}
+        {isLoading && streamingText == null && <SkeletonMessage />}
 
         {/* スクロール用のアンカー */}
         <div ref={messagesEndRef} />
