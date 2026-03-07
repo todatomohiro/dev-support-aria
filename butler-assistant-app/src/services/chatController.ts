@@ -58,6 +58,49 @@ function extractStreamingText(raw: string): string {
 }
 
 /**
+ * ブレース対応で文字列中のトップレベル JSON オブジェクトを抽出
+ *
+ * 正規表現では深いネスト（mapData 等）に対応できないため、
+ * ブレースのネスト深度を追跡して完全な JSON オブジェクトを切り出す。
+ * 文字列リテラル内のブレースはスキップする。
+ */
+function findJsonObjects(raw: string): string[] {
+  const results: string[] = []
+  let i = 0
+  while (i < raw.length) {
+    if (raw[i] === '{') {
+      let depth = 0
+      let inString = false
+      let escape = false
+      const start = i
+      for (let j = i; j < raw.length; j++) {
+        const ch = raw[j]
+        if (escape) { escape = false; continue }
+        if (ch === '\\' && inString) { escape = true; continue }
+        if (ch === '"' && !escape) { inString = !inString; continue }
+        if (inString) continue
+        if (ch === '{') depth++
+        if (ch === '}') {
+          depth--
+          if (depth === 0) {
+            results.push(raw.slice(start, j + 1))
+            i = j + 1
+            break
+          }
+        }
+        if (j === raw.length - 1) {
+          // 閉じブレースなし（不完全な JSON）→ スキップ
+          i = j + 1
+        }
+      }
+    } else {
+      i++
+    }
+  }
+  return results
+}
+
+/**
  * エラー種別に対応するモーションタグ
  */
 const ERROR_MOTIONS: Record<string, string> = {
@@ -270,7 +313,8 @@ class ChatControllerImpl {
    * ストリーミング完了時の raw content をパースして StructuredResponse を生成
    */
   private parseStreamedContent(rawContent: string, event: ChatStreamEvent & { type: 'chat_complete' }): StructuredResponse {
-    let text = rawContent
+    // テキスト部分は常に extractStreamingText で JSON を確実に除去
+    let text = extractStreamingText(rawContent)
     let emotion: EmotionType = 'neutral'
     let motion = 'idle'
     let mapData: StructuredResponse['mapData'] = undefined
@@ -278,21 +322,18 @@ class ChatControllerImpl {
     let suggestedReplies: StructuredResponse['suggestedReplies'] = undefined
 
     try {
-      // LLM が複数の JSON オブジェクトを出力する場合がある
-      // 例: 平文\n{"emotion":"happy"}\n{"text":"...", "emotion":"happy", ...}
-      // "text" フィールドを含む JSON を優先的にパース
-      const allJsonMatches = [...rawContent.matchAll(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g)]
-      let parsed: Record<string, unknown> | null = null
+      // ブレース対応で JSON オブジェクトを抽出（深いネストにも対応）
+      const jsonObjects = findJsonObjects(rawContent)
 
       // 後ろから探して "text" フィールドを含む JSON を優先
-      for (let i = allJsonMatches.length - 1; i >= 0; i--) {
+      let parsed: Record<string, unknown> | null = null
+      for (let i = jsonObjects.length - 1; i >= 0; i--) {
         try {
-          const candidate = JSON.parse(allJsonMatches[i][0])
+          const candidate = JSON.parse(jsonObjects[i])
           if (candidate.text) {
             parsed = candidate
             break
           }
-          // "text" なしでも最後の候補として保持
           if (!parsed) parsed = candidate
         } catch {
           // パース失敗は無視して次の候補へ
@@ -300,12 +341,7 @@ class ChatControllerImpl {
       }
 
       if (parsed) {
-        if (parsed.text) {
-          text = parsed.text as string
-        } else {
-          // "text" フィールドなしの場合: rawContent から JSON 部分を除去して平文を抽出
-          text = extractStreamingText(rawContent)
-        }
+        if (parsed.text) text = parsed.text as string
         if (parsed.emotion) emotion = parsed.emotion as EmotionType
         if (parsed.motion) motion = parsed.motion as string
         if (parsed.mapData) mapData = parsed.mapData as StructuredResponse['mapData']
