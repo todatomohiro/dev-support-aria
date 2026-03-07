@@ -17,6 +17,8 @@ const TABLE_NAME = process.env.TABLE_NAME ?? ''
 
 /** 永久記憶の最大件数 */
 const MAX_FACTS = 50
+/** 統合を実行する閾値（この件数以上で自動統合） */
+const CONSOLIDATION_THRESHOLD = 40
 
 const FACT_EXTRACTION_PROMPT = `あなたはユーザープロフィール抽出の専門家です。
 以下の会話から、ユーザーについて永久に記憶すべき重要な「事実」を抽出してください。
@@ -46,6 +48,66 @@ const FACT_EXTRACTION_PROMPT = `あなたはユーザープロフィール抽出
 - 最大10個まで
 - 該当する事実がなければ「なし」とだけ出力
 - 事実のみを出力（説明や番号は不要）`
+
+const FACT_CONSOLIDATION_PROMPT = `あなたはAIアシスタントの記憶最適化エンジンです。
+ユーザーに関する断片的な記憶（事実リスト）の件数を圧縮することがあなたの任務です。
+
+ルール:
+1. 関連情報の統合: 意味的に関連する複数の事実は、1つの論理的な文に統合する
+   (例: 「Pythonが好き」+「Reactを勉強中」+「AWSを使っている」 → 「Python, React, AWSを用いたWeb開発スキルを持つ」)
+2. 情報の保持: 家族構成、健康状態、仕事、重要な趣味などの「ユーザーのコアアイデンティティ」に関わる情報は絶対に削除しない
+3. 推測の排除: 提供されたリストに含まれない情報を捏造・推測して追加しない
+4. 文字数制限: 統合後の各項目は最大50文字以内
+5. 件数目標: 元の件数の60〜70%程度に圧縮する
+6. 出力形式: 統合された事実リストのみを、1行1事実で出力する（番号・記号は不要）`
+
+/**
+ * 永久記憶の統合（consolidation）
+ *
+ * 件数が閾値を超えた場合に、LLM を使って意味的に関連する事実を統合し件数を圧縮する。
+ */
+async function consolidateFacts(facts: string[]): Promise<string[]> {
+  console.log(`[ExtractFacts] 統合開始: ${facts.length} 件`)
+
+  const factsText = facts.map((f) => `- ${f}`).join('\n')
+  const userPrompt = `以下の ${facts.length} 件の記憶リストを統合・最適化してください:\n\n${factsText}`
+
+  try {
+    const result = await bedrock.send(new ConverseCommand({
+      modelId: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0',
+      messages: [{ role: 'user', content: [{ text: userPrompt }] }],
+      system: [{ text: FACT_CONSOLIDATION_PROMPT }],
+      inferenceConfig: { maxTokens: 2048, temperature: 0.2 },
+    }))
+
+    const responseText = (result.output?.message?.content ?? [])
+      .filter((block): block is { text: string } => 'text' in block && typeof block.text === 'string')
+      .map((block) => block.text)
+      .join('')
+
+    if (!responseText) {
+      console.warn('[ExtractFacts] 統合結果が空 — 元のリストを維持')
+      return facts
+    }
+
+    const consolidated = responseText
+      .split('\n')
+      .map((line) => line.replace(/^[-・•\d.]\s*/, '').trim())
+      .filter((line) => line.length > 0 && line.length <= 50)
+
+    // 統合結果が妥当でない場合はフォールバック
+    if (consolidated.length === 0 || consolidated.length > facts.length) {
+      console.warn(`[ExtractFacts] 統合結果が不正（${consolidated.length} 件）— 元のリストを維持`)
+      return facts
+    }
+
+    console.log(`[ExtractFacts] 統合完了: ${facts.length} → ${consolidated.length} 件`)
+    return consolidated
+  } catch (error) {
+    console.warn('[ExtractFacts] 統合エラー — 元のリストを維持:', error)
+    return facts
+  }
+}
 
 interface ExtractFactsEvent {
   userId: string
@@ -154,10 +216,20 @@ export const handler: Handler<ExtractFactsEvent, void> = async (event) => {
 
   console.log(`[ExtractFacts] 新規事実 ${newFacts.length} 件: ${newFacts.join(' / ')}`)
 
-  // 6. 既存事実とマージ（上限50個、古いものから押し出し）
-  const mergedFacts = [...existingFacts, ...newFacts].slice(-MAX_FACTS)
+  // 6. 既存事実とマージ
+  let mergedFacts = [...existingFacts, ...newFacts]
 
-  // 7. PERMANENT_FACTS レコードを更新（メインと共有）
+  // 7. 閾値を超えた場合は LLM で統合して圧縮
+  if (mergedFacts.length >= CONSOLIDATION_THRESHOLD) {
+    mergedFacts = await consolidateFacts(mergedFacts)
+  }
+
+  // 上限を超える場合は古いものから押し出し（統合後のフォールバック）
+  if (mergedFacts.length > MAX_FACTS) {
+    mergedFacts = mergedFacts.slice(-MAX_FACTS)
+  }
+
+  // 8. PERMANENT_FACTS レコードを更新（メインと共有）
   const now = new Date().toISOString()
   await dynamo.send(new UpdateItemCommand({
     TableName: TABLE_NAME,
@@ -174,7 +246,7 @@ export const handler: Handler<ExtractFactsEvent, void> = async (event) => {
 
   console.log(`[ExtractFacts] 永久記憶更新完了 (計 ${mergedFacts.length} 件)`)
 
-  // 8. ACTIVE_SESSION レコードを削除
+  // 9. ACTIVE_SESSION レコードを削除
   await deleteActiveSession(userId, sessionId, themeId)
 }
 
