@@ -39,13 +39,149 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 - **メモ管理**（保存・検索・一覧・削除）
 
 ### 3. 3層記憶モデル
+
 | 層 | 保存先 | 保持期間 | 用途 |
 |----|--------|---------|------|
-| 永久記憶 | DynamoDB | 無期限 | ユーザーの好み・事実（最大50件） |
-| 中期記憶 | Amazon Bedrock AgentCore Memory | 30日 | 会話トピック・コンテキスト |
-| 短期記憶 | DynamoDB | 7日 | セッション内会話履歴・5ターンごとのローリング要約 |
+| 永久記憶 | DynamoDB `PERMANENT_FACTS` | 無期限 | ユーザーの好み・事実（最大50件×50文字） |
+| 中期記憶 | Amazon Bedrock AgentCore Memory | 30日 | 会話トピック・コンテキスト（セマンティック検索） |
+| 短期記憶 | DynamoDB `SESSION#` + `MSG#` | 7日（TTL） | セッション内会話履歴・ローリング要約・チェックポイント |
 
-セッション終了時に EventBridge（15分ルール）→ Haiku 4.5 で永久事実を自動抽出。
+#### 3-1. 永久記憶（Permanent Facts）
+
+**保存先**: DynamoDB `PK=USER#{userId}`, `SK=PERMANENT_FACTS`
+**形式**: `facts` フィールドに文字列配列（List型）、最大50件、各50文字以内
+
+**抽出タイミング**: セッション終了時に自動抽出
+- EventBridge `rate(15 minutes)` → `sessionFinalizer` Lambda
+- `ACTIVE_SESSION` レコードの `updatedAt` が30分以上前 → セッション終了と判定
+- `extractFacts` Lambda を非同期起動（`InvocationType: 'Event'`）
+
+**抽出ロジック** (`extractFacts.ts`):
+1. 対象セッションの全メッセージを DynamoDB から取得
+2. 既存の永久記憶を取得（重複排除のため）
+3. Haiku 4.5 に「既に記録済みの事実 + 会話テキスト」を送信
+4. 48カテゴリの抽出対象（基本属性/家族/仕事/健康/嗜好等）に該当する事実のみ抽出
+5. 1回最大10個、1行1事実、ユーザーが明言した事実のみ（推測は含めない）
+6. 既存事実とマージし、上限50個を超えたら古いものから押し出し
+7. `ACTIVE_SESSION` レコードを削除
+
+**抽出しない情報**: 一時的な興味、その場限りの希望、相談内容そのもの
+
+**プロンプト注入**: `<permanent_profile>` タグでシステムプロンプトのキャッシュブロック2（ユーザー固有）に含める
+```
+<permanent_profile>
+ユーザーについて知っている事実：
+- 東京都在住
+- 妻と2人暮らし
+- ソフトウェアエンジニア
+</permanent_profile>
+```
+
+#### 3-2. 中期記憶（AgentCore Memory）
+
+**保存先**: Amazon Bedrock AgentCore Memory（`MEMORY_ID` で識別）
+**名前空間**: `user/{userId}`
+**保持期間**: 30日（AgentCore のデフォルト）
+**ストラテジー**: `SEMANTIC` + `USER_PREFERENCE`
+
+**書き込み**: フロントエンドから fire-and-forget で `POST /memory/events`
+- 各会話ターン（user + assistant メッセージ）を `CreateEventCommand` で送信
+- `conversational` 形式（role: USER/ASSISTANT, content: text）
+- AgentCore が内部で自動要約・セマンティックインデックスを構築
+
+**読み出し**: LLM Lambda 内で `RetrieveMemoryRecordsCommand` を使用
+- ユーザーの最新メッセージを `searchQuery` としてセマンティック検索
+- `maxResults: 10` 件取得
+- 永久記憶との重複排除: 空白除去した部分文字列一致で判定（`deduplicateRecords`）
+
+**プロンプト注入**: `<user_context>` タグで動的コンテキスト（キャッシュ対象外）に含める
+```
+<user_context>
+あなたが過去の会話から覚えていること：
+- ユーザーは最近転職活動をしている
+- 来月の旅行で京都に行く予定
+</user_context>
+```
+
+#### 3-3. 短期記憶（Session Context）
+
+**保存先**: DynamoDB（7日 TTL）
+**構成要素**:
+
+| 要素 | DynamoDB キー | 内容 |
+|------|-------------|------|
+| セッションレコード | `PK=USER#{userId}`, `SK=SESSION#{sessionId}` | `summary`（ローリング要約）、`turnsSinceSummary`、`totalTurns` |
+| メッセージ | `PK=USER#{userId}#SESSION#{sessionId}`, `SK=MSG#{timestamp}#{role}` | `role`, `content`, `createdAt` |
+| チェックポイント | `PK=USER#{userId}#SESSION#{sessionId}`, `SK=SUMMARY_CP#{timestamp}` | `summary`, `keywords[]` |
+| テーマメッセージ | `PK=USER#{userId}#THEME#{themeId}`, `SK=MSG#{timestamp}#{role}` | 同上（テーマ別名前空間） |
+
+**ローリング要約** (`summarize.ts`):
+- **トリガー**: 5ターンごとに chat Lambda が非同期起動（`InvocationType: 'Event'`）
+- **処理**: Haiku 4.5 に「前回の要約 + 新しい会話」を送信 → 500文字以内の統合要約を生成
+- **セグメント要約**: 同時に当該区間のみのキーワード（2〜3個）+ 300文字以内の要約を生成 → チェックポイントとして保存
+- **セッションレコード更新**: `summary`, `turnsSinceSummary=0`, `lastSummarizedAt` を書き戻し
+
+**LLM への提供**:
+- 直近10メッセージ: `getSessionContext()` で `MSG#` をソートキー降順で取得 → Converse API の messages に含める
+- ローリング要約: `<current_session_summary>` タグで動的コンテキストに含める
+- チェックポイント: `<session_checkpoints>` タグで時系列表示（`[MM/DD HH:MM キーワード] 要約`）
+
+**過去セッション要約** (`getRecentSessionSummaries`):
+- 直近7日間の他セッションの要約を日付グループ化して `<past_sessions>` タグに含める
+- 今日/昨日/日付ラベルを付与、日付降順・日内は時系列順
+
+#### 3-4. セッション終了検出
+
+```
+EventBridge rate(15 minutes) → sessionFinalizer Lambda
+  ↓ ACTIVE_SESSION レコードを全件 Query
+  ↓ updatedAt が30分以上前のセッションを検出
+  ↓ extractFacts Lambda を非同期起動（userId, sessionId, themeId?）
+  ↓ ACTIVE_SESSION レコードは extractFacts 完了後に削除
+```
+
+**ACTIVE_SESSION レコード**: `PK=ACTIVE_SESSION`, `SK={userId}#{sessionId}` or `{userId}#theme:{themeId}`
+- chat Lambda が各ターンで upsert（TTL: 24時間）
+- sessionFinalizer が走査して30分非アクティブなものを検出
+
+#### 3-5. 記憶のシステムプロンプト内配置
+
+```
+[キャッシュブロック2: ユーザー固有]
+  <user_profile>       ← ユーザー名・性別等（DynamoDB SETTINGS）
+  <permanent_profile>  ← 永久記憶（DynamoDB PERMANENT_FACTS）
+  ── cachePoint ──
+
+[動的コンテキスト: キャッシュなし]
+  <current_datetime>         ← 現在日時
+  <user_location>            ← GPS 位置情報
+  <user_context>             ← 中期記憶（AgentCore Memory セマンティック検索結果）
+  <past_sessions>            ← 過去セッション要約（直近7日、日付グループ化）
+  <current_session_summary>  ← 現セッションのローリング要約
+  <session_checkpoints>      ← チェックポイント（キーワード付き区間要約）
+```
+
+#### 3-6. フロントエンド→バックエンド間のデータフロー（記憶関連）
+
+```
+フロントエンド送信: { message, sessionId }  ← コンテキスト情報なし（バックエンドが全て構築）
+
+バックエンドの並列取得（Promise.all）:
+  1. AgentCore Memory 検索（中期記憶）← ユーザーメッセージを searchQuery に使用
+  2. DynamoDB PERMANENT_FACTS（永久記憶）
+  3. DynamoDB SETTINGS → UserProfile
+  4. DynamoDB GLOBAL_MODEL#{modelId} → ModelMeta
+
+逐次取得:
+  5. getSessionContext（セッション要約 + 直近10メッセージ + チェックポイント）
+  6. getRecentSessionSummaries（過去7日のセッション要約）
+
+レスポンス後の非同期処理:
+  - メッセージ保存（DynamoDB MSG#）
+  - ターンカウント更新 → 5ターンで要約 Lambda 非同期起動
+  - ACTIVE_SESSION upsert
+  - フロントエンドから fire-and-forget: POST /memory/events（AgentCore Memory 書き込み）
+```
 
 ### 4. トピック管理
 - 会話をトピック別に整理・保存
