@@ -294,8 +294,15 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-ws-disconnect',
     })
 
+    const wsDefaultFn = new lambdaNode.NodejsFunction(this, 'WsDefaultFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'ws', 'default.ts'),
+      functionName: 'butler-ws-default',
+    })
+
     table.grantReadWriteData(wsConnectFn)
     table.grantReadWriteData(wsDisconnectFn)
+    table.grantReadWriteData(wsDefaultFn)
 
     // ── WebSocket API ──
     const wsApi = new apigatewayv2.WebSocketApi(this, 'ButlerWsApi', {
@@ -310,7 +317,7 @@ export class ButlerStack extends cdk.Stack {
         integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('WsDisconnectIntegration', wsDisconnectFn),
       },
       defaultRouteOptions: {
-        integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('WsDefaultIntegration', wsConnectFn),
+        integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('WsDefaultIntegration', wsDefaultFn),
       },
     })
 
@@ -320,10 +327,19 @@ export class ButlerStack extends cdk.Stack {
       autoDeploy: true,
     })
 
+    // WebSocket $default ハンドラーに権限を付与（ターミナル中継等）
+    // PostToConnectionCommand は prod/POST/@connections/{connId} で複数スラッシュを含むため /* で広くマッチ
+    const wsManageConnectionsArn = `arn:aws:execute-api:${this.region}:${this.account}:${wsApi.apiId}/*`
+    wsDefaultFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [wsManageConnectionsArn],
+    }))
+    wsDefaultFn.addEnvironment('WEBSOCKET_ENDPOINT', wsStage.callbackUrl)
+
     // メッセージ送信 Lambda に WebSocket プッシュ権限を付与
     conversationsMessagesSendFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['execute-api:ManageConnections'],
-      resources: [wsApi.arnForExecuteApiV2('*', '/*')],
+      resources: [wsManageConnectionsArn],
     }))
 
     // メッセージ送信 Lambda に WebSocket エンドポイントを設定

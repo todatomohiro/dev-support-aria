@@ -23,6 +23,14 @@ export type ChatStreamCallback = (event: ChatStreamEvent) => void
 /**
  * WebSocket サービスのインターフェース
  */
+/** ターミナルイベント */
+export type TerminalEvent =
+  | { type: 'terminal_output'; data: string }
+  | { type: 'terminal_input'; data: string }
+
+/** ターミナルイベントコールバック */
+export type TerminalEventCallback = (event: TerminalEvent) => void
+
 export interface WsServiceType {
   connect(token: string): void
   disconnect(): void
@@ -31,6 +39,10 @@ export interface WsServiceType {
   unsubscribe(groupId: string): void
   isConnected(): boolean
   onChatStream(callback: ChatStreamCallback | null): void
+  /** WebSocket でメッセージを送信 */
+  send(message: Record<string, unknown>): void
+  /** ターミナルイベントコールバックを登録 */
+  onTerminalEvent(callback: TerminalEventCallback | null): void
 }
 
 /**
@@ -46,6 +58,7 @@ export class WsServiceImpl implements WsServiceType {
   private subscribedGroups = new Set<string>()
   private currentToken: string | null = null
   private chatStreamCallback: ChatStreamCallback | null = null
+  private terminalEventCallback: TerminalEventCallback | null = null
 
   /**
    * WebSocket 接続を開始
@@ -161,12 +174,36 @@ export class WsServiceImpl implements WsServiceType {
   }
 
   /**
+   * WebSocket でメッセージを送信
+   */
+  send(message: Record<string, unknown>): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(message))
+    }
+  }
+
+  /**
+   * ターミナルイベントコールバックを登録
+   */
+  onTerminalEvent(callback: TerminalEventCallback | null): void {
+    this.terminalEventCallback = callback
+  }
+
+  /**
    * 受信メッセージを処理
    */
   private handleMessage(data: { type: string; conversationId?: string; groupId?: string; message?: unknown; lastMessage?: string; updatedAt?: number; userId?: string; nickname?: string; lastReadAt?: number; requestId?: string; delta?: string; tool?: string; content?: string; error?: string }): void {
     // チャットストリーミングイベント
     if (data.type.startsWith('chat_') && this.chatStreamCallback) {
       this.chatStreamCallback(data as ChatStreamEvent)
+      return
+    }
+
+    // ターミナルイベント
+    if (data.type.startsWith('terminal_')) {
+      if (this.terminalEventCallback) {
+        this.terminalEventCallback(data as unknown as TerminalEvent)
+      }
       return
     }
 
