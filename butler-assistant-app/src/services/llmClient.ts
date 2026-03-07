@@ -105,43 +105,87 @@ export function buildSystemPrompt(profile?: UserProfile): string {
 }
 
 /**
- * 文字列から最初のバランスの取れた JSON オブジェクトを抽出
+ * 文字列からバランスの取れた JSON オブジェクトをすべて抽出
  *
- * 貪欲な正規表現 `/\{[\s\S]*\}/` と異なり、ネストされた `{}` を正しくカウントし
- * 最初の完全な JSON オブジェクトのみを返す。文字列リテラル内の `{}` も考慮する。
+ * ネストされた `{}` を正しくカウントし、文字列リテラル内の `{}` も考慮する。
  */
-function extractBalancedJson(text: string): string | null {
-  const start = text.indexOf('{')
-  if (start === -1) return null
+function extractAllBalancedJson(text: string): string[] {
+  const results: string[] = []
+  let pos = 0
 
-  let depth = 0
-  let inString = false
-  let escape = false
+  while (pos < text.length) {
+    const start = text.indexOf('{', pos)
+    if (start === -1) break
 
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i]
-    if (escape) {
-      escape = false
-      continue
-    }
-    if (ch === '\\' && inString) {
-      escape = true
-      continue
-    }
-    if (ch === '"') {
-      inString = !inString
-      continue
-    }
-    if (inString) continue
-    if (ch === '{') depth++
-    else if (ch === '}') {
-      depth--
-      if (depth === 0) {
-        return text.slice(start, i + 1)
+    let depth = 0
+    let inString = false
+    let escape = false
+    let found = false
+
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i]
+      if (escape) {
+        escape = false
+        continue
+      }
+      if (ch === '\\' && inString) {
+        escape = true
+        continue
+      }
+      if (ch === '"') {
+        inString = !inString
+        continue
+      }
+      if (inString) continue
+      if (ch === '{') depth++
+      else if (ch === '}') {
+        depth--
+        if (depth === 0) {
+          results.push(text.slice(start, i + 1))
+          pos = i + 1
+          found = true
+          break
+        }
       }
     }
+    if (!found) break
   }
-  return null
+
+  return results
+}
+
+/**
+ * 文字列から応答フォーマットに最も合致する JSON オブジェクトを抽出
+ *
+ * LLM が複数の JSON を出力するケースに対応。
+ * "emotion" キーを含む JSON を優先し、なければ最初の JSON を返す。
+ */
+function extractBalancedJson(text: string): string | null {
+  const candidates = extractAllBalancedJson(text)
+  if (candidates.length === 0) return null
+  if (candidates.length === 1) return candidates[0]
+
+  // "emotion" キーを含む JSON を優先（応答フォーマットの必須フィールド）
+  const withEmotion = candidates.find((c) => c.includes('"emotion"'))
+  if (withEmotion) return withEmotion
+
+  return candidates[0]
+}
+
+/**
+ * LLM 出力からすべての JSON オブジェクトを除去し、残りの平文テキストを返す
+ *
+ * LLM が応答フォーマット JSON とは別に平文テキストを出力したケースで
+ * text フィールドの代わりに使用する。
+ */
+function extractPlainText(content: string): string | null {
+  const jsonObjects = extractAllBalancedJson(content)
+  let plain = content
+  for (const json of jsonObjects) {
+    plain = plain.replace(json, '')
+  }
+  plain = plain.trim()
+  return plain.length > 0 ? plain : null
 }
 
 /**
@@ -239,10 +283,16 @@ class LLMClientImpl implements LLMClientService {
         if (typeof parsed.text === 'string') {
           parsed.text = cleanEmbeddedJson(parsed.text, parsed)
         }
-        // maxTokens 超過等で text が空の場合はフォールバック
+        // text が空の場合: JSON の前後にある平文テキストを text として採用
         if (!parsed.text || parsed.text.trim() === '') {
-          console.warn('[LLM] パース後のテキストが空です。生レスポンス:', data.content.slice(0, 200))
-          parsed.text = 'ごめん、うまく返事できなかった…もう一回聞いてくれる？'
+          const plainText = extractPlainText(cleanJson)
+          if (plainText) {
+            console.warn('[LLM] JSON の text が空のため平文テキストを採用')
+            parsed.text = plainText
+          } else {
+            console.warn('[LLM] テキストが見つかりません。生レスポンス:', data.content.slice(0, 200))
+            parsed.text = 'ごめん、うまく返事できなかった…もう一回聞いてくれる？'
+          }
         }
         if (data.enhancedSystemPrompt) {
           parsed.enhancedSystemPrompt = data.enhancedSystemPrompt

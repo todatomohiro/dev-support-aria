@@ -1544,7 +1544,7 @@ ${briefingParts.join('\n\n')}
 
       // ツール使用でない場合（end_turn 等）→ テキスト応答を返却
       const content = extractTextFromOutput(result.output ?? {})
-      console.log(`[LLM] Final response (${content.length} chars):`, content.slice(0, 200))
+      console.log(`[LLM] Final response (${content.length} chars):`, content.slice(0, 500))
 
       // DynamoDB にはテキスト部分のみ保存（JSON 構造体を除去）
       const textForStorage = extractTextFieldFromJson(content)
