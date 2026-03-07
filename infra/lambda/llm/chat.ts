@@ -457,12 +457,20 @@ function buildStaticSystemPrompt(themeId?: string, modelMeta?: ModelMeta): strin
 /**
  * ユーザー固有の半静的プロンプトを生成（キャッシュ対象: ユーザー単位）
  */
-function buildUserStaticPrompt(profile?: UserProfile, permanentFacts?: string[]): string {
+function buildUserStaticPrompt(profile?: UserProfile, permanentMemory?: PermanentMemory): string {
   let prompt = buildProfilePrompt(profile)
 
-  if (permanentFacts && permanentFacts.length > 0) {
-    const factsText = permanentFacts.map((f) => `- ${f}`).join('\n')
+  const facts = permanentMemory?.facts ?? []
+  const preferences = permanentMemory?.preferences ?? []
+
+  if (facts.length > 0) {
+    const factsText = facts.map((f) => `- ${f}`).join('\n')
     prompt += `\n\n<permanent_profile>\nユーザーについて知っている事実：\n${factsText}\n</permanent_profile>`
+  }
+
+  if (preferences.length > 0) {
+    const prefsText = preferences.map((p) => `- ${p}`).join('\n')
+    prompt += `\n\n<user_preferences>\nユーザーが希望するAIとの対話スタイル：\n${prefsText}\n</user_preferences>`
   }
 
   return prompt
@@ -509,15 +517,16 @@ async function retrieveMemoryRecords(userId: string, query: string): Promise<str
  *
  * 日本語テキスト対応: 空白除去した部分文字列一致で判定。
  */
-function deduplicateRecords(memoryRecords: string[], permanentFacts: string[]): string[] {
-  if (permanentFacts.length === 0) return memoryRecords
+function deduplicateRecords(memoryRecords: string[], permanentMemory: PermanentMemory): string[] {
+  const allPermanent = [...permanentMemory.facts, ...permanentMemory.preferences]
+  if (allPermanent.length === 0) return memoryRecords
 
-  const normalizedFacts = permanentFacts.map((f) => f.replace(/\s+/g, ''))
+  const normalizedPermanent = allPermanent.map((f) => f.replace(/\s+/g, ''))
 
   return memoryRecords.filter((record) => {
     const normalizedRecord = record.replace(/\s+/g, '')
-    return !normalizedFacts.some((fact) =>
-      normalizedRecord.includes(fact) || fact.includes(normalizedRecord)
+    return !normalizedPermanent.some((item) =>
+      normalizedRecord.includes(item) || item.includes(normalizedRecord)
     )
   })
 }
@@ -824,10 +833,16 @@ function stripEmbeddedJsonFragments(text: string): string {
   return text.replace(/\{[\s\n]*"suggestedReplies"\s*:\s*\[[\s\S]*?\]\s*\}/g, '').trim()
 }
 
+/** 永久記憶の型（facts + preferences） */
+interface PermanentMemory {
+  facts: string[]
+  preferences: string[]
+}
+
 /**
  * DynamoDB から永久記憶（PERMANENT_FACTS）を取得
  */
-async function getPermanentFacts(userId: string): Promise<string[]> {
+async function getPermanentFacts(userId: string): Promise<PermanentMemory> {
   try {
     const result = await dynamo.send(new GetItemCommand({
       TableName: TABLE_NAME,
@@ -836,12 +851,16 @@ async function getPermanentFacts(userId: string): Promise<string[]> {
         SK: { S: 'PERMANENT_FACTS' },
       },
     }))
-    return (result.Item?.facts?.L ?? [])
+    const facts = (result.Item?.facts?.L ?? [])
       .map((item) => item.S ?? '')
       .filter(Boolean)
+    const preferences = (result.Item?.preferences?.L ?? [])
+      .map((item) => item.S ?? '')
+      .filter(Boolean)
+    return { facts, preferences }
   } catch (error) {
     console.warn('[LLM] 永久記憶取得エラー（スキップ）:', error)
-    return []
+    return { facts: [], preferences: [] }
   }
 }
 
@@ -1248,7 +1267,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   // メモリ検索 + 永久記憶 + プロフィール取得 + モデルメタ取得（並列、失敗してもチャットは続行）
-  const [memoryRecords, permanentFacts, userProfile, modelMeta] = await Promise.all([
+  const [memoryRecords, permanentMemory, userProfile, modelMeta] = await Promise.all([
     isBriefingMode ? Promise.resolve([]) : retrieveMemoryRecords(userId, message),
     getPermanentFacts(userId),
     getUserProfile(userId),
@@ -1259,10 +1278,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const staticPrompt = buildStaticSystemPrompt(themeId, modelMeta)
 
   // ユーザー固有の半静的プロンプト（キャッシュ対象: ユーザー単位）
-  const userStaticPrompt = buildUserStaticPrompt(userProfile, permanentFacts)
+  const userStaticPrompt = buildUserStaticPrompt(userProfile, permanentMemory)
 
   // 永久記憶と重複する中期記憶を除外してからテキスト整形
-  const dedupedRecords = deduplicateRecords(memoryRecords, permanentFacts)
+  const dedupedRecords = deduplicateRecords(memoryRecords, permanentMemory)
   if (memoryRecords.length !== dedupedRecords.length) {
     console.log(`[LLM] メモリ重複排除: ${memoryRecords.length} → ${dedupedRecords.length} 件`)
   }
@@ -1404,8 +1423,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // 永久記憶をブリーフィングコンテキストに追加
-    if (permanentFacts.length > 0) {
-      briefingParts.push(`<user_facts>\n${permanentFacts.map(f => `- ${f}`).join('\n')}\n</user_facts>`)
+    if (permanentMemory.facts.length > 0) {
+      briefingParts.push(`<user_facts>\n${permanentMemory.facts.map((f: string) => `- ${f}`).join('\n')}\n</user_facts>`)
+    }
+    if (permanentMemory.preferences.length > 0) {
+      briefingParts.push(`<user_preferences>\n${permanentMemory.preferences.map((p: string) => `- ${p}`).join('\n')}\n</user_preferences>`)
     }
 
     // 時間帯判定
@@ -1591,7 +1613,8 @@ ${briefingParts.join('\n\n')}
         content,
         ...(includeDebug ? { enhancedSystemPrompt } : {}),
         ...(sessionSummary ? { sessionSummary } : {}),
-        ...(permanentFacts.length > 0 ? { permanentFacts } : {}),
+        ...(permanentMemory.facts.length > 0 ? { permanentFacts: permanentMemory.facts } : {}),
+        ...(permanentMemory.preferences.length > 0 ? { permanentPreferences: permanentMemory.preferences } : {}),
         ...(generatedThemeName ? { themeName: generatedThemeName } : {}),
         ...(workStatus ? { workStatus } : {}),
       })
