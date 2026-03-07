@@ -42,7 +42,7 @@ const MODEL_ID_MAP: Record<string, string> = {
 
 /** モデルキーごとの推論設定 */
 const MODEL_INFERENCE_CONFIG: Record<string, { maxTokens: number; imageMaxTokens: number }> = {
-  haiku: { maxTokens: 1024, imageMaxTokens: 2048 },
+  haiku: { maxTokens: 2048, imageMaxTokens: 2048 },
   sonnet: { maxTokens: 2048, imageMaxTokens: 4096 },
   opus: { maxTokens: 4096, imageMaxTokens: 4096 },
 }

@@ -610,7 +610,8 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
     if (memoSaving || memoSaved) return
     setMemoSaving(true)
     try {
-      const title = message.content.slice(0, 50).replace(/\n/g, ' ')
+      const title = message.content.slice(0, 50).replace(/\n/g, ' ').trim()
+      if (!title) return
       await memoService.saveMemo(title, message.content.slice(0, 500), [], 'quick')
       setMemoSaved(true)
     } catch (error) {

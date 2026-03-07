@@ -239,6 +239,11 @@ class LLMClientImpl implements LLMClientService {
         if (typeof parsed.text === 'string') {
           parsed.text = cleanEmbeddedJson(parsed.text, parsed)
         }
+        // maxTokens 超過等で text が空の場合はフォールバック
+        if (!parsed.text || parsed.text.trim() === '') {
+          console.warn('[LLM] パース後のテキストが空です。生レスポンス:', data.content.slice(0, 200))
+          parsed.text = 'ごめん、うまく返事できなかった…もう一回聞いてくれる？'
+        }
         if (data.enhancedSystemPrompt) {
           parsed.enhancedSystemPrompt = data.enhancedSystemPrompt
         }
