@@ -195,6 +195,7 @@ export const useAppStore = create<AppState>()(
         messages: state.messages,
         config: state.config,
         lastActiveTimestamp: state.lastActiveTimestamp,
+        activeModelMeta: state.activeModelMeta,
         // messagesCursor, hasEarlierMessages, isLoadingEarlier は永続化不要（毎回サーバーから取得）
       }),
     }

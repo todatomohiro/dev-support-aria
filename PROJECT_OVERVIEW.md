@@ -65,7 +65,20 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 - 外部 MCP サーバーとの接続
 - LLM が MCP ツールを動的に利用可能
 
-### 8. セキュリティ設計
+### 8. プロアクティブ・ブリーフィング
+- アプリ起動時・バックグラウンド復帰時に AI がカレンダー・天気・記憶をもとに自発的に話しかける
+- フロントエンド駆動: `useBriefing` hook（認証完了後3秒 / visibilitychange / 30分ポーリング）
+- バックエンド: `__briefing__` センチネルメッセージ検出 → カレンダー＋天気を事前自動取得 → 専用プロンプトで応答生成
+- ブリーフィングメッセージは DynamoDB に保存しない（揮発的な挨拶）
+- トリガー条件: JST 6:00〜23:00、前回から3時間以上経過
+
+### 9. 天気アイコン表示
+- ユーザーの現在地に基づき、Live2D キャンバス左上に天気アイコン + 気温を常時表示
+- LLM 不使用: フロントエンドから Open-Meteo API を直接呼び出し（APIキー不要）
+- SVG 線画スタイルのアイコン（WMO 天気コード対応: 晴/曇/雨/雪/雷等 + 昼夜判定）
+- 30分ポーリングで自動更新
+
+### 10. セキュリティ設計
 - システムプロンプトはバックエンド（Lambda）で完全生成。フロントエンドに漏洩しない
 - API キーは SSM Parameter Store で管理
 - Prompt Caching（cachePoint 2箇所）でコスト最適化
@@ -75,7 +88,7 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 
 ```
 butler-assistant-app/     ← メインアプリ（React + Vite）
-├── コンポーネント 33個 / サービス 19個 / フック 8個 / ストア 3個
+├── コンポーネント 34個 / サービス 20個 / フック 10個 / ストア 3個
 ├── プラットフォーム抽象化（Web / Tauri / Capacitor）
 ├── Live2D レンダリング + フェイストラッキング（MediaPipe + Kalidokit）
 └── PoC（音声認識、GPS、感情分析、フェイストラッキング等）
@@ -102,7 +115,7 @@ aiba-extension/           ← Chrome 拡張機能（Manifest V3）
 butler-assistant-app/          # フロントエンド（React + Vite + TypeScript）
 ├── src/
 │   ├── auth/               # 認証（Cognito + AWS Amplify）
-│   ├── components/         # React コンポーネント 33個（PascalCase.tsx）
+│   ├── components/         # React コンポーネント 34個（PascalCase.tsx）
 │   │   ├── ChatUI.tsx          # メインチャットUI
 │   │   ├── ThemeChat.tsx       # トピック別チャット
 │   │   ├── GroupChat.tsx       # グループチャット
@@ -115,8 +128,9 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── MapView.tsx         # 地図表示（Leaflet）
 │   │   ├── Settings.tsx        # 設定画面
 │   │   ├── WorkBadge.tsx       # MCP接続バッジ
+│   │   ├── WeatherOverlay.tsx  # 天気アイコン+気温オーバーレイ
 │   │   └── ...                 # モーダル、ナビゲーション等
-│   ├── hooks/              # カスタムフック 8個
+│   ├── hooks/              # カスタムフック 10個
 │   │   ├── useSpeechRecognition.ts  # 音声認識（Web Speech API）
 │   │   ├── useVAD.ts               # Voice Activity Detection
 │   │   ├── useCamera.ts            # カメラ制御
@@ -124,7 +138,9 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── useWebSocket.ts         # WebSocket 通信
 │   │   ├── useGroupPolling.ts      # グループチャット ポーリング
 │   │   ├── useThemePolling.ts      # トピック ポーリング
-│   │   └── useQRScanner.ts         # QR コード読み込み
+│   │   ├── useQRScanner.ts         # QR コード読み込み
+│   │   ├── useBriefing.ts          # プロアクティブ・ブリーフィング
+│   │   └── useWeatherIcon.ts       # 天気アイコン表示（Open-Meteo API）
 │   ├── services/           # ビジネスロジック 19個（camelCase.ts）
 │   │   ├── llmClient.ts        # LLM (Bedrock Claude) 通信
 │   │   ├── chatController.ts   # チャットコントローラー
@@ -138,6 +154,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── friendService.ts    # フレンド管理
 │   │   ├── groupService.ts     # グループ管理
 │   │   ├── workService.ts      # MCP接続管理
+│   │   ├── briefingService.ts  # ブリーフィングトリガー管理
 │   │   └── ...
 │   ├── stores/             # Zustand 状態管理 3個
 │   │   ├── appStore.ts         # メッセージ、モーション、設定（persist有）
@@ -247,6 +264,16 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
   → fire-and-forget: AgentCore Memory に中期記憶保存
   → 5ターンごと: ローリング要約 Lambda 非同期起動
   → 15分無操作: EventBridge → 永久事実自動抽出
+
+プロアクティブ・ブリーフィング（起動時/復帰時）:
+  useBriefing hook → chatController.requestBriefing()
+    → Lambda /llm/chat（'__briefing__'）
+    → カレンダー + 天気を事前自動取得 → 専用プロンプトで応答生成
+    → Live2D アニメーション + TTS（DynamoDB 保存なし）
+
+天気アイコン（LLM 不使用）:
+  useWeatherIcon hook → Open-Meteo API（30分ポーリング）
+    → WeatherOverlay → Live2D キャンバス左上に SVG アイコン + 気温
 ```
 
 ## AWS インフラ構成
@@ -266,9 +293,9 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 | 項目 | 数量 |
 |------|------|
-| フロントエンド コンポーネント | 33個 |
-| カスタムフック | 8個 |
-| サービス | 19個 |
+| フロントエンド コンポーネント | 34個 |
+| カスタムフック | 10個 |
+| サービス | 20個 |
 | Zustand ストア | 3個 |
 | Lambda 関数 | 35個 |
 | LLM スキル | 7種（カレンダー×2、場所検索、Web検索、天気、メモ×4） |

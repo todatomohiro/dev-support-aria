@@ -44,7 +44,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 ├── src/
 │   ├── auth/               # 認証（Cognito + AWS Amplify）
 │   ├── components/         # React コンポーネント（PascalCase.tsx）
-│   ├── hooks/              # カスタムフック（useSpeechRecognition, useCamera, useWebSocket, useGeolocation）
+│   ├── hooks/              # カスタムフック（useSpeechRecognition, useCamera, useWebSocket, useGeolocation, useBriefing, useWeatherIcon）
 │   ├── services/           # ビジネスロジック（camelCase.ts）
 │   ├── stores/             # Zustand 状態管理（appStore, themeStore, groupChatStore）
 │   ├── types/              # 型定義・エラークラス・サービスインターフェース
@@ -61,7 +61,7 @@ infra/
 └── lambda/
     ├── llm/                # LLM チャット（Bedrock Converse + Tool Use + Prompt Caching + 3層記憶）
     │   ├── chat.ts         #   メインハンドラー（システムプロンプト生成・Prompt Caching 対応）
-    │   ├── skills/         #   スキル実装（Calendar, Places, Web Search）
+    │   ├── skills/         #   スキル実装（Calendar, Places, Web Search, Weather）
     │   ├── summarize.ts    #   ローリング要約（Haiku 4.5）
     │   ├── extractFacts.ts #   永久事実抽出（Haiku 4.5）
     │   └── sessionFinalizer.ts # セッション終了検出（EventBridge 15分ルール）
@@ -157,11 +157,21 @@ test.prop([fc.string()])(
   │   ↓ DynamoDB からプロフィール・永久記憶を取得、3層記憶を並列取得 → systemPrompt に注入
   │   ↓ Prompt Caching: 静的プロンプト → cachePoint → ユーザー固有 → cachePoint → 動的コンテキスト
   │   ↓ Bedrock Claude Haiku 4.5（Converse API + Tool Use）
-  │   ↓ ツール実行: list_events / create_event / search_places / web_search
+  │   ↓ ツール実行: list_events / create_event / search_places / web_search / get_weather
   │   ↓ メッセージ保存 + 5ターンごとに要約 Lambda 非同期起動
   │   → レスポンス返却（text, emotion, mapData?, permanentFacts?, sessionSummary?, themeName?)
   ├→ fire-and-forget: /memory/events → AgentCore Memory
   └→ EventBridge rate(15min) → sessionFinalizer → extractFacts（永久事実抽出）
+
+プロアクティブ・ブリーフィング（フロントエンド起動）:
+  useBriefing hook（認証完了後3秒 / visibilitychange / 30分ポーリング）
+  → chatController.requestBriefing() → Lambda /llm/chat（message='__briefing__'）
+    → カレンダー + 天気を事前自動取得 → 専用プロンプトで応答生成
+    → DynamoDB にはメッセージ保存しない（揮発的な挨拶）
+
+天気アイコン表示（LLM 不使用）:
+  useWeatherIcon hook → Open-Meteo API 直接呼び出し（30分ポーリング）
+  → WeatherOverlay コンポーネント → Live2D キャンバス左上に SVG アイコン + 気温表示
 ```
 
 - **セキュリティ**: フロントエンドに API キー・システムプロンプトは存在しない

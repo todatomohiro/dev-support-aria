@@ -104,10 +104,9 @@ interface UserProfile {
 }
 
 /**
- * アシスタントキャラクターのシステムプロンプト
+ * デフォルトのキャラクター設定（モデル固有設定がない場合に使用）
  */
-const BUTLER_SYSTEM_PROMPT = `<ai_config>
-あなたは18歳の元気な女の子のアシスタントです。ユーザーと友達のように楽しく会話してください。
+const DEFAULT_CHARACTER_PROMPT = `あなたは18歳の元気な女の子のアシスタントです。ユーザーと友達のように楽しく会話してください。
 
 キャラクター設定：
 - 18歳の女の子。負けず嫌いで天然、お調子者で落ち着きがない性格
@@ -115,8 +114,12 @@ const BUTLER_SYSTEM_PROMPT = `<ai_config>
 - ユーザーのことは呼び捨て、または「きみ」と呼ぶ
 - 嬉しいときは素直に喜ぶ。「やったー！」「すごい！」
 - わからないことは正直に言う。「うーん、ちょっとわかんないかも…」
-- 絵文字や記号は使わない（感情はemotionフィールドで表現する）
+- 絵文字や記号は使わない（感情はemotionフィールドで表現する）`
 
+/**
+ * 共通ルール（すべてのキャラクターで共有）
+ */
+const COMMON_RULES_PROMPT = `
 入力について：
 - ユーザーの入力は音声認識（STT）によるものの場合があります。誤変換（例：「おはよ」→「尾端」）や助詞の抜けがあるかもしれませんが、文脈から意図を汲み取って自然に回答してください。明らかな誤字は脳内で補完してください
 
@@ -125,8 +128,12 @@ const BUTLER_SYSTEM_PROMPT = `<ai_config>
 - 質問は1ターンにつき最大1つまで。複数の質問を一度にしない
 - ユーザーが言っていないことを推測・補完しない。聞かれたことだけに答える
 - 1つの話題に集中する。複数の話題を1回の返答に混ぜない
-- 訂正されたら素直に受け入れ、同じ話題を蒸し返さない
+- 訂正されたら素直に受け入れ、同じ話題を蒸し返さない`
 
+/**
+ * デフォルトの感情選択基準（emotionMapping 未設定時に使用）
+ */
+const DEFAULT_EMOTION_CRITERIA = `
 感情（emotion）の選択基準：
 - neutral: 普通の状態
 - happy: 楽しい、嬉しい、ワクワク
@@ -135,8 +142,12 @@ const BUTLER_SYSTEM_PROMPT = `<ai_config>
 - surprised: びっくり、えっ！？
 - thinking: うーんと考え中
 - embarrassed: 照れてる、えへへ
-- troubled: 困ってる、どうしよう
-</ai_config>`
+- troubled: 困ってる、どうしよう`
+
+/**
+ * アシスタントキャラクターのシステムプロンプト（後方互換）
+ */
+const BUTLER_SYSTEM_PROMPT = `<ai_config>\n${DEFAULT_CHARACTER_PROMPT}\n${COMMON_RULES_PROMPT}\n${DEFAULT_EMOTION_CRITERIA}\n</ai_config>`
 
 /**
  * スキルルール（静的部分、キャッシュ対象）
@@ -220,10 +231,19 @@ function buildProfilePrompt(profile?: UserProfile): string {
 /**
  * JSON形式指示とテーマ提案指示を生成
  */
-function buildJsonInstruction(themeId?: string): string {
+function buildJsonInstruction(themeId?: string, modelMeta?: ModelMeta): string {
+  // emotionMapping が設定されている場合はそこから感情リストを生成
+  const em = modelMeta?.emotionMapping
+  const configuredEmotions = em
+    ? Object.entries(em).filter(([, v]) => v !== '').map(([k]) => k)
+    : []
+  const emotionList = configuredEmotions.length > 0
+    ? configuredEmotions.join('/')
+    : 'neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry'
+
   const jsonFormat = themeId
-    ? '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedReplies": ["候補1", "候補2"]}'
-    : '{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(neutral/happy/sad/surprised/thinking/embarrassed/troubled/angry)", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedTheme": {"themeName": "テーマ名"}, "suggestedReplies": ["候補1", "候補2"]}'
+    ? `{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(${emotionList})", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedReplies": ["候補1", "候補2"]}`
+    : `{"text": "回答テキスト（Markdown記法使用可: **太字**, - リスト, | テーブル | 等）", "emotion": "感情(${emotionList})", "mapData": {"center": {"lat": 数値, "lng": 数値}, "zoom": 数値, "markers": [{"lat": 数値, "lng": 数値, "title": "名前", "address": "住所", "rating": 数値}]}, "suggestedTheme": {"themeName": "テーマ名"}, "suggestedReplies": ["候補1", "候補2"]}`
 
   let instruction = `\n\n<response_format>\n必ず以下のJSON形式で回答してください：\n${jsonFormat}\n※ mapData は場所検索時のみ含め、通常の会話では省略してください。
 ※ suggestedReplies は質問や確認をした場合に、予想される短い回答を2〜4個含めてください。
@@ -280,11 +300,128 @@ async function getUserProfile(userId: string): Promise<UserProfile | undefined> 
   }
 }
 
+/** モデルのキャラクター設定 */
+interface ModelCharacterConfig {
+  characterName?: string
+  characterAge?: string
+  characterGender?: string
+  characterPersonality?: string
+  characterSpeechStyle?: string
+  characterPrompt?: string
+}
+
+/** モデルメタデータ */
+interface ModelMeta {
+  emotionMapping?: Record<string, string>
+  characterConfig?: ModelCharacterConfig
+}
+
+/**
+ * DynamoDB からモデルメタデータを取得
+ */
+async function getModelMeta(modelId: string): Promise<ModelMeta | undefined> {
+  try {
+    const result = await dynamo.send(new GetItemCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        PK: { S: `GLOBAL_MODEL#${modelId}` },
+        SK: { S: 'METADATA' },
+      },
+    }))
+    if (!result.Item) return undefined
+
+    // emotionMapping
+    const emotionMapping: Record<string, string> = {}
+    const emMap = result.Item.emotionMapping?.M
+    if (emMap) {
+      for (const [key, val] of Object.entries(emMap)) {
+        if (val.S) emotionMapping[key] = val.S
+      }
+    }
+
+    // characterConfig
+    const cc = result.Item.characterConfig?.M
+    const characterConfig: ModelCharacterConfig | undefined = cc ? {
+      characterName: cc.characterName?.S,
+      characterAge: cc.characterAge?.S,
+      characterGender: cc.characterGender?.S,
+      characterPersonality: cc.characterPersonality?.S,
+      characterSpeechStyle: cc.characterSpeechStyle?.S,
+      characterPrompt: cc.characterPrompt?.S,
+    } : undefined
+
+    return { emotionMapping, characterConfig }
+  } catch (error) {
+    console.warn('[LLM] モデルメタデータ取得エラー（スキップ）:', error)
+    return undefined
+  }
+}
+
+/**
+ * モデルのキャラクター設定からシステムプロンプトを構築
+ *
+ * 構造:
+ *   <ai_config>
+ *     [キャラクター設定] ← 構造化フィールド or characterPrompt or デフォルト
+ *     [共通ルール]       ← 入力・会話ルール（常に含む）
+ *     [感情選択基準]     ← emotionMapping から動的生成 or デフォルト
+ *   </ai_config>
+ */
+function buildCharacterPrompt(modelMeta?: ModelMeta): string {
+  const cc = modelMeta?.characterConfig
+  const em = modelMeta?.emotionMapping
+
+  // --- キャラクター設定部分 ---
+  let characterSection: string
+
+  // 構造化フィールド（characterName, characterPersonality, characterSpeechStyle）が
+  // 1つでも設定されていれば、それらからキャラクター設定を構築
+  const hasStructuredFields = cc?.characterName || cc?.characterPersonality || cc?.characterSpeechStyle
+  if (hasStructuredFields) {
+    const parts: string[] = []
+    if (cc?.characterName) {
+      const agePart = cc.characterAge ? `（${cc.characterAge}）` : ''
+      const genderPart = cc.characterGender ? `の${cc.characterGender}` : ''
+      parts.push(`あなたは${cc.characterName}${agePart}${genderPart}のアシスタントです。`)
+    }
+    if (cc?.characterPersonality) {
+      parts.push(`\n性格：\n${cc.characterPersonality}`)
+    }
+    if (cc?.characterSpeechStyle) {
+      parts.push(`\n話し方：\n${cc.characterSpeechStyle}`)
+    }
+    // characterPrompt があれば追加指示として付与
+    if (cc?.characterPrompt) {
+      parts.push(`\n${cc.characterPrompt}`)
+    }
+    characterSection = parts.join('\n')
+  } else if (cc?.characterPrompt) {
+    // 構造化フィールドなし、characterPrompt のみ → そのまま使用
+    characterSection = cc.characterPrompt
+  } else {
+    // 何も設定されていない → デフォルトキャラクター
+    characterSection = DEFAULT_CHARACTER_PROMPT
+  }
+
+  // --- 感情選択基準 ---
+  let emotionSection: string
+  const configuredEmotions = em
+    ? Object.entries(em).filter(([, v]) => v !== '').map(([k]) => k)
+    : []
+  if (configuredEmotions.length > 0) {
+    emotionSection = `\n\n使用可能な感情（emotion）: ${configuredEmotions.join(', ')}\n- 各感情に適した場面で自然に選択してください`
+  } else {
+    emotionSection = DEFAULT_EMOTION_CRITERIA
+  }
+
+  return `<ai_config>\n${characterSection}\n${COMMON_RULES_PROMPT}\n${emotionSection}\n</ai_config>`
+}
+
 /**
  * 静的システムプロンプトを生成（キャッシュ対象: 全ユーザー共通）
  */
-function buildStaticSystemPrompt(themeId?: string): string {
-  return BUTLER_SYSTEM_PROMPT + SKILL_RULES_PROMPT + buildJsonInstruction(themeId)
+function buildStaticSystemPrompt(themeId?: string, modelMeta?: ModelMeta): string {
+  return buildCharacterPrompt(modelMeta) + SKILL_RULES_PROMPT + buildJsonInstruction(themeId, modelMeta)
 }
 
 /**
@@ -1030,6 +1167,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let themeId: string | undefined
   let userLocation: { lat: number; lng: number } | undefined
   let modelKey = 'haiku'
+  let selectedModelId: string | undefined
   let includeDebug = false
 
   try {
@@ -1050,6 +1188,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (body.userLocation && typeof body.userLocation === 'object'
       && typeof body.userLocation.lat === 'number' && typeof body.userLocation.lng === 'number') {
       userLocation = { lat: body.userLocation.lat, lng: body.userLocation.lng }
+    }
+
+    // ユーザーが選択したモデルID
+    if (typeof body.selectedModelId === 'string') {
+      selectedModelId = body.selectedModelId
     }
 
     // デバッグ情報の返却フラグ
@@ -1074,15 +1217,16 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.log('[LLM] ブリーフィングモード開始')
   }
 
-  // メモリ検索 + 永久記憶 + プロフィール取得（並列、失敗してもチャットは続行）
-  const [memoryRecords, permanentFacts, userProfile] = await Promise.all([
+  // メモリ検索 + 永久記憶 + プロフィール取得 + モデルメタ取得（並列、失敗してもチャットは続行）
+  const [memoryRecords, permanentFacts, userProfile, modelMeta] = await Promise.all([
     isBriefingMode ? Promise.resolve([]) : retrieveMemoryRecords(userId, message),
     getPermanentFacts(userId),
     getUserProfile(userId),
+    selectedModelId ? getModelMeta(selectedModelId) : Promise.resolve(undefined),
   ])
 
-  // 静的システムプロンプト（キャッシュ対象: 全ユーザー共通）
-  const staticPrompt = buildStaticSystemPrompt(themeId)
+  // 静的システムプロンプト（キャッシュ対象: モデル設定を反映）
+  const staticPrompt = buildStaticSystemPrompt(themeId, modelMeta)
 
   // ユーザー固有の半静的プロンプト（キャッシュ対象: ユーザー単位）
   const userStaticPrompt = buildUserStaticPrompt(userProfile, permanentFacts)

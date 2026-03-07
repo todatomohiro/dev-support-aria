@@ -117,10 +117,13 @@ class ChatControllerImpl {
    * なければデフォルトの mao_pro マッピングにフォールバック。
    */
   private emotionToExpression(emotion: string): string {
-    // サーバーから取得したマッピングを優先
+    // サーバーから取得したマッピングを優先（空文字=未設定は無視）
     const meta = useAppStore.getState().activeModelMeta
-    if (meta?.emotionMapping && Object.keys(meta.emotionMapping).length > 0) {
-      return meta.emotionMapping[emotion] ?? meta.emotionMapping['neutral'] ?? 'exp_01'
+    if (meta?.emotionMapping) {
+      const mapped = meta.emotionMapping[emotion]
+      if (mapped) return mapped
+      const neutralFallback = meta.emotionMapping['neutral']
+      if (neutralFallback) return neutralFallback
     }
 
     // デフォルト: mao_pro モデルの表情マッピング

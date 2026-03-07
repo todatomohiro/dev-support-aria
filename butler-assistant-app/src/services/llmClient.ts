@@ -7,6 +7,7 @@ import type {
 } from '@/types'
 import { NetworkError, APIError, RateLimitError, ParseError } from '@/types'
 import { getIdToken } from '@/auth'
+import { useAppStore } from '@/stores/appStore'
 
 /**
  * アシスタントキャラクターのシステムプロンプト
@@ -179,6 +180,9 @@ class LLMClientImpl implements LLMClientService {
       throw new APIError('API Base URL が設定されていません', 500)
     }
 
+    // ユーザーが選択中のモデルID（バックエンドでキャラクター設定を取得するために送信）
+    const selectedModelId = useAppStore.getState().activeModelMeta?.modelId
+
     // システムプロンプトはバックエンドで生成（セキュリティ対策）
     try {
       const res = await fetch(`${apiBaseUrl}/llm/chat`, {
@@ -187,7 +191,16 @@ class LLMClientImpl implements LLMClientService {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ message, sessionId, ...(imageBase64 ? { imageBase64 } : {}), ...(themeId ? { themeId } : {}), ...(userLocation ? { userLocation } : {}), ...(modelKey && modelKey !== 'haiku' ? { modelKey } : {}), ...(debug ? { includeDebug: true } : {}) }),
+        body: JSON.stringify({
+          message,
+          sessionId,
+          ...(imageBase64 ? { imageBase64 } : {}),
+          ...(themeId ? { themeId } : {}),
+          ...(userLocation ? { userLocation } : {}),
+          ...(modelKey && modelKey !== 'haiku' ? { modelKey } : {}),
+          ...(debug ? { includeDebug: true } : {}),
+          ...(selectedModelId ? { selectedModelId } : {}),
+        }),
       })
 
       if (!res.ok) {
