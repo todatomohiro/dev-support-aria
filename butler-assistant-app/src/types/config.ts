@@ -102,6 +102,8 @@ export interface UIConfig {
   geolocationEnabled: boolean
   sentimentEnabled: boolean
   developerMode: boolean
+  /** Live2D キャラクターの表示/非表示（バッテリー節約用） */
+  characterVisible: boolean
 }
 
 /**
@@ -163,6 +165,7 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   geolocationEnabled: false,
   sentimentEnabled: true,
   developerMode: false,
+  characterVisible: true,
 }
 
 /**

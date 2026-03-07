@@ -353,7 +353,10 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   return (
     <div className="relative flex flex-col h-full bg-white dark:bg-gray-900">
       {/* メッセージ履歴エリア */}
-      <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-2 sm:space-y-4" ref={scrollContainerRef}>
+      <div className="flex-1 overflow-y-auto flex flex-col" ref={scrollContainerRef}>
+        {/* メッセージを下寄せにするスペーサー */}
+        <div className="flex-1" />
+        <div className="p-2 sm:p-4 space-y-2 sm:space-y-4">
         {hasEarlierMessages && (
           <div className="flex justify-center py-2">
             <button
@@ -404,6 +407,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 
         {/* スクロール用のアンカー */}
         <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* 最新メッセージへ戻るボタン */}

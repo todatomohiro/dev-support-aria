@@ -58,6 +58,10 @@ export interface Live2DCanvasHandle {
   playExpression: (name: string) => void
   /** リップシンク用: 口の開き具合を設定（0=閉 〜 1=全開） */
   setMouthOpenness: (value: number) => void
+  /** PixiJS レンダリングを停止（バッテリー節約） */
+  stopRendering: () => void
+  /** PixiJS レンダリングを再開 */
+  startRendering: () => void
 }
 
 /**
@@ -110,6 +114,18 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
     },
     setMouthOpenness: (value: number) => {
       mouthOpennessRef.current = value
+    },
+    stopRendering: () => {
+      if (appRef.current) {
+        appRef.current.stop()
+        console.log('[Live2DCanvas] Rendering stopped')
+      }
+    },
+    startRendering: () => {
+      if (appRef.current) {
+        appRef.current.start()
+        console.log('[Live2DCanvas] Rendering started')
+      }
     },
   }), [])
 

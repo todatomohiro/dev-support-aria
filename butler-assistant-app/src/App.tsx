@@ -45,7 +45,7 @@ function App() {
   const requiresAuth = isAuthConfigured() && authStatus !== 'authenticated'
 
   // Live2D を表示するルート: メイン会話 or テーマチャット（themeId あり）
-  const showLive2D = !requiresAuth && !isPocPage && (
+  const showLive2DRoute = !requiresAuth && !isPocPage && (
     location.pathname === '/' ||
     (location.pathname.startsWith('/themes/') && location.pathname !== '/themes')
   )
@@ -64,6 +64,9 @@ function App() {
   const setCurrentExpression = useAppStore((state) => state.setCurrentExpression)
   const setCurrentMotion = useAppStore((state) => state.setCurrentMotion)
   const expressionVersion = useAppStore((state) => state.expressionVersion)
+
+  const characterVisible = config.ui.characterVisible ?? true
+  const showLive2D = showLive2DRoute && characterVisible
 
   // 位置情報フック
   const { location: geoLocation, loading: geoLoading, error: geoError, requestLocation, clearLocation } = useGeolocation()
@@ -296,6 +299,17 @@ function App() {
     setIsAuthModalOpen(true)
   }, [])
 
+  /** キャラクター表示/非表示トグル */
+  const handleToggleCharacter = useCallback(() => {
+    const next = !(config.ui.characterVisible ?? true)
+    updateConfig({ ui: { ...config.ui, characterVisible: next } })
+    if (next) {
+      live2dRef.current?.startRendering()
+    } else {
+      live2dRef.current?.stopRendering()
+    }
+  }, [config.ui, updateConfig])
+
   // エラークリアハンドラー
   const handleDismissError = useCallback(() => {
     setError(null)
@@ -473,6 +487,17 @@ function App() {
                       {greetingMessage}
                     </div>
                   )}
+                  {/* キャラクター非表示ボタン */}
+                  <button
+                    onClick={handleToggleCharacter}
+                    className="absolute bottom-2 right-2 z-20 w-8 h-8 md:w-9 md:h-9 rounded-full bg-white/85 dark:bg-gray-700/85 border border-gray-300 dark:border-gray-600 shadow-sm flex items-center justify-center hover:bg-white dark:hover:bg-gray-600 hover:scale-105 transition-all"
+                    title="キャラクターを非表示"
+                    data-testid="character-hide-btn"
+                  >
+                    <svg className="w-4 h-4 md:w-[18px] md:h-[18px] text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M3 3l18 18" />
+                    </svg>
+                  </button>
                 </div>
                 <p className="text-center text-xs text-gray-500 dark:text-gray-400 py-1 shrink-0"
                    data-testid="character-nickname">
@@ -491,7 +516,35 @@ function App() {
             )}
 
             {/* ルーティング */}
-            <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 flex flex-col min-h-0 relative">
+              {/* キャラクター非表示時: 天気バッジ + 展開ボタン */}
+              {showLive2DRoute && !characterVisible && (
+                <div
+                  className="absolute top-2 left-2 z-20 flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-black/5 dark:bg-white/10 backdrop-blur-sm"
+                  data-testid="character-collapsed-bar"
+                >
+                  {weatherInfo && (
+                    <div className="flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-300 pointer-events-none">
+                      <svg className="w-4 h-4 md:w-[18px] md:h-[18px] text-amber-500" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <circle cx="16" cy="16" r="5" />
+                        <line x1="16" y1="3" x2="16" y2="7" /><line x1="16" y1="25" x2="16" y2="29" />
+                        <line x1="3" y1="16" x2="7" y2="16" /><line x1="25" y1="16" x2="29" y2="16" />
+                      </svg>
+                      <span>{weatherInfo.temperature}°C</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={handleToggleCharacter}
+                    className="w-7 h-7 rounded-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 shadow-sm flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600 hover:scale-105 transition-all"
+                    title="キャラクターを表示"
+                    data-testid="character-show-btn"
+                  >
+                    <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </button>
+                </div>
+              )}
               <Routes>
                 <Route path="/oauth/callback" element={<OAuthCallback />} />
                 <Route path="/poc" element={<PocIndex />} />

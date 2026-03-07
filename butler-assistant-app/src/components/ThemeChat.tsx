@@ -211,7 +211,7 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
 
       {/* カテゴリ選択（メッセージなし＆カテゴリ未設定時） */}
       {messages.length === 0 && !hasCategory && !workConnection && (
-        <div className="flex flex-col">
+        <div className="flex flex-col pt-10">
           <CategorySelect onSelect={handleCategorySelect} developerMode={config.ui.developerMode} />
           <div className="px-4 -mt-5">
             <button

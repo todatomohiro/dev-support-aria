@@ -300,7 +300,12 @@ class ChatControllerImpl {
       }
 
       if (parsed) {
-        if (parsed.text) text = parsed.text as string
+        if (parsed.text) {
+          text = parsed.text as string
+        } else {
+          // "text" フィールドなしの場合: rawContent から JSON 部分を除去して平文を抽出
+          text = extractStreamingText(rawContent)
+        }
         if (parsed.emotion) emotion = parsed.emotion as EmotionType
         if (parsed.motion) motion = parsed.motion as string
         if (parsed.mapData) mapData = parsed.mapData as StructuredResponse['mapData']

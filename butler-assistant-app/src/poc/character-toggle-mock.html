@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live2D 表示切替 UI モック</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f3f4f6; color: #1f2937; }
+
+  /* ===== 共通 ===== */
+  .mock-label {
+    text-align: center; padding: 12px; font-size: 18px; font-weight: 700;
+    background: #1e293b; color: #fff; letter-spacing: 0.05em;
+  }
+  .mock-sublabel {
+    text-align: center; padding: 6px; font-size: 13px; font-weight: 500;
+    background: #334155; color: #94a3b8;
+  }
+
+  /* ===== PC レイアウト ===== */
+  .pc-frame {
+    width: 960px; height: 600px; margin: 24px auto; border: 2px solid #cbd5e1;
+    border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
+    background: #f3f4f6; box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  }
+  .pc-header {
+    height: 48px; background: #fff; border-bottom: 1px solid #e5e7eb;
+    display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0;
+  }
+  .pc-header .hamburger { width: 20px; height: 20px; color: #6b7280; cursor: pointer; }
+  .pc-header h1 { font-size: 16px; font-weight: 600; }
+  .pc-body { flex: 1; display: flex; overflow: hidden; }
+  .pc-sidebar {
+    width: 220px; background: #fff; border-right: 1px solid #e5e7eb;
+    padding: 12px; flex-shrink: 0; font-size: 13px; color: #6b7280;
+  }
+  .pc-sidebar .nav-item {
+    padding: 8px 12px; border-radius: 8px; margin-bottom: 4px; cursor: pointer;
+  }
+  .pc-sidebar .nav-item.active { background: #eff6ff; color: #2563eb; font-weight: 600; }
+  .pc-sidebar .nav-item:hover:not(.active) { background: #f9fafb; }
+
+  .pc-content { flex: 1; display: flex; overflow: hidden; }
+
+  /* Live2D エリア（PC） */
+  .pc-live2d-area {
+    width: 320px; min-width: 280px;
+    background: linear-gradient(to bottom, #eff6ff, #f5f3ff);
+    border-right: 1px solid #e5e7eb;
+    display: flex; flex-direction: column; flex-shrink: 0;
+    position: relative;
+    transition: width 0.35s ease, min-width 0.35s ease, opacity 0.3s ease;
+    overflow: hidden;
+  }
+  .pc-live2d-area.collapsed {
+    width: 0; min-width: 0; border-right: 0; opacity: 0;
+    pointer-events: none;
+  }
+  .pc-live2d-canvas {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .pc-live2d-canvas .character-img {
+    width: 180px; height: 260px; background: linear-gradient(135deg, #c7d2fe, #ddd6fe);
+    border-radius: 16px; display: flex; align-items: center; justify-content: center;
+    font-size: 64px; color: #7c3aed;
+  }
+  .pc-char-name {
+    text-align: center; font-size: 11px; color: #6b7280; padding: 4px 0;
+    flex-shrink: 0;
+  }
+
+  /* 天気オーバーレイ */
+  .weather-overlay {
+    position: absolute; top: 8px; left: 8px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 12px;
+    background: rgba(0,0,0,0.3); backdrop-filter: blur(4px);
+    color: rgba(255,255,255,0.9); font-size: 12px; font-weight: 500;
+    z-index: 10; pointer-events: none;
+  }
+  .weather-overlay svg { width: 20px; height: 20px; }
+
+  /* --- トグルボタン（キャラクターエリア右下） --- */
+  .char-toggle-btn {
+    position: absolute; bottom: 8px; right: 8px; z-index: 20;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,0.85); border: 1.5px solid #d1d5db;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .char-toggle-btn:hover { background: #fff; transform: scale(1.08); }
+  .char-toggle-btn svg { width: 18px; height: 18px; color: #6b7280; }
+
+  /* --- 折りたたみ時のフローティングバー（天気 + 展開ボタン） --- */
+  .collapsed-bar {
+    display: none;
+    align-items: center; gap: 8px;
+    padding: 4px 8px 4px 12px;
+    border-radius: 16px;
+    background: rgba(0,0,0,0.06);
+    backdrop-filter: blur(4px);
+    position: absolute; top: 8px; left: 8px; z-index: 20;
+  }
+  .collapsed-bar.visible { display: flex; }
+  .collapsed-bar .weather-inline {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 12px; color: #374151; font-weight: 500;
+  }
+  .collapsed-bar .weather-inline svg { width: 18px; height: 18px; color: #f59e0b; }
+  .collapsed-bar .expand-btn {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #fff; border: 1px solid #d1d5db;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .collapsed-bar .expand-btn:hover { background: #f3f4f6; transform: scale(1.08); }
+  .collapsed-bar .expand-btn svg { width: 16px; height: 16px; color: #6b7280; }
+
+  /* チャットエリア */
+  .chat-area {
+    flex: 1; display: flex; flex-direction: column; position: relative;
+  }
+  .chat-messages {
+    flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .msg { max-width: 70%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+  .msg.user { align-self: flex-end; background: #3b82f6; color: #fff; border-bottom-right-radius: 4px; }
+  .msg.assistant { align-self: flex-start; background: #fff; color: #1f2937; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .chat-input-bar {
+    padding: 12px 16px; border-top: 1px solid #e5e7eb; background: #fff;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .chat-input-bar input {
+    flex: 1; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 20px;
+    font-size: 14px; outline: none;
+  }
+  .chat-input-bar button {
+    width: 36px; height: 36px; border-radius: 50%; background: #3b82f6; border: none;
+    color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ===== スマホレイアウト ===== */
+  .sp-frame {
+    width: 375px; height: 740px; margin: 24px auto; border: 2px solid #cbd5e1;
+    border-radius: 24px; overflow: hidden; display: flex; flex-direction: column;
+    background: #f3f4f6; box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  }
+  .sp-header {
+    height: 44px; background: #fff; border-bottom: 1px solid #e5e7eb;
+    display: flex; align-items: center; padding: 0 12px; flex-shrink: 0;
+  }
+  .sp-header h1 { font-size: 15px; font-weight: 600; flex: 1; }
+  .sp-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+  /* Live2D エリア（スマホ） */
+  .sp-live2d-area {
+    height: 25vh; min-height: 160px; max-height: 200px;
+    background: linear-gradient(to bottom, #eff6ff, #f5f3ff);
+    border-bottom: 1px solid #e5e7eb;
+    display: flex; flex-direction: column; flex-shrink: 0;
+    position: relative;
+    transition: height 0.35s ease, min-height 0.35s ease, max-height 0.35s ease, opacity 0.3s ease;
+    overflow: hidden;
+  }
+  .sp-live2d-area.collapsed {
+    height: 0; min-height: 0; max-height: 0; border-bottom: 0; opacity: 0;
+    pointer-events: none;
+  }
+  .sp-live2d-canvas {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .sp-live2d-canvas .character-img {
+    width: 100px; height: 150px; background: linear-gradient(135deg, #c7d2fe, #ddd6fe);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 48px; color: #7c3aed;
+  }
+
+  /* スマホ: 折りたたみ時バー */
+  .sp-collapsed-bar {
+    display: none;
+    align-items: center; gap: 6px;
+    padding: 4px 6px 4px 10px;
+    border-radius: 14px;
+    background: rgba(0,0,0,0.06);
+    backdrop-filter: blur(4px);
+    position: absolute; top: 6px; left: 6px; z-index: 20;
+  }
+  .sp-collapsed-bar.visible { display: flex; }
+  .sp-collapsed-bar .weather-inline {
+    display: flex; align-items: center; gap: 3px;
+    font-size: 11px; color: #374151; font-weight: 500;
+  }
+  .sp-collapsed-bar .weather-inline svg { width: 16px; height: 16px; color: #f59e0b; }
+  .sp-collapsed-bar .expand-btn {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #fff; border: 1px solid #d1d5db;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .sp-collapsed-bar .expand-btn svg { width: 14px; height: 14px; color: #6b7280; }
+
+  .sp-bottom-nav {
+    height: 56px; background: #fff; border-top: 1px solid #e5e7eb;
+    display: flex; align-items: center; justify-content: space-around;
+    padding-bottom: env(safe-area-inset-bottom); flex-shrink: 0;
+  }
+  .sp-bottom-nav .tab {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-size: 10px; color: #9ca3af; cursor: pointer;
+  }
+  .sp-bottom-nav .tab.active { color: #3b82f6; }
+  .sp-bottom-nav .tab svg { width: 22px; height: 22px; }
+
+  /* ===== 比較レイアウト ===== */
+  .comparison { display: flex; gap: 32px; justify-content: center; flex-wrap: wrap; padding: 0 16px; }
+
+  /* ===== アノテーション ===== */
+  .annotation {
+    margin: 24px auto; max-width: 960px; padding: 20px 24px;
+    background: #fff; border-radius: 12px; border: 1px solid #e5e7eb;
+    font-size: 14px; line-height: 1.8;
+  }
+  .annotation h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; color: #1e293b; }
+  .annotation ul { padding-left: 20px; }
+  .annotation li { margin-bottom: 4px; }
+  .annotation code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+  .annotation .highlight { color: #2563eb; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="mock-label">Live2D 表示切替 UI モック</div>
+
+<!-- ========== PC: 表示状態 ========== -->
+<div class="mock-sublabel">PC - キャラクター表示中</div>
+<div class="pc-frame" id="pc-shown">
+  <div class="pc-header">
+    <svg class="hamburger" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    <h1>AI チャット</h1>
+  </div>
+  <div class="pc-body">
+    <div class="pc-sidebar">
+      <div class="nav-item active">AI チャット</div>
+      <div class="nav-item">トピック</div>
+      <div class="nav-item">メモ</div>
+      <div class="nav-item">グループ</div>
+    </div>
+    <div class="pc-content">
+      <div class="pc-live2d-area" id="pc-live2d">
+        <div class="pc-live2d-canvas">
+          <div class="weather-overlay">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="16" cy="16" r="5"/><line x1="16" y1="3" x2="16" y2="7"/><line x1="16" y1="25" x2="16" y2="29"/><line x1="3" y1="16" x2="7" y2="16"/><line x1="25" y1="16" x2="29" y2="16"/><line x1="7.3" y1="7.3" x2="9.8" y2="9.8"/><line x1="22.2" y1="22.2" x2="24.7" y2="24.7"/><line x1="7.3" y1="24.7" x2="9.8" y2="22.2"/><line x1="22.2" y1="9.8" x2="24.7" y2="7.3"/></svg>
+            18°C
+          </div>
+          <div class="character-img">&#x1F9D9;</div>
+          <!-- トグルボタン: 右下に配置 -->
+          <button class="char-toggle-btn" onclick="togglePC()" title="キャラクターを非表示">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M3 3l18 18"/></svg>
+          </button>
+        </div>
+        <div class="pc-char-name">ARIA</div>
+      </div>
+      <div class="chat-area">
+        <!-- 折りたたみ時のフローティングバー -->
+        <div class="collapsed-bar" id="pc-collapsed-bar">
+          <div class="weather-inline">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="16" cy="16" r="5"/><line x1="16" y1="3" x2="16" y2="7"/><line x1="16" y1="25" x2="16" y2="29"/><line x1="3" y1="16" x2="7" y2="16"/><line x1="25" y1="16" x2="29" y2="16"/></svg>
+            18°C
+          </div>
+          <button class="expand-btn" onclick="togglePC()" title="キャラクターを表示">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          </button>
+        </div>
+        <div class="chat-messages">
+          <div class="msg user">購入の相談をしたいです</div>
+          <div class="msg assistant">購入の相談ね！どんな家電を買おうか考えてるの？</div>
+          <div class="msg user">洗濯機を買い替えたい</div>
+          <div class="msg assistant">洗濯機の買い替えね！予算や希望のタイプ（ドラム式・縦型）はある？</div>
+        </div>
+        <div class="chat-input-bar">
+          <input type="text" placeholder="メッセージを入力...">
+          <button><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== PC: 非表示状態 ========== -->
+<div class="mock-sublabel">PC - キャラクター非表示（チャットエリアが広くなる + 天気バッジが残る）</div>
+<div class="pc-frame" id="pc-hidden">
+  <div class="pc-header">
+    <svg class="hamburger" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    <h1>AI チャット</h1>
+  </div>
+  <div class="pc-body">
+    <div class="pc-sidebar">
+      <div class="nav-item active">AI チャット</div>
+      <div class="nav-item">トピック</div>
+      <div class="nav-item">メモ</div>
+      <div class="nav-item">グループ</div>
+    </div>
+    <div class="pc-content">
+      <div class="pc-live2d-area collapsed"></div>
+      <div class="chat-area">
+        <!-- 折りたたみ時: 天気 + キャラアイコンのバー -->
+        <div class="collapsed-bar visible">
+          <div class="weather-inline">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="16" cy="16" r="5"/><line x1="16" y1="3" x2="16" y2="7"/><line x1="16" y1="25" x2="16" y2="29"/><line x1="3" y1="16" x2="7" y2="16"/><line x1="25" y1="16" x2="29" y2="16"/></svg>
+            18°C
+          </div>
+          <button class="expand-btn" title="キャラクターを表示">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          </button>
+        </div>
+        <div class="chat-messages">
+          <div class="msg user">購入の相談をしたいです</div>
+          <div class="msg assistant">購入の相談ね！どんな家電を買おうか考えてるの？</div>
+          <div class="msg user">洗濯機を買い替えたい</div>
+          <div class="msg assistant">洗濯機の買い替えね！予算や希望のタイプ（ドラム式・縦型）はある？</div>
+          <div class="msg user">予算は10万円くらいで、一人暮らし向けのドラム式がいい</div>
+          <div class="msg assistant">了解！10万円前後で一人暮らし向けのドラム式洗濯機だと、パナソニックのNA-LX113CLやシャープのES-S7Hあたりが人気だよ。乾燥機能は必要？</div>
+        </div>
+        <div class="chat-input-bar">
+          <input type="text" placeholder="メッセージを入力...">
+          <button><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== スマホ: 比較 ========== -->
+<div class="mock-sublabel">スマホ - 表示 vs 非表示</div>
+<div class="comparison">
+
+  <!-- スマホ: 表示状態 -->
+  <div>
+    <div style="text-align:center; padding:8px; font-size:13px; font-weight:600; color:#475569;">表示中</div>
+    <div class="sp-frame" id="sp-shown">
+      <div class="sp-header"><h1>AI チャット</h1></div>
+      <div class="sp-body">
+        <div class="sp-live2d-area" id="sp-live2d">
+          <div class="sp-live2d-canvas">
+            <div class="weather-overlay">
+              <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="16" cy="16" r="5"/><line x1="16" y1="3" x2="16" y2="7"/><line x1="16" y1="25" x2="16" y2="29"/><line x1="3" y1="16" x2="7" y2="16"/><line x1="25" y1="16" x2="29" y2="16"/></svg>
+              18°C
+            </div>
+            <div class="character-img">&#x1F9D9;</div>
+            <button class="char-toggle-btn" onclick="toggleSP()" title="キャラクターを非表示" style="width:32px;height:32px;">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M3 3l18 18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="chat-area" style="flex:1;">
+          <div class="sp-collapsed-bar" id="sp-collapsed-bar">
+            <div class="weather-inline">
+              <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="16" cy="16" r="5"/><line x1="16" y1="3" x2="16" y2="7"/><line x1="16" y1="25" x2="16" y2="29"/><line x1="3" y1="16" x2="7" y2="16"/><line x1="25" y1="16" x2="29" y2="16"/></svg>
+              18°C
+            </div>
+            <button class="expand-btn" onclick="toggleSP()">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            </button>
+          </div>
+          <div class="chat-messages">
+            <div class="msg user">購入の相談をしたいです</div>
+            <div class="msg assistant">購入の相談ね！どんな家電を買おうか考えてるの？</div>
+            <div class="msg user">洗濯機を買い替えたい</div>
+            <div class="msg assistant">洗濯機の買い替えね！予算や希望のタイプは？</div>
+          </div>
+          <div class="chat-input-bar">
+            <input type="text" placeholder="メッセージを入力..." style="font-size:13px;">
+            <button style="width:32px;height:32px;"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+          </div>
+        </div>
+        <div class="sp-bottom-nav">
+          <div class="tab active"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg><span>チャット</span></div>
+          <div class="tab"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg><span>トピック</span></div>
+          <div class="tab"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg><span>メモ</span></div>
+          <div class="tab"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg><span>グループ</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- スマホ: 非表示状態（静的） -->
+  <div>
+    <div style="text-align:center; padding:8px; font-size:13px; font-weight:600; color:#475569;">非表示（天気+展開ボタンが残る）</div>
+    <div class="sp-frame">
+      <div class="sp-header"><h1>AI チャット</h1></div>
+      <div class="sp-body">
+        <div class="sp-live2d-area collapsed"></div>
+        <div class="chat-area" style="flex:1;">
+          <div class="sp-collapsed-bar visible">
+            <div class="weather-inline">
+              <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="16" cy="16" r="5"/><line x1="16" y1="3" x2="16" y2="7"/><line x1="16" y1="25" x2="16" y2="29"/><line x1="3" y1="16" x2="7" y2="16"/><line x1="25" y1="16" x2="29" y2="16"/></svg>
+              18°C
+            </div>
+            <button class="expand-btn">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            </button>
+          </div>
+          <div class="chat-messages">
+            <div class="msg user">購入の相談をしたいです</div>
+            <div class="msg assistant">購入の相談ね！どんな家電を買おうか考えてるの？</div>
+            <div class="msg user">洗濯機を買い替えたい</div>
+            <div class="msg assistant">洗濯機の買い替えね！予算や希望のタイプは？</div>
+            <div class="msg user">予算は10万円くらいで一人暮らし向け</div>
+            <div class="msg assistant">了解！パナソニックのNA-LX113CLやシャープのES-S7Hあたりが人気だよ。乾燥機能は必要？</div>
+          </div>
+          <div class="chat-input-bar">
+            <input type="text" placeholder="メッセージを入力..." style="font-size:13px;">
+            <button style="width:32px;height:32px;"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+          </div>
+        </div>
+        <div class="sp-bottom-nav">
+          <div class="tab active"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg><span>チャット</span></div>
+          <div class="tab"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg><span>トピック</span></div>
+          <div class="tab"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg><span>メモ</span></div>
+          <div class="tab"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg><span>グループ</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== 設計メモ ===== -->
+<div class="annotation">
+  <h3>UI 設計メモ</h3>
+  <ul>
+    <li><span class="highlight">非表示ボタン</span>: キャラクターエリア右下の丸ボタン（目に斜線アイコン）。控えめだが見つけやすい位置</li>
+    <li><span class="highlight">折りたたみ時</span>: Live2D エリアが 0 幅/高さにアニメーション縮小（CSS transition 0.35s）。PixiJS の <code>app.stop()</code> で描画を停止し、GPU/バッテリー負荷を解消</li>
+    <li><span class="highlight">天気バッジ</span>: 折りたたみ後はチャットエリア左上にフローティングバーとして残る（天気アイコン + 気温 + 展開ボタン）</li>
+    <li><span class="highlight">展開ボタン</span>: 人型アイコンの丸ボタン。押すとキャラクターエリアを復元し <code>app.start()</code> で描画再開</li>
+    <li><span class="highlight">状態の永続化</span>: <code>appStore</code> の <code>config.ui.characterVisible</code> に保存（Zustand persist）。再起動後も非表示を維持</li>
+    <li><span class="highlight">PC</span>: 左カラム（320px）が消え、チャットエリアがフル幅に拡大</li>
+    <li><span class="highlight">スマホ</span>: 上部（25vh）が消え、チャットエリアが縦いっぱいに拡大。表示可能なメッセージ量が大幅に増加</li>
+    <li><span class="highlight">バッテリー効果</span>: Live2D 非表示時は PixiJS レンダリング完全停止。WebGL コンテキストの GPU 負荷がゼロに</li>
+  </ul>
+</div>
+
+<script>
+  // PC インタラクティブ切り替え
+  function togglePC() {
+    const area = document.getElementById('pc-live2d');
+    const bar = document.getElementById('pc-collapsed-bar');
+    area.classList.toggle('collapsed');
+    bar.classList.toggle('visible');
+  }
+
+  // スマホ インタラクティブ切り替え
+  function toggleSP() {
+    const area = document.getElementById('sp-live2d');
+    const bar = document.getElementById('sp-collapsed-bar');
+    area.classList.toggle('collapsed');
+    bar.classList.toggle('visible');
+  }
+</script>
+
+</body>
+</html>
