@@ -19,7 +19,7 @@
 | DB | DynamoDB（GSI×2、TTL、ポイントインタイム復旧） |
 | インフラ管理 | AWS CDK (TypeScript) |
 | マルチプラットフォーム | Web / Tauri 2（デスクトップ）/ Capacitor 8（iOS） |
-| テスト | Vitest + jsdom（719テスト / 48ファイル）+ fast-check（プロパティベーステスト） |
+| テスト | Vitest + jsdom（719テスト / 48ファイル、714パス）+ fast-check（プロパティベーステスト） |
 
 ## 主要機能
 
@@ -285,7 +285,7 @@ EventBridge rate(15 minutes) → sessionFinalizer Lambda
 
 ```
 butler-assistant-app/     ← メインアプリ（React + Vite）
-├── コンポーネント 34個 / サービス 20個 / フック 11個 / ストア 3個
+├── コンポーネント 33個 / サービス 19個 / フック 10個 / ストア 3個
 ├── プラットフォーム抽象化（Web / Tauri / Capacitor）
 ├── Live2D レンダリング + フェイストラッキング（MediaPipe + Kalidokit）
 └── PoC（音声認識、GPS、感情分析、フェイストラッキング等）
@@ -312,7 +312,7 @@ aiba-extension/           ← Chrome 拡張機能（Manifest V3）
 butler-assistant-app/          # フロントエンド（React + Vite + TypeScript）
 ├── src/
 │   ├── auth/               # 認証（Cognito + AWS Amplify）
-│   ├── components/         # React コンポーネント 34個（PascalCase.tsx）
+│   ├── components/         # React コンポーネント 33個（PascalCase.tsx）
 │   │   ├── ChatUI.tsx          # メインチャットUI
 │   │   ├── ThemeChat.tsx       # トピック別チャット
 │   │   ├── GroupChat.tsx       # グループチャット
@@ -327,7 +327,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── WorkBadge.tsx       # MCP接続バッジ
 │   │   ├── WeatherOverlay.tsx  # 天気アイコン+気温オーバーレイ
 │   │   └── ...                 # モーダル、ナビゲーション等
-│   ├── hooks/              # カスタムフック 11個
+│   ├── hooks/              # カスタムフック 10個
 │   │   ├── useSpeechRecognition.ts  # 音声認識（Web Speech API）
 │   │   ├── useVAD.ts               # Voice Activity Detection
 │   │   ├── useCamera.ts            # カメラ制御
@@ -337,9 +337,8 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── useThemePolling.ts      # トピック ポーリング
 │   │   ├── useQRScanner.ts         # QR コード読み込み
 │   │   ├── useBriefing.ts          # プロアクティブ・ブリーフィング
-│   │   ├── useWeatherIcon.ts       # 天気アイコン表示（Open-Meteo API）
-│   │   └── useStreamChat.ts        # WebSocket ストリーミングチャット
-│   ├── services/           # ビジネスロジック 19個（camelCase.ts）
+│   │   └── useWeatherIcon.ts       # 天気アイコン表示（Open-Meteo API）
+│   ├── services/           # ビジネスロジック 19個（camelCase.ts、index.ts 除く）
 │   │   ├── llmClient.ts        # LLM (Bedrock Claude) 通信
 │   │   ├── chatController.ts   # チャットコントローラー
 │   │   ├── responseParser.ts   # LLM レスポンスパーサー
@@ -731,9 +730,9 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 | 項目 | 数量 |
 |------|------|
-| フロントエンド コンポーネント | 34個 |
-| カスタムフック | 11個 |
-| サービス | 20個 |
+| フロントエンド コンポーネント | 33個 |
+| カスタムフック | 10個 |
+| サービス | 19個 |
 | Zustand ストア | 3個 |
 | Lambda 関数 | 35個 |
 | LLM スキル | 7種（カレンダー×2、場所検索、Web検索、天気、メモ×4） |

@@ -44,7 +44,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 ├── src/
 │   ├── auth/               # 認証（Cognito + AWS Amplify）
 │   ├── components/         # React コンポーネント（PascalCase.tsx）
-│   ├── hooks/              # カスタムフック（useSpeechRecognition, useCamera, useWebSocket, useGeolocation, useBriefing, useWeatherIcon, useStreamChat）
+│   ├── hooks/              # カスタムフック（useSpeechRecognition, useCamera, useWebSocket, useGeolocation, useBriefing, useWeatherIcon）
 │   ├── services/           # ビジネスロジック（camelCase.ts）
 │   ├── stores/             # Zustand 状態管理（appStore, themeStore, groupChatStore）
 │   ├── types/              # 型定義・エラークラス・サービスインターフェース
@@ -71,10 +71,16 @@ infra/
     ├── conversations/      # グループチャット会話（list, messagesList, messagesSend, messagesPoll, messagesRead）
     ├── ws/                 # WebSocket（authorizer, connect, disconnect）
     ├── skills/             # OAuth 管理（callback, connections, disconnect）
+    ├── mcp/                # MCP管理（connect, disconnect, status, registry）
     ├── memory/             # 長期記憶イベント保存（AgentCore Memory）
+    ├── memos/              # メモ管理（save, list, delete）
+    ├── models/             # モデル一覧（ユーザー向け）
     ├── settings/           # 設定 get/put
     ├── messages/           # メッセージ list/put
-    └── tts/                # 音声合成 synthesize（Amazon Polly）
+    ├── tts/                # 音声合成 synthesize（Amazon Polly）
+    ├── admin/              # 管理機能（me, usersList, usersDetail, usersRole, models/*）
+    ├── meeting-noter/      # ミーティングノート
+    └── transcribe/         # 音声ストリームURL
 ```
 
 ## コーディング規約
@@ -122,7 +128,7 @@ export const responseParser = new ResponseParserImpl()
 
 ## テスト
 
-- **Vitest** + **jsdom** 環境（719テスト / 48ファイル）
+- **Vitest** + **jsdom** 環境（719テスト / 48ファイル、714パス）
 - セットアップ: `src/__tests__/setup.ts`（Live2D SDK・PixiJS のモック定義済み）
 - プロパティベーステスト: `fast-check`（`@fast-check/vitest`）、最低100回実行
 
