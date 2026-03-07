@@ -23,14 +23,6 @@ import { measurePerformanceAsync } from '@/utils/performance'
  * 平文テキスト部分のみを抽出し、JSON メタデータ部分は除外する。
  */
 function extractStreamingText(raw: string): string {
-  // JSON オブジェクトの開始位置を探す（末尾の {"emotion":...} 部分を除外）
-  // 最後の `{"` を探して、それ以降を除外
-  const jsonStart = raw.lastIndexOf('{"')
-  if (jsonStart > 0) {
-    // JSON 前の平文テキストを返す
-    return raw.slice(0, jsonStart).trim()
-  }
-
   // 先頭が `{` で始まる場合は JSON 形式 → "text" フィールドを抽出
   if (raw.trimStart().startsWith('{')) {
     const textFieldMatch = raw.match(/"text"\s*:\s*"/)
@@ -52,6 +44,13 @@ function extractStreamingText(raw: string): string {
       return result
     }
     return ''
+  }
+
+  // 平文モード: 最初の JSON オブジェクト以降をすべて除外
+  // LLM は平文 → {"emotion":...} → {"text":..., ...} の順で出力する場合がある
+  const firstJsonIndex = raw.search(/\{"/)
+  if (firstJsonIndex > 0) {
+    return raw.slice(0, firstJsonIndex).trim()
   }
 
   // 完全に平文のみ（JSON なし）
@@ -279,15 +278,34 @@ class ChatControllerImpl {
     let suggestedReplies: StructuredResponse['suggestedReplies'] = undefined
 
     try {
-      const jsonMatch = rawContent.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0])
-        if (parsed.text) text = parsed.text
+      // LLM が複数の JSON オブジェクトを出力する場合がある
+      // 例: 平文\n{"emotion":"happy"}\n{"text":"...", "emotion":"happy", ...}
+      // "text" フィールドを含む JSON を優先的にパース
+      const allJsonMatches = [...rawContent.matchAll(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g)]
+      let parsed: Record<string, unknown> | null = null
+
+      // 後ろから探して "text" フィールドを含む JSON を優先
+      for (let i = allJsonMatches.length - 1; i >= 0; i--) {
+        try {
+          const candidate = JSON.parse(allJsonMatches[i][0])
+          if (candidate.text) {
+            parsed = candidate
+            break
+          }
+          // "text" なしでも最後の候補として保持
+          if (!parsed) parsed = candidate
+        } catch {
+          // パース失敗は無視して次の候補へ
+        }
+      }
+
+      if (parsed) {
+        if (parsed.text) text = parsed.text as string
         if (parsed.emotion) emotion = parsed.emotion as EmotionType
-        if (parsed.motion) motion = parsed.motion
-        if (parsed.mapData) mapData = parsed.mapData
-        if (parsed.suggestedTheme) suggestedTheme = parsed.suggestedTheme
-        if (parsed.suggestedReplies) suggestedReplies = parsed.suggestedReplies
+        if (parsed.motion) motion = parsed.motion as string
+        if (parsed.mapData) mapData = parsed.mapData as StructuredResponse['mapData']
+        if (parsed.suggestedTheme) suggestedTheme = parsed.suggestedTheme as StructuredResponse['suggestedTheme']
+        if (parsed.suggestedReplies) suggestedReplies = parsed.suggestedReplies as StructuredResponse['suggestedReplies']
       }
     } catch {
       console.warn('[Streaming] レスポンスJSONのパースに失敗、テキストをそのまま使用')
