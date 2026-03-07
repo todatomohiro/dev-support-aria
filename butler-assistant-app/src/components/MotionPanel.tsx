@@ -40,25 +40,25 @@ const EMOTION_TAGS = [
 
 /** デフォルトのモーション定義（mao_pro用フォールバック） */
 const DEFAULT_MOTIONS = [
-  { label: 'アイドル', group: 'Idle', index: 0 },
-  { label: 'モーション1', group: '', index: 0 },
-  { label: 'モーション2', group: '', index: 1 },
-  { label: 'モーション3', group: '', index: 2 },
-  { label: 'スペシャル1', group: '', index: 3 },
-  { label: 'スペシャル2', group: '', index: 4 },
-  { label: 'スペシャル3', group: '', index: 5 },
+  { tag: 'idle', label: 'アイドル', group: 'Idle', index: 0 },
+  { tag: 'motion1', label: 'モーション1', group: '', index: 0 },
+  { tag: 'motion2', label: 'モーション2', group: '', index: 1 },
+  { tag: 'motion3', label: 'モーション3', group: '', index: 2 },
+  { tag: 'special1', label: 'スペシャル1', group: '', index: 3 },
+  { tag: 'special2', label: 'スペシャル2', group: '', index: 4 },
+  { tag: 'special3', label: 'スペシャル3', group: '', index: 5 },
 ]
 
 /** デフォルトの表情定義（mao_pro用フォールバック） */
 const DEFAULT_EXPRESSIONS = [
-  { label: '通常(neutral)', name: 'exp_01' },
-  { label: '嬉しい(happy)', name: 'exp_02' },
-  { label: '考え中(thinking)', name: 'exp_03' },
-  { label: '驚き(surprised)', name: 'exp_04' },
-  { label: '悲しい(sad)', name: 'exp_05' },
-  { label: '照れ(embarrassed)', name: 'exp_06' },
-  { label: '困る(troubled)', name: 'exp_07' },
-  { label: '怒り(angry)', name: 'exp_08' },
+  { tag: 'neutral', label: '通常(neutral)', name: 'exp_01' },
+  { tag: 'happy', label: '嬉しい(happy)', name: 'exp_02' },
+  { tag: 'thinking', label: '考え中(thinking)', name: 'exp_03' },
+  { tag: 'surprised', label: '驚き(surprised)', name: 'exp_04' },
+  { tag: 'sad', label: '悲しい(sad)', name: 'exp_05' },
+  { tag: 'embarrassed', label: '照れ(embarrassed)', name: 'exp_06' },
+  { tag: 'troubled', label: '困る(troubled)', name: 'exp_07' },
+  { tag: 'angry', label: '怒り(angry)', name: 'exp_08' },
 ]
 
 /**
@@ -77,6 +77,7 @@ export function MotionPanel({ onPlayMotion, onPlayExpression }: MotionPanelProps
     ? MOTION_TAGS
         .filter((t) => motionMap[t.key] != null)
         .map((t) => ({
+          tag: t.key,
           label: t.label,
           group: motionMap[t.key].group,
           index: motionMap[t.key].index,
@@ -88,6 +89,7 @@ export function MotionPanel({ onPlayMotion, onPlayExpression }: MotionPanelProps
     ? EMOTION_TAGS
         .filter((t) => emotionMap[t.key] && emotionMap[t.key] !== '')
         .map((t) => ({
+          tag: t.key,
           label: t.label,
           name: emotionMap[t.key],
         }))
@@ -115,7 +117,7 @@ export function MotionPanel({ onPlayMotion, onPlayExpression }: MotionPanelProps
           <div className="flex flex-wrap gap-0.5 sm:gap-1">
             {motions.map((motion) => (
               <button
-                key={`${motion.group}-${motion.index}`}
+                key={motion.tag}
                 onClick={() => handleMotionClick(motion.group, motion.index)}
                 className="px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
               >
@@ -133,7 +135,7 @@ export function MotionPanel({ onPlayMotion, onPlayExpression }: MotionPanelProps
           <div className="flex flex-wrap gap-0.5 sm:gap-1">
             {expressions.map((exp) => (
               <button
-                key={exp.name}
+                key={exp.tag}
                 onClick={() => handleExpressionClick(exp.name)}
                 className="px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs bg-purple-500 hover:bg-purple-600 text-white rounded transition-colors"
               >
