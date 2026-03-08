@@ -121,6 +121,12 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-settings-put',
     })
 
+    const usersActivityFn = new lambdaNode.NodejsFunction(this, 'UsersActivityFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'users', 'activity.ts'),
+      functionName: 'butler-users-activity',
+    })
+
     const messagesListFn = new lambdaNode.NodejsFunction(this, 'MessagesListFn', {
       ...lambdaDefaults,
       entry: path.join(__dirname, '..', 'lambda', 'messages', 'list.ts'),
@@ -614,6 +620,7 @@ export class ButlerStack extends cdk.Stack {
     // DynamoDB への読み書き権限
     table.grantReadData(settingsGetFn)
     table.grantReadWriteData(settingsPutFn)
+    table.grantReadWriteData(usersActivityFn)
     table.grantReadData(messagesListFn)
     table.grantReadWriteData(messagesPutFn)
     table.grantReadWriteData(skillsCallbackFn)
@@ -681,6 +688,11 @@ export class ButlerStack extends cdk.Stack {
     const settingsResource = api.root.addResource('settings')
     settingsResource.addMethod('GET', new apigateway.LambdaIntegration(settingsGetFn), authMethodOptions)
     settingsResource.addMethod('PUT', new apigateway.LambdaIntegration(settingsPutFn), authMethodOptions)
+
+    // /users/activity
+    const usersResource = api.root.addResource('users')
+    const usersActivityResource = usersResource.addResource('activity')
+    usersActivityResource.addMethod('POST', new apigateway.LambdaIntegration(usersActivityFn), authMethodOptions)
 
     // /messages
     const messagesResource = api.root.addResource('messages')
@@ -892,10 +904,24 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-admin-users-role',
     })
 
+    const adminUsersActivityFn = new lambdaNode.NodejsFunction(this, 'AdminUsersActivityFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersActivity.ts'),
+      functionName: 'butler-admin-users-activity',
+    })
+
+    const adminUsersMemoryFn = new lambdaNode.NodejsFunction(this, 'AdminUsersMemoryFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersMemory.ts'),
+      functionName: 'butler-admin-users-memory',
+    })
+
     // Admin — DynamoDB 権限
     table.grantReadData(adminMeFn)
     table.grantReadData(adminUsersListFn)
     table.grantReadData(adminUsersDetailFn)
+    table.grantReadData(adminUsersActivityFn)
+    table.grantReadWriteData(adminUsersMemoryFn)
     table.grantReadWriteData(adminUsersRoleFn)
 
     // Admin — Cognito ListUsers/AdminGetUser 権限
@@ -924,6 +950,15 @@ export class ButlerStack extends cdk.Stack {
     // /admin/users/{userId}/role
     const adminUserRoleResource = adminUserByIdResource.addResource('role')
     adminUserRoleResource.addMethod('PUT', new apigateway.LambdaIntegration(adminUsersRoleFn), authMethodOptions)
+
+    // /admin/users/{userId}/activity
+    const adminUserActivityResource = adminUserByIdResource.addResource('activity')
+    adminUserActivityResource.addMethod('GET', new apigateway.LambdaIntegration(adminUsersActivityFn), authMethodOptions)
+
+    // /admin/users/{userId}/memory
+    const adminUserMemoryResource = adminUserByIdResource.addResource('memory')
+    adminUserMemoryResource.addMethod('GET', new apigateway.LambdaIntegration(adminUsersMemoryFn), authMethodOptions)
+    adminUserMemoryResource.addMethod('DELETE', new apigateway.LambdaIntegration(adminUsersMemoryFn), authMethodOptions)
 
     // ── Models S3 バケット（Live2D モデル保存用） ──
     const modelsBucket = new s3.Bucket(this, 'ModelsStorageBucket', {

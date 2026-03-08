@@ -104,6 +104,8 @@ export interface UIConfig {
   developerMode: boolean
   /** Live2D キャラクターの表示/非表示（バッテリー節約用） */
   characterVisible: boolean
+  /** 生活リズム学習（操作時刻の記録）— デフォルトOFF */
+  activityLoggingEnabled: boolean
 }
 
 /**
@@ -166,6 +168,7 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   sentimentEnabled: true,
   developerMode: false,
   characterVisible: true,
+  activityLoggingEnabled: false,
 }
 
 /**

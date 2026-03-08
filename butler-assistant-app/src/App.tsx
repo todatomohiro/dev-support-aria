@@ -13,6 +13,7 @@ import { useGeolocation } from './hooks/useGeolocation'
 import { useBriefing } from './hooks/useBriefing'
 import { useWeatherIcon } from './hooks/useWeatherIcon'
 import { useWebSocket } from './hooks/useWebSocket'
+import { useActivityLogger } from './hooks/useActivityLogger'
 import { logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
 import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
@@ -74,6 +75,9 @@ function App() {
 
   // プロアクティブ・ブリーフィング（起動時・復帰時にAIから話しかける）
   useBriefing()
+
+  // アクティビティログ（生活リズム学習、オプトイン時のみ有効）
+  useActivityLogger()
 
   // 天気アイコン（位置情報ベース、LLM不使用）
   const weatherInfo = useWeatherIcon()

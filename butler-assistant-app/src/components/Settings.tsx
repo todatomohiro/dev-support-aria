@@ -31,6 +31,7 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
   const [characterSize, setCharacterSize] = useState(config.ui.characterSize)
   const [geolocationEnabled, setGeolocationEnabled] = useState(config.ui.geolocationEnabled)
   const [sentimentEnabled, setSentimentEnabled] = useState(config.ui.sentimentEnabled)
+  const [activityLoggingEnabled, setActivityLoggingEnabled] = useState(config.ui.activityLoggingEnabled)
   const [developerMode, setDeveloperMode] = useState(config.ui.developerMode)
 
   const [isSaving, setIsSaving] = useState(false)
@@ -42,6 +43,7 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
     setCharacterSize(config.ui.characterSize)
     setGeolocationEnabled(config.ui.geolocationEnabled)
     setSentimentEnabled(config.ui.sentimentEnabled)
+    setActivityLoggingEnabled(config.ui.activityLoggingEnabled)
     setDeveloperMode(config.ui.developerMode)
   }, [config])
 
@@ -55,6 +57,7 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
           characterSize,
           geolocationEnabled,
           sentimentEnabled,
+          activityLoggingEnabled,
           developerMode,
         },
       })
@@ -74,6 +77,7 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
     setCharacterSize(config.ui.characterSize)
     setGeolocationEnabled(config.ui.geolocationEnabled)
     setSentimentEnabled(config.ui.sentimentEnabled)
+    setActivityLoggingEnabled(config.ui.activityLoggingEnabled)
     setDeveloperMode(config.ui.developerMode)
     onClose()
   }
@@ -253,6 +257,23 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
                     onChange={(e) => setSentimentEnabled(e.target.checked)}
                     className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     data-testid="sentiment-toggle"
+                  />
+                </label>
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      生活リズム学習
+                    </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      ONにすると、生活リズムを学習して最適なタイミングで話しかける準備を行います（操作時刻のみを記録します）
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={activityLoggingEnabled}
+                    onChange={(e) => setActivityLoggingEnabled(e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    data-testid="activity-logging-toggle"
                   />
                 </label>
                 {isAdmin && (

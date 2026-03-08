@@ -84,4 +84,22 @@ export const adminApi = {
       method: 'DELETE',
     })
   },
+
+  /** ユーザー永久記憶取得 */
+  async getUserMemory(token: string, userId: string): Promise<{ facts: string[]; preferences: string[]; lastUpdatedAt: string | null }> {
+    return authFetch(`/admin/users/${userId}/memory`, token)
+  },
+
+  /** ユーザー永久記憶の項目削除 */
+  async deleteUserMemoryItem(token: string, userId: string, category: 'facts' | 'preferences', index: number): Promise<{ success: boolean }> {
+    return authFetch(`/admin/users/${userId}/memory`, token, {
+      method: 'DELETE',
+      body: JSON.stringify({ category, index }),
+    })
+  },
+
+  /** ユーザーアクティビティ取得 */
+  async getUserActivity(token: string, userId: string, days = 30): Promise<{ activities: { date: string; activeMinutes: string[] }[]; days: number }> {
+    return authFetch(`/admin/users/${userId}/activity?days=${days}`, token)
+  },
 }

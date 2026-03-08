@@ -106,6 +106,24 @@ export function UserDetail() {
         </dl>
 
         <div className="mt-6 pt-6 border-t border-gray-200">
+          <h3 className="font-medium mb-3">データ</h3>
+          <div className="flex gap-3">
+            <button
+              onClick={() => navigate(`/users/${userId}/memory`)}
+              className="px-4 py-2 text-sm rounded cursor-pointer bg-purple-50 text-purple-700 hover:bg-purple-100"
+            >
+              永久記憶を表示
+            </button>
+            <button
+              onClick={() => navigate(`/users/${userId}/activity`)}
+              className="px-4 py-2 text-sm rounded cursor-pointer bg-blue-50 text-blue-700 hover:bg-blue-100"
+            >
+              アクティビティログを表示
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 pt-6 border-t border-gray-200">
           <h3 className="font-medium mb-3">ロール管理</h3>
           {isSelf ? (
             <p className="text-sm text-gray-500">自分のロールは変更できません</p>
