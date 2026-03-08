@@ -90,7 +90,7 @@ describe('設定フロー統合テスト', () => {
       })
     })
 
-    it('キャラクターサイズを変更できる', async () => {
+    it('フォントサイズを変更できる', async () => {
       render(
         <Settings
           isOpen={true}
@@ -100,9 +100,9 @@ describe('設定フロー統合テスト', () => {
         />
       )
 
-      // キャラクターサイズを変更
-      const slider = screen.getByTestId('character-size-slider')
-      fireEvent.change(slider, { target: { value: '120' } })
+      // フォントサイズを変更
+      const slider = screen.getByTestId('font-size-slider')
+      fireEvent.change(slider, { target: { value: '18' } })
 
       // 保存
       await act(async () => {
@@ -114,7 +114,7 @@ describe('設定フロー統合テスト', () => {
         expect(mockOnSave).toHaveBeenCalledWith(
           expect.objectContaining({
             ui: expect.objectContaining({
-              characterSize: 120,
+              fontSize: 18,
             }),
           })
         )

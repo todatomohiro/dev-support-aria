@@ -479,6 +479,17 @@ function buildUserStaticPrompt(profile?: UserProfile, permanentMemory?: Permanen
   return prompt
 }
 
+/**
+ * 画像バイナリのマジックバイトからフォーマットを検出
+ */
+function detectImageFormat(bytes: Buffer): 'jpeg' | 'png' | 'gif' | 'webp' {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return 'png'
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'gif'
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'webp'
+  return 'jpeg'
+}
+
 /** imageBase64 の最大サイズ（5MB = 約 6.67MB の base64 文字列） */
 const MAX_IMAGE_BASE64_LENGTH = Math.ceil(5 * 1024 * 1024 * 4 / 3)
 /** 要約を生成する間隔（ターン数） */
@@ -779,10 +790,11 @@ function toConverseMessages(
 
   const userContent: ContentBlock[] = [{ text: message }]
   if (imageBase64) {
+    const imageBytes = Buffer.from(imageBase64, 'base64')
     userContent.push({
       image: {
-        format: 'jpeg',
-        source: { bytes: Buffer.from(imageBase64, 'base64') },
+        format: detectImageFormat(imageBytes),
+        source: { bytes: imageBytes },
       },
     })
   }
@@ -999,18 +1011,12 @@ function extractTextFieldFromJson(content: string): string {
   } catch { /* シングルクォート変換失敗 */ }
 
   // フォールバック: 平文テキスト + JSON メタデータが混在する場合
-  // 最初の `{"` 以降を除去（LLM が JSON ラッパーなしで応答した場合）
+  // 最初のトップレベル JSON オブジェクト以降を除去
   if (!content.trimStart().startsWith('{')) {
-    const jsonStart = content.indexOf('{"')
+    const jsonStart = content.search(/\{[\s]*"/)
     if (jsonStart > 0) {
       return content.slice(0, jsonStart).trim()
     }
-  }
-
-  // フォールバック: 末尾の {"text" パターンを除去
-  const idx = content.indexOf('{"text"')
-  if (idx > 0) {
-    return content.slice(0, idx).trim()
   }
 
   // テキスト内に混入した {"suggestedReplies": ...} を除去

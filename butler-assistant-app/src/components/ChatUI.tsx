@@ -8,9 +8,45 @@ import { formatRelativeTimestamp } from '@/utils'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useVAD } from '@/hooks/useVAD'
 import { CameraPreview } from './CameraPreview'
-import type { CameraPreviewHandle } from './CameraPreview'
 
 const MapView = lazy(() => import('./MapView').then(m => ({ default: m.MapView })))
+
+/**
+ * アシスタントメッセージからJSONメタデータブロックを除去
+ */
+function stripJsonMetadata(text: string): string {
+  if (!text) return text
+  // トップレベルの JSON オブジェクトをすべて除去（ブレース対応）
+  let result = text
+  let searchFrom = 0
+  while (searchFrom < result.length) {
+    const idx = result.slice(searchFrom).search(/\{[\s]*"/)
+    if (idx < 0) break
+    const absIdx = searchFrom + idx
+    // ブレース対応で JSON の終わりを見つける
+    let depth = 0
+    let inStr = false
+    let esc = false
+    let endIdx = -1
+    for (let i = absIdx; i < result.length; i++) {
+      const ch = result[i]
+      if (esc) { esc = false; continue }
+      if (ch === '\\' && inStr) { esc = true; continue }
+      if (ch === '"' && !esc) { inStr = !inStr; continue }
+      if (inStr) continue
+      if (ch === '{') depth++
+      if (ch === '}') { depth--; if (depth === 0) { endIdx = i; break } }
+    }
+    if (endIdx > 0) {
+      result = result.slice(0, absIdx) + result.slice(endIdx + 1)
+    } else {
+      // 閉じブレースが見つからない場合は残りを全て除去
+      result = result.slice(0, absIdx)
+      break
+    }
+  }
+  return result.trim()
+}
 
 /** URL 検出用の正規表現 */
 const URL_REGEX = /https?:\/\/\S+/g
@@ -99,8 +135,11 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   const inputTextRef = useRef('')
   const autoSendEnabledRef = useRef(false)
   const isLoadingRef = useRef(false)
-  const cameraCaptureRef = useRef<CameraPreviewHandle>(null)
   const optionsContainerRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const attachMenuRef = useRef<HTMLDivElement>(null)
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [isAttachMenuOpen, setIsAttachMenuOpen] = useState(false)
 
   const { status: sttStatus, interimText, error: sttError, toggleListening, isSupported: sttSupported } =
     useSpeechRecognition({
@@ -159,9 +198,10 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       }
       const currentText = inputTextRef.current.trim()
       if (currentText) {
-        const image = cameraCaptureRef.current?.captureFrame() ?? undefined
+        const image = selectedImage ?? undefined
         // ref を即座にクリアして二重送信を防止
         inputTextRef.current = ''
+        setSelectedImage(null)
         onSendMessage(currentText, image)
         setInputText('')
       }
@@ -190,9 +230,10 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
         clearTimeout(autoSendTimerRef.current)
         autoSendTimerRef.current = null
       }
-      const image = cameraCaptureRef.current?.captureFrame() ?? undefined
+      const image = selectedImage ?? undefined
       // ref を即座にクリアして useEffect 再実行時の二重送信を防止
       inputTextRef.current = ''
+      setSelectedImage(null)
       onSendMessage(text, image)
       setInputText('')
     }
@@ -295,16 +336,42 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
         clearTimeout(autoSendTimerRef.current)
         autoSendTimerRef.current = null
       }
-      const image = cameraCaptureRef.current?.captureFrame() ?? undefined
+      const image = selectedImage ?? undefined
       onSendMessage(inputText.trim(), image)
       setInputText('')
+      setSelectedImage(null)
     }
+  }
+
+  /** ファイル選択ハンドラー */
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // 5MB制限（バックエンドと同じ）
+    if (file.size > 5 * 1024 * 1024) {
+      alert('画像サイズは5MB以下にしてください')
+      e.target.value = ''
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      // data:image/xxx;base64,... から base64 部分を抽出
+      const base64 = result.split(',')[1]
+      if (base64) {
+        setSelectedImage(base64)
+      }
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // IME 変換中は送信しない
     if (e.nativeEvent.isComposing) return
-    // Shift+Enterで改行、Enterのみで送信
+    // タッチデバイスではEnterで改行（送信ボタンのみで送信）
+    if ('ontouchstart' in window) return
+    // PCではShift+Enterで改行、Enterのみで送信
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSendClick()
@@ -313,15 +380,18 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 
   // ポップオーバー外側クリックで閉じる
   useEffect(() => {
-    if (!isPopoverOpen) return
+    if (!isPopoverOpen && !isAttachMenuOpen) return
     const handleClickOutside = (e: MouseEvent) => {
-      if (optionsContainerRef.current && !optionsContainerRef.current.contains(e.target as Node)) {
+      if (isPopoverOpen && optionsContainerRef.current && !optionsContainerRef.current.contains(e.target as Node)) {
         setIsPopoverOpen(false)
+      }
+      if (isAttachMenuOpen && attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setIsAttachMenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [isPopoverOpen])
+  }, [isPopoverOpen, isAttachMenuOpen])
 
   // 組み込みオプションを InputOption[] に変換
   const builtinOptions: InputOption[] = [
@@ -332,13 +402,6 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       enabled: autoSendEnabled,
       onToggle: (enabled: boolean) => setAutoSendEnabled(enabled),
     }] : []),
-    {
-      key: 'camera',
-      label: 'カメラ',
-      icon: '📷',
-      enabled: cameraEnabled,
-      onToggle: (enabled: boolean) => onToggleCamera(enabled),
-    },
     ...(developerMode ? [{
       key: 'tts',
       label: '自動読み上げ',
@@ -452,7 +515,32 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 
       {/* 入力エリア */}
       <div className="border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4">
-        <CameraPreview ref={cameraCaptureRef} enabled={cameraEnabled} />
+        <CameraPreview
+          enabled={cameraEnabled}
+          onCapture={(base64) => {
+            setSelectedImage(base64)
+            onToggleCamera(false)
+          }}
+        />
+        {/* 添付画像プレビュー */}
+        {selectedImage && (
+          <div className="relative inline-block mb-2" data-testid="image-preview">
+            <img
+              src={`data:image/jpeg;base64,${selectedImage}`}
+              alt="添付画像"
+              className="max-h-24 rounded-lg border border-gray-200 dark:border-gray-700"
+            />
+            <button
+              type="button"
+              onClick={() => setSelectedImage(null)}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-700 text-white flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+              title="画像を削除"
+              data-testid="image-preview-remove"
+            >
+              ×
+            </button>
+          </div>
+        )}
         {/* 中間結果（認識中テキスト） */}
         {interimText && (
           <p className="text-xs text-gray-400 italic px-1 mb-1 truncate">
@@ -495,17 +583,67 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
           </div>
           {/* Row 2: ツールバー */}
           <div className="flex items-center gap-1.5 px-1.5 pb-1.5">
-          {/* + ボタン（将来のファイル添付用） */}
-          <button
-            type="button"
-            disabled
-            className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-gray-400 dark:text-gray-500 cursor-not-allowed"
-            title="ファイル添付（準備中）"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
+          {/* + ボタン（添付メニュー） */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileSelect}
+            data-testid="file-input"
+          />
+          <div className="relative" ref={attachMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsAttachMenuOpen(!isAttachMenuOpen)}
+              className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                selectedImage || cameraEnabled
+                  ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
+                  : isAttachMenuOpen
+                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+              title="画像を添付"
+              data-testid="file-attach-button"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+            {isAttachMenuOpen && (
+              <div className="absolute left-0 bottom-full mb-2 min-w-[140px] rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-1 z-20" data-testid="attach-menu">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAttachMenuOpen(false)
+                    fileInputRef.current?.click()
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  data-testid="attach-file"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span>ファイル</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAttachMenuOpen(false)
+                    onToggleCamera(!cameraEnabled)
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  data-testid="attach-camera"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>{cameraEnabled ? 'カメラOFF' : 'カメラ'}</span>
+                </button>
+              </div>
+            )}
+          </div>
           {/* ⚙ オプションボタン + ポップオーバー */}
           <div className="relative" ref={optionsContainerRef}>
             <button
@@ -674,9 +812,15 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
                     {children}
                   </a>
                 ),
+                // 空のコードブロックを非表示
+                pre: ({ children, ...props }) => {
+                  const text = String(children).replace(/\n$/, '')
+                  if (!text || text === '[object Object]') return null
+                  return <pre {...props}>{children}</pre>
+                },
               }}
             >
-              {message.content}
+              {stripJsonMetadata(message.content)}
             </ReactMarkdown>
           </div>
         )}

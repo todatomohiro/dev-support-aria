@@ -47,8 +47,8 @@ function extractStreamingText(raw: string): string {
   }
 
   // 平文モード: 最初の JSON オブジェクト以降をすべて除外
-  // LLM は平文 → {"emotion":...} → {"text":..., ...} の順で出力する場合がある
-  const firstJsonIndex = raw.search(/\{"/)
+  // LLM は平文 → {"emotion":...} や {\n  "emotion":...} の順で出力する場合がある
+  const firstJsonIndex = raw.search(/\{[\s]*"/)
   if (firstJsonIndex > 0) {
     return raw.slice(0, firstJsonIndex).trim()
   }

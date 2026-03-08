@@ -98,16 +98,26 @@ describe('ChatUI', () => {
       expect(onSendMessage).toHaveBeenCalledWith('テストメッセージ', undefined)
     })
 
-    it('Enterキーでメッセージを送信できる', () => {
-      const onSendMessage = vi.fn()
-      renderChatUI({ onSendMessage })
+    it('Enterキーでメッセージを送信できる（PC）', () => {
+      // PC環境をシミュレート（ontouchstartが無い）
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const win = window as any
+      const hadTouch = 'ontouchstart' in window
+      if (hadTouch) delete win.ontouchstart
 
-      const input = screen.getByTestId('chat-input')
+      try {
+        const onSendMessage = vi.fn()
+        renderChatUI({ onSendMessage })
 
-      fireEvent.change(input, { target: { value: 'テストメッセージ' } })
-      fireEvent.keyDown(input, { key: 'Enter' })
+        const input = screen.getByTestId('chat-input')
 
-      expect(onSendMessage).toHaveBeenCalledWith('テストメッセージ', undefined)
+        fireEvent.change(input, { target: { value: 'テストメッセージ' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+
+        expect(onSendMessage).toHaveBeenCalledWith('テストメッセージ', undefined)
+      } finally {
+        if (hadTouch) win.ontouchstart = null
+      }
     })
 
     it('Shift+Enterでは送信されない', () => {
@@ -142,6 +152,11 @@ describe('ChatUI', () => {
       fireEvent.click(screen.getByTestId('send-button'))
 
       expect(input.value).toBe('')
+    })
+
+    it('画像添付ボタンが表示される', () => {
+      renderChatUI()
+      expect(screen.getByTestId('file-attach-button')).toBeInTheDocument()
     })
   })
 
