@@ -11,7 +11,7 @@
 | フロントエンド | React 19 + TypeScript + Vite 7 + Tailwind CSS 4 |
 | 状態管理 | Zustand |
 | Live2D 描画 | PixiJS 7 + pixi-live2d-display |
-| LLM | Amazon Bedrock（Claude Haiku 4.5）Converse API + Tool Use |
+| LLM | Amazon Bedrock（Claude Haiku 4.5 / Sonnet 4.6 / Opus 4.6）Converse API + Tool Use |
 | 音声合成 | Amazon Polly |
 | 音声認識 | Web Speech API + VAD（Voice Activity Detection） |
 | 認証 | Amazon Cognito + AWS Amplify（SRP 認証フロー） |
@@ -28,6 +28,8 @@
 - emotion（表情）は毎回必須、motion（モーション）は省略可 — モデルの設定に応じて動的に決定
 - LLM レスポンスは JSON 構造化（text, emotion, motion?, suggestedReplies, mapData）
 - **WebSocket ストリーミング**: REST トリガー + WebSocket プッシュでリアルタイムタイプライター表示（メイン・トピック両対応）
+- **画像送信**: ファイル選択 or カメラ撮影 → base64 → Bedrock ImageBlock（JPEG/PNG/GIF/WebP 自動判定）
+- 送信画像はチャットバブル内にサムネイル表示（240x180px）
 - 音声入力（VAD 対応・自動送信）→ AI 応答 → 音声読み上げ（Polly）の一連のフロー
 - Markdown レンダリング対応の応答表示
 - **キャラクター表示切替**: Live2D の表示/非表示をトグル可能（非表示時は GPU 節約、天気は折りたたみバーで継続表示）
@@ -94,7 +96,7 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 **抽出ロジック** (`extractFacts.ts`):
 1. 対象セッションの全メッセージを DynamoDB から取得
 2. 既存の永久記憶を取得（facts + preferences、重複排除のため）
-3. Haiku 4.5 に「既に記録済みの FACTS/PREFERENCES + 会話テキスト」を送信
+3. LLM（BACKGROUND_MODEL_ID）に「既に記録済みの FACTS/PREFERENCES + 会話テキスト」を送信
 4. **JSON出力**: `{"facts":["事実1","事実2"],"preferences":["設定1","設定2"]}` 形式で抽出
 5. 1回最大: FACTS 10個、PREFERENCES 5個。ユーザーが明言した内容のみ（推測は含めない）
 6. 既存とマージ、カテゴリ別に統合閾値チェック → LLM で自動統合（60〜70%に圧縮）
@@ -172,7 +174,7 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 
 **ローリング要約** (`summarize.ts`):
 - **トリガー**: 5ターンごとに chat Lambda が非同期起動（`InvocationType: 'Event'`）
-- **処理**: Haiku 4.5 に「前回の要約 + 新しい会話」を送信 → 500文字以内の統合要約を生成
+- **処理**: LLM（BACKGROUND_MODEL_ID）に「前回の要約 + 新しい会話」を送信 → 500文字以内の統合要約を生成
 - **セグメント要約**: 同時に当該区間のみのキーワード（2〜3個）+ 300文字以内の要約を生成 → チェックポイントとして保存
 - **セッションレコード更新**: `summary`, `turnsSinceSummary=0`, `lastSummarizedAt` を書き戻し
 
@@ -573,7 +575,7 @@ useWeatherIcon hook
 
 ```
 butler-assistant-app/     ← メインアプリ（React + Vite）
-├── コンポーネント 34個 / サービス 20個 / フック 10個 / ストア 3個
+├── コンポーネント 35個 / サービス 20個 / フック 11個 / ストア 3個
 ├── プラットフォーム抽象化（Web / Tauri / Capacitor）
 ├── Live2D レンダリング + フェイストラッキング（MediaPipe + Kalidokit）
 └── PoC（音声認識、GPS、感情分析、フェイストラッキング、ターミナル等）
@@ -600,7 +602,7 @@ aiba-extension/           ← Chrome 拡張機能（Manifest V3）
 butler-assistant-app/          # フロントエンド（React + Vite + TypeScript）
 ├── src/
 │   ├── auth/               # 認証（Cognito + AWS Amplify）
-│   ├── components/         # React コンポーネント 34個（PascalCase.tsx）
+│   ├── components/         # React コンポーネント 35個（PascalCase.tsx）
 │   │   ├── ChatUI.tsx          # メインチャットUI
 │   │   ├── ThemeChat.tsx       # トピック別チャット
 │   │   ├── GroupChat.tsx       # グループチャット
@@ -616,7 +618,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── WorkConnectModal.tsx # MCP接続モーダル
 │   │   ├── WeatherOverlay.tsx  # 天気アイコン+気温オーバーレイ
 │   │   └── ...                 # モーダル、ナビゲーション等
-│   ├── hooks/              # カスタムフック 10個
+│   ├── hooks/              # カスタムフック 11個
 │   │   ├── useSpeechRecognition.ts  # 音声認識（Web Speech API）
 │   │   ├── useVAD.ts               # Voice Activity Detection
 │   │   ├── useCamera.ts            # カメラ制御
@@ -626,7 +628,8 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── useThemePolling.ts      # トピック ポーリング
 │   │   ├── useQRScanner.ts         # QR コード読み込み
 │   │   ├── useBriefing.ts          # プロアクティブ・ブリーフィング
-│   │   └── useWeatherIcon.ts       # 天気アイコン表示（Open-Meteo API）
+│   │   ├── useWeatherIcon.ts       # 天気アイコン表示（Open-Meteo API）
+│   │   └── useActivityLogger.ts    # アクティビティログ
 │   ├── services/           # ビジネスロジック 20個（camelCase.ts、index.ts 除く）
 │   │   ├── llmClient.ts        # LLM (Bedrock Claude) 通信
 │   │   ├── chatController.ts   # チャットコントローラー
@@ -645,9 +648,9 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── wsService.ts        # WebSocket サービス
 │   │   ├── syncService.ts      # メッセージ同期
 │   │   ├── skillClient.ts      # OAuth スキル接続
+│   │   ├── searchService.ts    # 検索サービス
 │   │   ├── greetingService.ts  # 挨拶生成
-│   │   ├── sentimentService.ts # 感情分析
-│   │   └── ...
+│   │   └── sentimentService.ts # 感情分析
 │   ├── stores/             # Zustand 状態管理 3個
 │   │   ├── appStore.ts         # メッセージ、モーション、設定、lastBriefingContext（persist有、ブリーフィングコンテキストは非永続）
 │   │   ├── themeStore.ts       # トピック一覧、アクティブトピック
@@ -662,7 +665,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 └── ios/                    # Capacitor 8 iOS
 
 butler-admin-app/              # 管理画面（React + Cognito TOTP MFA）
-├── src/components/         # コンポーネント 12個
+├── src/components/         # コンポーネント 14個
 │   ├── UserTable.tsx           # ユーザー一覧
 │   ├── UserDetail.tsx          # ユーザー詳細
 │   ├── ModelManagement.tsx     # Live2Dモデル管理
@@ -677,7 +680,8 @@ infra/
 ├── lib/butler-stack.ts     # AWS インフラ定義（CDK）
 └── lambda/
     ├── llm/                # LLM チャット
-    │   ├── chat.ts             # メインハンドラー（システムプロンプト生成・Prompt Caching・ブリーフィング）
+    │   ├── chat.ts             # メインハンドラー（システムプロンプト生成・Prompt Caching・ブリーフィング・画像対応）
+    │   ├── models.ts           # Bedrock モデル ID 一元管理（BACKGROUND_MODEL_ID, CHAT_MODEL_ID_MAP）
     │   ├── skills/             # スキル実装 7ファイル
     │   │   ├── toolDefinitions.ts  # ツール定義
     │   │   ├── index.ts            # スキルルーティング
@@ -686,8 +690,8 @@ infra/
     │   │   ├── webSearch.ts        # Web検索（Brave Search）
     │   │   ├── weather.ts          # 天気予報（Open-Meteo）
     │   │   └── tokenManager.ts     # Google OAuth トークン管理
-    │   ├── summarize.ts        # ローリング要約（Haiku 4.5）
-    │   ├── extractFacts.ts     # 永久事実抽出（Haiku 4.5）
+    │   ├── summarize.ts        # ローリング要約（BACKGROUND_MODEL_ID）
+    │   ├── extractFacts.ts     # 永久事実抽出（BACKGROUND_MODEL_ID）
     │   └── sessionFinalizer.ts # セッション終了検出（EventBridge 15分）
     ├── themes/             # トピック管理（create, list, delete, update, messages）
     ├── friends/            # フレンド管理（generateCode, getCode, link, list, unfriend）
@@ -786,7 +790,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 |-----------|------|------|
 | `message` | ○ | ユーザーメッセージ。ブリーフィング時は `__briefing__` |
 | `sessionId` | △ | フロントで生成した UUID。未指定時はセッション管理なし |
-| `imageBase64` | × | 画像添付（Bedrock に画像として送信） |
+| `imageBase64` | × | 画像添付（マジックバイトで JPEG/PNG/GIF/WebP 自動判定 → Bedrock ImageBlock） |
 | `themeId` | × | トピック別チャット時。メッセージの名前空間が変わる |
 | `userLocation` | × | GPS座標。場所検索・天気のコンテキストに使用 |
 | `modelKey` | × | LLMモデル選択（haiku/sonnet/opus）。未指定=haiku |
@@ -850,7 +854,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 ```
 1. chat_delta: rawContent に蓄積 → extractStreamingText() で JSON 除去 → タイプライター表示
 2. chat_complete: parseStreamedContent() で最終パース
-   a. extractStreamingText(): 最初の '{"' 出現位置以降を除去 → テキスト抽出
+   a. extractStreamingText(): 最初の /\{[\s]*"/ パターン以降を除去 → テキスト抽出
    b. findJsonObjects(): ブレース深度追跡パーサーで全 JSON オブジェクトを抽出
    c. 末尾から逆順に JSON を走査、text フィールドを含む最後のオブジェクトを優先
    d. emotion/motion/mapData/suggestedReplies 等のメタデータ抽出
@@ -898,13 +902,15 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 ※ ブリーフィングモード時は上記フローの前にブリーフィング専用処理が挿入される（8-1 参照）
 ```
 
-### Bedrock 推論設定
+### Bedrock 推論設定（`infra/lambda/llm/models.ts` で一元管理）
 
-| モデル | モデルID | maxTokens | maxTokens(画像) | temperature |
+| モデル | モデルID（models.ts） | maxTokens | maxTokens(画像) | temperature |
 |--------|---------|-----------|----------------|-------------|
-| haiku | `jp.anthropic.claude-haiku-4-5-20251001-v1:0` | 1024 | 2048 | 0.7 |
+| haiku（BACKGROUND_MODEL_ID） | `jp.anthropic.claude-haiku-4-5-20251001-v1:0` | 1024 | 2048 | 0.7 |
 | sonnet | `jp.anthropic.claude-sonnet-4-6` | 2048 | 4096 | 0.7 |
 | opus | `global.anthropic.claude-opus-4-6-v1` | 4096 | 4096 | 0.7 |
+
+バックグラウンド処理（要約・事実抽出）は `BACKGROUND_MODEL_ID` を使用。将来のモデル更新時は `models.ts` を変更するだけで全 Lambda に反映される。
 
 ### TTS API
 
@@ -1031,20 +1037,20 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 | EventBridge | `rate(15 minutes)` → sessionFinalizer |
 | AgentCore Memory | 中期記憶（SEMANTIC + USER_PREFERENCE） |
 | CloudFront + S3 | 管理画面ホスティング + モデル CDN |
-| Bedrock | Claude Haiku 4.5（推論プロファイル: `jp.anthropic.claude-haiku-4-5-20251001-v1:0`） |
+| Bedrock | Claude Haiku 4.5 / Sonnet 4.6 / Opus 4.6（models.ts で一元管理） |
 
 ## 規模
 
 | 項目 | 数量 |
 |------|------|
-| フロントエンド コンポーネント | 34個 |
-| カスタムフック | 10個 |
+| フロントエンド コンポーネント | 35個 |
+| カスタムフック | 11個 |
 | サービス | 20個 |
 | Zustand ストア | 3個 |
-| Lambda 関数 | 35個 |
+| Lambda 関数 | 35+個（19ディレクトリ） |
 | LLM スキル | 7種（カレンダー×2、場所検索、Web検索、天気、メモ×4） |
 | テスト | 719テスト / 48ファイル |
-| 管理画面 コンポーネント | 12個 |
+| 管理画面 コンポーネント | 14個 |
 | Chrome 拡張 | 10ファイル |
 | 型定義ファイル | 10個 |
 | 対応プラットフォーム | 3種（Web / Tauri / Capacitor iOS） |
