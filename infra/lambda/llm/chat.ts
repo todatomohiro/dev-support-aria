@@ -1533,10 +1533,16 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     themeContext = themeCtx
     mcpConn = mcpConnResult
 
+    // お題ありトピックでは過去セッション要約・ブリーフィングコンテキストを除外
+    // （会話の焦点がブレるのを防止。free / 未設定は従来通り継承）
+    const isTopicWithCategory = Boolean(themeContext?.category && themeContext.category !== 'free')
+
     // 新フロー: DynamoDB からセッションコンテキストを構築（並列取得）
     const [sessionContext, pastSessions] = await Promise.all([
       getSessionContext(userId, sessionId, { msgPK, sessionSK: sessionRecordSK }),
-      getRecentSessionSummaries(userId, sessionId),
+      isTopicWithCategory
+        ? Promise.resolve([])
+        : getRecentSessionSummaries(userId, sessionId),
     ])
     sessionTurnsSinceSummary = sessionContext.turnsSinceSummary
     sessionSummary = sessionContext.summary
@@ -1552,6 +1558,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.log(`[LLM] MCP接続: serverUrl=${mcpConn.serverUrl}, expired=${mcpConn.isExpired}, tools=${mcpConn.tools.length}`)
     }
 
+    // お題ありトピックではブリーフィングコンテキストも除外
+    const effectiveBriefingContext = isTopicWithCategory ? undefined : lastBriefingContext
+
     system = buildSystemContentBlocks(
       staticPrompt,
       userStaticPrompt,
@@ -1563,7 +1572,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       themeContext ?? undefined,
       workContext,
       userLocation,
-      lastBriefingContext
+      effectiveBriefingContext
     )
     enhancedSystemPrompt = systemBlocksToString(system)
 
@@ -1574,8 +1583,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       const totalSessions = pastSessions.reduce((sum, g) => sum + g.sessions.length, 0)
       console.log(`[LLM] 過去セッション ${totalSessions} 件（${pastSessions.length} 日分）をプロンプトに注入`)
     }
-    if (lastBriefingContext) {
-      console.log(`[LLM] ブリーフィングコンテキスト注入: ${lastBriefingContext.length} 文字`)
+    if (isTopicWithCategory) {
+      console.log(`[LLM] お題ありトピック（category=${themeContext!.category}）: 過去セッション要約・ブリーフィングコンテキストを除外`)
+    }
+    if (effectiveBriefingContext) {
+      console.log(`[LLM] ブリーフィングコンテキスト注入: ${effectiveBriefingContext.length} 文字`)
     }
 
     // ワーク（MCP）接続時: 会話履歴を含めず現在のメッセージのみで推論（過去のツール結果による汚染を完全防止）
