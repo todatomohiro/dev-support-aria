@@ -291,16 +291,32 @@ function App() {
     }
   }, [activeThemeId])
 
-  // テーマ提案から作成ハンドラー
+  // テーマ提案から作成ハンドラー（メイン会話の文脈を引き継ぐ）
   const handleCreateThemeFromSuggestion = useCallback(async (themeName: string) => {
     try {
-      const result = await themeService.createTheme(themeName)
+      // メイン会話の直近メッセージからコンテキストを構築
+      const appMessages = useAppStore.getState().messages
+      const recentMessages = appMessages.slice(-6) // 直近3往復
+      const contextLines = recentMessages
+        .map((m) => `${m.role === 'user' ? 'ユーザー' : 'アシスタント'}: ${m.content.slice(0, 200)}`)
+        .join('\n')
+
+      // カテゴリ付きでテーマ作成（カテゴリ選択画面をスキップ）
+      const result = await themeService.createTheme(themeName, 'free')
       const store = useThemeStore.getState()
-      // テーマ一覧を更新
       const themes = await themeService.listThemes()
       store.setThemes(themes)
+
       // 作成したテーマに遷移
       navigate(`/themes/${result.themeId}`)
+
+      // コンテキスト付きで初期メッセージを自動送信（遷移後に非同期実行）
+      setTimeout(async () => {
+        const initialMessage = contextLines
+          ? `メイン会話から「${themeName}」について続けたい。\n\n【これまでの会話の要約】\n${contextLines}`
+          : `「${themeName}」について話したい`
+        await chatController.sendThemeMessage(initialMessage, result.themeId)
+      }, 300)
     } catch (error) {
       console.error('[App] テーマ作成エラー:', error)
     }
