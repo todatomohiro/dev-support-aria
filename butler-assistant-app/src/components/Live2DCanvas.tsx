@@ -508,6 +508,13 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
     }
   }, [])
 
+  // モデル読み込み完了時にアイドル行動を開始（初回マウント・ルート遷移後の再マウント対応）
+  useEffect(() => {
+    if (!showPlaceholder && !isLoading && !error) {
+      startIdleBehavior()
+    }
+  }, [showPlaceholder, isLoading, error, startIdleBehavior])
+
   // メッセージ送信時（isLoading 変化）のアイドル行動制御
   const prevIsLoadingRef = useRef(useAppStore.getState().isLoading)
   useEffect(() => {
