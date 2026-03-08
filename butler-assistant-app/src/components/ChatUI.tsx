@@ -132,6 +132,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   const scrollHeightBeforeRef = useRef<number>(0)
   const isLoadingEarlierRef = useRef(false)
   const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const inputTextRef = useRef('')
   const autoSendEnabledRef = useRef(false)
   const isLoadingRef = useRef(false)
@@ -144,7 +145,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   const { status: sttStatus, interimText, error: sttError, toggleListening, isSupported: sttSupported } =
     useSpeechRecognition({
       lang: 'ja-JP',
-      continuous: autoSendEnabled,
+      continuous: true,
       onResult: (text) => {
         setInputText((prev) => prev + text)
         // VAD 非対応時のみタイマーで自動送信（VAD 対応時は無音検知に任せる）
@@ -159,6 +160,13 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 
   // ref を最新値に同期（setTimeout クロージャ問題回避）
   useEffect(() => { inputTextRef.current = inputText }, [inputText])
+  // textarea の高さをテキスト量に応じて自動調整（最大6行分）
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`
+  }, [inputText, interimText])
   useEffect(() => { autoSendEnabledRef.current = autoSendEnabled }, [autoSendEnabled])
   useEffect(() => { isLoadingRef.current = isLoading }, [isLoading])
   useEffect(() => { vadSpeakingRef.current = vadSpeaking }, [vadSpeaking])
@@ -558,12 +566,13 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
           {/* Row 1: textarea + 送信アイコン */}
           <div className="relative">
             <textarea
+              ref={textareaRef}
               value={inputText}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder="メッセージを入力..."
-              className="w-full resize-none bg-transparent text-gray-900 dark:text-gray-100 p-2.5 sm:p-3 pr-11 border-none"
-              style={{ outline: 'none', boxShadow: 'none' }}
+              className="w-full resize-none overflow-y-auto bg-transparent text-gray-900 dark:text-gray-100 p-2.5 sm:p-3 pr-11 border-none"
+              style={{ outline: 'none', boxShadow: 'none', maxHeight: '144px' }}
               rows={1}
               disabled={isLoading}
               data-testid="chat-input"

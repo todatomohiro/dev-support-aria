@@ -104,3 +104,25 @@ button:focus-visible {
 .animate-greeting {
   animation: greeting-fade 6s ease-in-out forwards;
 }
+
+/* キャラクター背景パーティクル */
+@keyframes particle-drift {
+  0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
+}
+
+.animate-particle-drift {
+  animation: particle-drift linear infinite;
+}
+
+/* キャラクター背景オーロラ */
+@keyframes aurora-move {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(40px, -30px) scale(1.2); }
+}
+
+.animate-aurora-move {
+  animation: aurora-move ease-in-out infinite alternate;
+}

@@ -122,6 +122,9 @@ export function useSpeechRecognition(options?: UseSpeechRecognitionOptions): Use
       recognitionRef.current = null
     }
 
+    // stopListening で false にされた場合に備え、開始時に continuous を復元
+    isContinuousRef.current = continuous
+
     const recognition = new SpeechRecognition()
     recognition.lang = lang
     recognition.continuous = isContinuousRef.current
@@ -186,7 +189,7 @@ export function useSpeechRecognition(options?: UseSpeechRecognitionOptions): Use
       setStatus('error')
       setError('音声認識の開始に失敗しました。')
     }
-  }, [lang])
+  }, [lang, continuous])
 
   /** 音声認識の停止 */
   const stopListening = useCallback(() => {

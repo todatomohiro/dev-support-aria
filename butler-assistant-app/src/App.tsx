@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen, StudioCamera, WeatherOverlay, SearchModal } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen, StudioCamera, WeatherOverlay, SearchModal, ParticleBackground } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
@@ -513,6 +513,8 @@ function App() {
             {showLive2D && (
               <div className="h-[25vh] md:h-auto md:w-1/3 md:min-w-[280px] md:max-w-[400px] bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0 overflow-hidden">
                 <div className="relative min-h-0 flex-1 overflow-hidden">
+                  {/* キャラクター背景パーティクル */}
+                  <ParticleBackground />
                   {/* 天気アイコン */}
                   {weatherInfo && <WeatherOverlay weather={weatherInfo} />}
                   <Live2DCanvas
