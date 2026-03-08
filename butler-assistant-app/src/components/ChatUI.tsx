@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm'
 import type { Message } from '@/types'
 import { ttsService } from '@/services/ttsService'
 import { memoService } from '@/services/memoService'
-import { formatTime } from '@/utils'
+import { formatRelativeTimestamp } from '@/utils'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useVAD } from '@/hooks/useVAD'
 import { CameraPreview } from './CameraPreview'
@@ -687,7 +687,7 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
         )}
         <div className="flex items-center justify-between mt-1">
           <span className="text-[10px] sm:text-xs opacity-70">
-            {formatTime(message.timestamp)}
+            {formatRelativeTimestamp(message.timestamp)}
           </span>
           <div className="flex items-center">
             {!isUser && developerMode && promptText && (

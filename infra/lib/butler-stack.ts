@@ -239,6 +239,14 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-memos-delete',
     })
 
+    // ── Search Lambda 関数 ──
+    const searchQueryFn = new lambdaNode.NodejsFunction(this, 'SearchQueryFn', {
+      ...lambdaDefaults,
+      timeout: cdk.Duration.seconds(15),
+      entry: path.join(__dirname, '..', 'lambda', 'search', 'query.ts'),
+      functionName: 'butler-search-query',
+    })
+
     // ── Conversations Lambda 関数（/groups ルートで利用）──
     const conversationsListFn = new lambdaNode.NodejsFunction(this, 'ConversationsListFn', {
       ...lambdaDefaults,
@@ -630,6 +638,9 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadData(memosListFn)
     table.grantReadWriteData(memosDeleteFn)
 
+    // Search — DynamoDB 権限
+    table.grantReadData(searchQueryFn)
+
     // Themes — DynamoDB 権限
     table.grantReadWriteData(themesCreateFn)
     table.grantReadData(themesListFn)
@@ -756,6 +767,10 @@ export class ButlerStack extends cdk.Stack {
     // /memos/{memoId}
     const memoByIdResource = memosResource.addResource('{memoId}')
     memoByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(memosDeleteFn), authMethodOptions)
+
+    // /search
+    const searchResource = api.root.addResource('search')
+    searchResource.addMethod('GET', new apigateway.LambdaIntegration(searchQueryFn), authMethodOptions)
 
     // /themes
     const themesResource = api.root.addResource('themes')

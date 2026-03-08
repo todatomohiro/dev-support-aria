@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen, StudioCamera, WeatherOverlay } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen, StudioCamera, WeatherOverlay, SearchModal } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
@@ -30,6 +30,7 @@ function App() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [authModalInitialView, setAuthModalInitialView] = useState<AuthView>('login')
   const [isInitialized, setIsInitialized] = useState(false)
@@ -96,6 +97,18 @@ function App() {
         : location.pathname.startsWith('/groups')
           ? 'グループチャット'
           : 'AIチャット'
+
+  // Cmd+K で検索モーダルを開く
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setIsSearchOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // 初期化処理
   useEffect(() => {
@@ -442,6 +455,16 @@ function App() {
           onRenameSession={activeThemeId ? handleRenameTheme : undefined}
           headerRight={
             <>
+              <button
+                onClick={() => setIsSearchOpen(true)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+                title="検索 (⌘K)"
+                data-testid="search-button"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
               <UserMenu onOpenProfile={() => setIsProfileOpen(true)} onOpenSettings={() => setIsSettingsOpen(true)} />
               {config.ui.developerMode && (
                 isPocPage ? (
@@ -595,6 +618,9 @@ function App() {
         onSave={handleSaveSettings}
         geolocationStatus={{ location: geoLocation, loading: geoLoading, error: geoError }}
       />
+
+      {/* 検索モーダル */}
+      <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
 
       {/* プロフィールモーダル */}
       <ProfileModal
