@@ -800,6 +800,15 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
             : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
         }`}
       >
+        {/* ユーザー送信画像 */}
+        {message.imageBase64 && (
+          <img
+            src={`data:image/jpeg;base64,${message.imageBase64}`}
+            alt="送信画像"
+            className="max-w-[240px] max-h-[180px] rounded-md mb-1.5 object-cover"
+            data-testid="message-image"
+          />
+        )}
         {isUser ? (
           <p className="whitespace-pre-wrap">{linkifyContent(message.content, true)}</p>
         ) : (

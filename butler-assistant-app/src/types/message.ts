@@ -9,6 +9,8 @@ export interface Message {
   content: string
   timestamp: number
   motion?: string
+  /** ユーザーが送信した画像（base64） */
+  imageBase64?: string
   /** LLM が返した StructuredResponse の JSON 文字列（開発者モード表示用） */
   rawResponse?: string
   /** 場所検索結果の地図データ */

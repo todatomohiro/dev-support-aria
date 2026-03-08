@@ -133,6 +133,7 @@ class ChatControllerImpl {
       role: 'user',
       content: content.trim(),
       timestamp: Date.now(),
+      ...(imageBase64 ? { imageBase64 } : {}),
     }
 
     // ストアにユーザーメッセージを追加
@@ -589,6 +590,7 @@ class ChatControllerImpl {
       role: 'user',
       content: content.trim(),
       timestamp: Date.now(),
+      ...(imageBase64 ? { imageBase64 } : {}),
     }
 
     // ストアにユーザーメッセージを追加
