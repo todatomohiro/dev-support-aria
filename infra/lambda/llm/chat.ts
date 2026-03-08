@@ -36,12 +36,10 @@ const SUMMARIZE_FUNCTION_NAME = process.env.SUMMARIZE_FUNCTION_NAME ?? ''
 const WEBSOCKET_ENDPOINT = process.env.WEBSOCKET_ENDPOINT ?? ''
 const MAX_TOOL_USE_ITERATIONS = 5
 
+import { CHAT_MODEL_ID_MAP } from './models'
+
 /** モデルキーから Bedrock 推論プロファイル ID へのマッピング */
-const MODEL_ID_MAP: Record<string, string> = {
-  haiku: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0',
-  sonnet: 'jp.anthropic.claude-sonnet-4-6',
-  opus: 'global.anthropic.claude-opus-4-6-v1',
-}
+const MODEL_ID_MAP = CHAT_MODEL_ID_MAP
 
 /** モデルキーごとの推論設定 */
 const MODEL_INFERENCE_CONFIG: Record<string, { maxTokens: number; imageMaxTokens: number }> = {

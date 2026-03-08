@@ -2,6 +2,7 @@ import {
   BedrockRuntimeClient,
   ConverseCommand,
 } from '@aws-sdk/client-bedrock-runtime'
+import { BACKGROUND_MODEL_ID } from './models'
 import {
   DynamoDBClient,
   GetItemCommand,
@@ -113,13 +114,13 @@ export const handler: Handler<SummarizeEvent, void> = async (event) => {
   // Haiku 4.5 でローリング要約とセグメント要約を並列生成
   const [rollingResult, segmentResult] = await Promise.all([
     bedrock.send(new ConverseCommand({
-      modelId: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0',
+      modelId: BACKGROUND_MODEL_ID,
       messages: [{ role: 'user', content: [{ text: userPrompt }] }],
       system: [{ text: SUMMARY_PROMPT }],
       inferenceConfig: { maxTokens: 1024, temperature: 0.3 },
     })),
     bedrock.send(new ConverseCommand({
-      modelId: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0',
+      modelId: BACKGROUND_MODEL_ID,
       messages: [{ role: 'user', content: [{ text: `会話：\n${conversationText}` }] }],
       system: [{ text: SEGMENT_SUMMARY_PROMPT }],
       inferenceConfig: { maxTokens: 512, temperature: 0.3 },

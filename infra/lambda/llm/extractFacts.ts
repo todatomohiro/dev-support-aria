@@ -2,6 +2,7 @@ import {
   BedrockRuntimeClient,
   ConverseCommand,
 } from '@aws-sdk/client-bedrock-runtime'
+import { BACKGROUND_MODEL_ID } from './models'
 import {
   DynamoDBClient,
   GetItemCommand,
@@ -134,7 +135,7 @@ async function consolidateItems(items: string[], category: 'facts' | 'preference
 
   try {
     const result = await bedrock.send(new ConverseCommand({
-      modelId: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0',
+      modelId: BACKGROUND_MODEL_ID,
       messages: [{ role: 'user', content: [{ text: userPrompt }] }],
       system: [{ text: FACT_CONSOLIDATION_PROMPT }],
       inferenceConfig: { maxTokens: 2048, temperature: 0.2 },
@@ -251,7 +252,7 @@ export const handler: Handler<ExtractFactsEvent, void> = async (event) => {
 
   // 4. Haiku 4.5 で事実抽出（JSON出力）
   const result = await bedrock.send(new ConverseCommand({
-    modelId: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0',
+    modelId: BACKGROUND_MODEL_ID,
     messages: [{ role: 'user', content: [{ text: userPrompt }] }],
     system: [{ text: FACT_EXTRACTION_PROMPT }],
     inferenceConfig: {
