@@ -998,6 +998,15 @@ function extractTextFieldFromJson(content: string): string {
     }
   } catch { /* シングルクォート変換失敗 */ }
 
+  // フォールバック: 平文テキスト + JSON メタデータが混在する場合
+  // 最初の `{"` 以降を除去（LLM が JSON ラッパーなしで応答した場合）
+  if (!content.trimStart().startsWith('{')) {
+    const jsonStart = content.indexOf('{"')
+    if (jsonStart > 0) {
+      return content.slice(0, jsonStart).trim()
+    }
+  }
+
   // フォールバック: 末尾の {"text" パターンを除去
   const idx = content.indexOf('{"text"')
   if (idx > 0) {
@@ -1176,7 +1185,7 @@ function getJSTDateLabel(dateKey: string, todayKey: string, yesterdayKey: string
 /**
  * DynamoDB からテーマセッション情報を取得
  */
-async function getThemeContext(userId: string, themeId: string): Promise<{ themeName: string; category?: string; subcategory?: string } | null> {
+async function getThemeContext(userId: string, themeId: string): Promise<{ themeName: string; category?: string; subcategory?: string; totalTurns?: number; renamedByUser?: boolean } | null> {
   try {
     const result = await dynamo.send(new GetItemCommand({
       TableName: TABLE_NAME,
@@ -1190,6 +1199,8 @@ async function getThemeContext(userId: string, themeId: string): Promise<{ theme
       themeName: result.Item.themeName?.S ?? '',
       ...(result.Item.category?.S ? { category: result.Item.category.S } : {}),
       ...(result.Item.subcategory?.S ? { subcategory: result.Item.subcategory.S } : {}),
+      ...(result.Item.totalTurns?.N ? { totalTurns: parseInt(result.Item.totalTurns.N, 10) } : {}),
+      ...(result.Item.renamedByUser?.S === 'true' ? { renamedByUser: true } : {}),
     }
   } catch (error) {
     console.warn('[LLM] テーマコンテキスト取得エラー（スキップ）:', error)
@@ -1268,7 +1279,7 @@ function buildSystemContentBlocks(
   checkpoints: Array<{ timestamp: string; keywords: string[]; summary: string }> = [],
   sessionDate?: string,
   pastSessions?: PastSessionGroup[],
-  themeContext?: { themeName: string; category?: string; subcategory?: string },
+  themeContext?: { themeName: string; category?: string; subcategory?: string; totalTurns?: number; renamedByUser?: boolean },
   workContext?: { tools: Array<{ name: string; description: string }>; expiresAt: string },
   userLocation?: { lat: number; lng: number },
   briefingContext?: string
@@ -1312,8 +1323,12 @@ function buildSystemContentBlocks(
 
   // テーマコンテキスト
   if (themeContext) {
+    console.log(`[LLM] themeContext: themeName="${themeContext.themeName}", totalTurns=${themeContext.totalTurns}, renamedByUser=${themeContext.renamedByUser}`)
+    const shouldRename = !themeContext.renamedByUser && themeContext.totalTurns === 2
     if (themeContext.themeName === '新規トピック') {
       dynamic += `\n\n<theme_context>\nこれは新しく作成されたトピックです。\nユーザーの最初の発言内容から、このトピックにふさわしい短いタイトル（15文字以内）を考えて、レスポンスJSONの "topicName" フィールドに含めてください。\n</theme_context>`
+    } else if (shouldRename) {
+      dynamic += `\n\n<theme_context>\nテーマ: ${themeContext.themeName}\nこのセッションでは「${themeContext.themeName}」について会話しています。\nテーマに関連する回答を心がけてください。\n\n【重要】これまでの会話内容を踏まえて、このトピックにより適切な短いタイトル（15文字以内）を付けてください。\nレスポンスJSONに "topicName" フィールドを必ず追加してください。通常通りtextフィールドにはユーザーへの返答を入れてください。\n</theme_context>`
     } else {
       dynamic += `\n\n<theme_context>\nテーマ: ${themeContext.themeName}\nこのセッションでは「${themeContext.themeName}」について会話しています。\nテーマに関連する回答を心がけてください。\n</theme_context>`
     }
@@ -1496,7 +1511,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let enhancedSystemPrompt: string  // デバッグ用
   let sessionTurnsSinceSummary = 0
   let sessionSummary = ''
-  let themeContext: { themeName: string; category?: string; subcategory?: string } | null = null
+  let themeContext: { themeName: string; category?: string; subcategory?: string; totalTurns?: number; renamedByUser?: boolean } | null = null
   let mcpConn: MCPConnection | null = null
 
   if (sessionId) {
@@ -1814,9 +1829,12 @@ ${briefingParts.join('\n\n')}
           }
         }
 
-        // トピック自動命名
+        // トピック自動命名（初回 + 3ターン目再生成）
         let generatedThemeName: string | undefined
-        if (themeId && themeContext?.themeName === '新規トピック') {
+        const isNewTopic = themeId && themeContext?.themeName === '新規トピック'
+        const shouldRegenerate = themeId && !themeContext?.renamedByUser && themeContext?.totalTurns === 2
+        console.log(`[Stream] 命名判定: isNewTopic=${!!isNewTopic}, shouldRegenerate=${!!shouldRegenerate}, totalTurns=${themeContext?.totalTurns}, renamedByUser=${themeContext?.renamedByUser}`)
+        if (isNewTopic || shouldRegenerate) {
           try {
             const jsonMatch = streamedContent.match(/\{[\s\S]*\}/)
             if (jsonMatch) {
@@ -1825,16 +1843,20 @@ ${briefingParts.join('\n\n')}
                 generatedThemeName = parsed.topicName.trim().slice(0, 15)
               }
             }
-            if (!generatedThemeName) {
+            // フォールバック（初回のみ。再生成時は LLM が返さなければ変更しない）
+            if (!generatedThemeName && isNewTopic) {
               const trimmed = message.trim().replace(/\n/g, ' ')
               generatedThemeName = trimmed.length > 15 ? trimmed.slice(0, 15) + '…' : trimmed
             }
-            await dynamo.send(new UpdateItemCommand({
-              TableName: TABLE_NAME,
-              Key: { PK: { S: `USER#${userId}` }, SK: { S: `THEME_SESSION#${themeId}` } },
-              UpdateExpression: 'SET themeName = :name',
-              ExpressionAttributeValues: { ':name': { S: generatedThemeName } },
-            }))
+            if (generatedThemeName) {
+              await dynamo.send(new UpdateItemCommand({
+                TableName: TABLE_NAME,
+                Key: { PK: { S: `USER#${userId}` }, SK: { S: `THEME_SESSION#${themeId}` } },
+                UpdateExpression: 'SET themeName = :name',
+                ExpressionAttributeValues: { ':name': { S: generatedThemeName } },
+              }))
+              console.log(`[Stream] トピック${shouldRegenerate ? '再' : '自動'}命名: "${generatedThemeName}"`)
+            }
           } catch (err) {
             console.warn('[Stream] トピック自動命名エラー（スキップ）:', err)
           }
@@ -1963,9 +1985,11 @@ ${briefingParts.join('\n\n')}
         }
       }
 
-      // 新規トピックの自動命名
+      // トピック自動命名（初回 + 3ターン目再生成）
       let generatedThemeName: string | undefined
-      if (themeId && themeContext?.themeName === '新規トピック') {
+      const isNewTopic = themeId && themeContext?.themeName === '新規トピック'
+      const shouldRegenerate = themeId && !themeContext?.renamedByUser && themeContext?.totalTurns === 2
+      if (isNewTopic || shouldRegenerate) {
         try {
           // 1. LLM レスポンスの topicName を試行
           const jsonMatch = content.match(/\{[\s\S]*\}/)
@@ -1975,25 +1999,27 @@ ${briefingParts.join('\n\n')}
               generatedThemeName = parsed.topicName.trim().slice(0, 15)
             }
           }
-          // 2. フォールバック: ユーザーメッセージから生成
-          if (!generatedThemeName) {
+          // 2. フォールバック: ユーザーメッセージから生成（初回のみ。再生成時は LLM が返さなければ変更しない）
+          if (!generatedThemeName && isNewTopic) {
             const trimmed = message.trim().replace(/\n/g, ' ')
             generatedThemeName = trimmed.length > 15
               ? trimmed.slice(0, 15) + '…'
               : trimmed
           }
-          console.log(`[LLM] トピック自動命名: "${generatedThemeName}"`)
-          await dynamo.send(new UpdateItemCommand({
-            TableName: TABLE_NAME,
-            Key: {
-              PK: { S: `USER#${userId}` },
-              SK: { S: `THEME_SESSION#${themeId}` },
-            },
-            UpdateExpression: 'SET themeName = :name',
-            ExpressionAttributeValues: {
-              ':name': { S: generatedThemeName },
-            },
-          }))
+          if (generatedThemeName) {
+            console.log(`[LLM] トピック${shouldRegenerate ? '再' : '自動'}命名: "${generatedThemeName}"`)
+            await dynamo.send(new UpdateItemCommand({
+              TableName: TABLE_NAME,
+              Key: {
+                PK: { S: `USER#${userId}` },
+                SK: { S: `THEME_SESSION#${themeId}` },
+              },
+              UpdateExpression: 'SET themeName = :name',
+              ExpressionAttributeValues: {
+                ':name': { S: generatedThemeName },
+              },
+            }))
+          }
         } catch (err) {
           console.warn('[LLM] トピック自動命名エラー（スキップ）:', err)
         }

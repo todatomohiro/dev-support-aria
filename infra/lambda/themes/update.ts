@@ -79,8 +79,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     if (themeName) {
-      updateParts.push('themeName = :name')
+      updateParts.push('themeName = :name, renamedByUser = :rbu')
       expressionValues[':name'] = { S: themeName }
+      expressionValues[':rbu'] = { S: 'true' }
     }
     if (modelKey) {
       updateParts.push('modelKey = :mk')

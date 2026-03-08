@@ -19,7 +19,7 @@
 | DB | DynamoDB（GSI×2、TTL、ポイントインタイム復旧） |
 | インフラ管理 | AWS CDK (TypeScript) |
 | マルチプラットフォーム | Web / Tauri 2（デスクトップ）/ Capacitor 8（iOS） |
-| テスト | Vitest + jsdom（719テスト / 48ファイル、714パス）+ fast-check（プロパティベーステスト） |
+| テスト | Vitest + jsdom（719テスト / 48ファイル）+ fast-check（プロパティベーステスト） |
 
 ## 主要機能
 
@@ -215,12 +215,13 @@ EventBridge rate(15 minutes) → sessionFinalizer Lambda
   <past_sessions>            ← 過去セッション要約（直近7日、日付グループ化）
   <current_session_summary>  ← 現セッションのローリング要約
   <session_checkpoints>      ← チェックポイント（キーワード付き区間要約）
+  <recent_briefing_context>  ← 直前のブリーフィング発言（初回送信時のみ）
 ```
 
 #### 3-6. フロントエンド→バックエンド間のデータフロー（記憶関連）
 
 ```
-フロントエンド送信: { message, sessionId }  ← コンテキスト情報なし（バックエンドが全て構築）
+フロントエンド送信: { message, sessionId, lastBriefingContext? }  ← コンテキスト情報なし（バックエンドが全て構築）
 
 バックエンドの並列取得（Promise.all）:
   1. AgentCore Memory 検索（中期記憶）← ユーザーメッセージを searchQuery に使用
@@ -262,20 +263,307 @@ EventBridge rate(15 minutes) → sessionFinalizer Lambda
 - 外部 MCP サーバーとの接続
 - LLM が MCP ツールを動的に利用可能
 
-### 8. プロアクティブ・ブリーフィング
-- アプリ起動時・バックグラウンド復帰時に AI がカレンダー・天気・記憶をもとに自発的に話しかける
-- フロントエンド駆動: `useBriefing` hook（認証完了後3秒 / visibilitychange / 30分ポーリング）
-- バックエンド: `__briefing__` センチネルメッセージ検出 → カレンダー＋天気を事前自動取得 → 専用プロンプトで応答生成
-- ブリーフィングメッセージは DynamoDB に保存しない（揮発的な挨拶）
-- トリガー条件: JST 6:00〜23:00、前回から3時間以上経過
+### 8. プロアクティブ機能（ブリーフィング・天気・コンテキスト引き継ぎ）
 
-### 9. 天気アイコン表示
-- ユーザーの現在地に基づき、Live2D キャンバス左上に天気アイコン + 気温を常時表示
-- LLM 不使用: フロントエンドから Open-Meteo API を直接呼び出し（APIキー不要）
-- SVG 線画スタイルのアイコン（WMO 天気コード対応: 晴/曇/雨/雪/雷等 + 昼夜判定）
-- 30分ポーリングで自動更新
+AI がユーザーの操作を待たずに自発的に情報を提供する機能群。3つのサブ機能で構成される。
 
-### 10. セキュリティ設計
+#### 8-1. プロアクティブ・ブリーフィング
+
+アプリ起動時やバックグラウンド復帰時に、AI がカレンダー・天気・過去の会話記憶をもとに自発的に話しかける機能。
+
+**設計思想**: 「相棒」として、ユーザーがアプリを閉じている間も考えていたかのように振る舞う。単なる情報報告ではなく、過去の会話の文脈を活かした気遣いのある発言を行う。
+
+##### トリガー条件
+
+| 条件 | 詳細 |
+|------|------|
+| 時間帯 | JST 6:00〜23:00 のみ（深夜は発動しない） |
+| クールダウン | 前回のブリーフィングから **3時間以上** 経過（localStorage に記録） |
+| 認証状態 | Cognito 認証済みであること |
+| ローディング | 他のメッセージがローディング中でないこと |
+
+##### トリガータイミング（3パターン）
+
+| パターン | タイミング | 実装 |
+|---------|-----------|------|
+| 初回起動 | 認証完了から **3秒後** | `useBriefing` hook の `useEffect`（`authStatus` 依存） |
+| バックグラウンド復帰 | `visibilitychange` → visible から **1秒後** | `document.addEventListener('visibilitychange')` |
+| 長時間放置 | **30分ごと** のポーリング | `setInterval(tryBriefing, 30 * 60 * 1000)` |
+
+##### 重複防止メカニズム
+
+```
+1. triggeredRef（React ref）: 同一セッション内の多重実行防止
+   - tryBriefing() 開始時に true → finally で false に戻す
+   - true の間は新たなトリガーをスキップ
+2. briefingService.shouldTrigger(): 時間帯 + クールダウン判定
+3. briefingService.markTriggered(): localStorage にタイムスタンプ記録
+```
+
+##### フロントエンド処理フロー
+
+```
+useBriefing hook
+  → briefingService.shouldTrigger() で条件判定
+  → briefingService.markTriggered() で実行記録
+  → chatController.requestBriefing(currentLocation)
+    → llmClient.sendMessage('__briefing__', sessionId, ...) を REST 送信
+    → レスポンスからアシスタントメッセージを作成
+    → ユーザーメッセージは追加しない（AIからの自発的発言のため）
+    → store.addMessage() + syncService.saveMessage()
+    → store.setLastBriefingContext(content)  ← コンテキスト引き継ぎ用に保持
+    → TTS 自動再生（有効時）
+    → emotion/motion をキャラクターに反映
+    → エラー時は console.warn のみ（ユーザー操作ではないため静かに無視）
+```
+
+##### バックエンド処理フロー（Lambda `chat.ts` ブリーフィングモード）
+
+`message === '__briefing__'` を検知するとブリーフィングモードに入る。通常チャットとは異なる専用フローで処理される。
+
+**Step 1: 記憶コンテキストの並列取得**（「記憶クロスオーバー」）
+
+```
+Promise.all([
+  // 中期記憶: 「最近の会話の話題や気になっていたこと」で検索
+  retrieveMemoryRecords(userId, '最近の会話の話題や気になっていたこと'),
+  // 過去セッション要約: 直近7日分
+  getRecentSessionSummaries(userId, sessionId),
+  // 現セッション: 要約 + チェックポイント
+  getSessionContext(userId, sessionId),
+])
+```
+
+各データソースの失敗は個別に `.catch(() => [])` で吸収（ブリーフィングは最善努力）。
+
+**Step 2: 記憶コンテキストの構築**
+
+取得した記憶データを XML タグで構造化:
+
+```xml
+<recent_conversations>
+ユーザーとの最近の会話から覚えていること：
+- 来月の京都旅行を楽しみにしている
+- 新しいプロジェクトの設計で悩んでいた
+</recent_conversations>
+
+<past_sessions>
+直近の会話要約：
+【今日】
+・カレンダーの予定確認と天気の話
+【昨日】
+・転職活動の進捗について相談
+</past_sessions>
+
+<current_session>
+今日の会話：
+[カレンダー・天気] 朝のブリーフィングで予定を確認した
+</current_session>
+```
+
+**Step 3: ツール事前呼び出し**（LLM を介さず直接実行）
+
+| ツール | 取得範囲 | エラー時 |
+|--------|---------|---------|
+| `list_events`（カレンダー） | 今日0:00〜明後日0:00（JST）、最大10件 | スキップして続行 |
+| `get_weather`（天気） | ユーザー位置情報 or 永久記憶から推定 | スキップして続行 |
+
+カレンダーが「未連携」「エラー」、天気が「位置情報が取得できません」の場合は該当パートを除外。
+
+**Step 4: 永久記憶の注入**
+
+永久記憶の FACTS と PREFERENCES もブリーフィングコンテキストに含める:
+
+```xml
+<user_facts>
+- 東京都在住
+- ソフトウェアエンジニア
+</user_facts>
+
+<user_preferences>
+- タメ口で話してほしい
+</user_preferences>
+```
+
+**Step 5: 時間帯判定**
+
+JST の時刻から4段階に分類:
+
+| 時間帯 | JST |
+|--------|-----|
+| 朝 | 6:00〜10:59 |
+| 昼 | 11:00〜16:59 |
+| 夕方 | 17:00〜20:59 |
+| 夜 | 21:00〜22:59 |
+
+**Step 6: ブリーフィング専用プロンプトの構築**
+
+通常のチャット履歴を使わず、専用のユーザーメッセージを構築して LLM に送信:
+
+```
+【ブリーフィングモード】
+あなたはユーザーの「相棒」です。ユーザーがアプリを開いたので、自然に話しかけてください。
+現在の時間帯: {朝|昼|夕方|夜}
+
+{記憶コンテキスト + カレンダー + 天気 + 永久記憶}
+```
+
+**ブリーフィングプロンプトのルール（全文）**:
+
+```
+ルール:
+- 単なる「天気と予定の報告」ではなく、過去の会話の文脈を活かした気遣いを入れること
+  - 例: 昨日悩んでいた案件がある → 「あの件、どうなった？」と自然に触れる
+  - 例: 最近の会話で興味を示した話題 → 「そういえばあの話だけど」と引き継ぐ
+- ユーザーがアプリを閉じていた間も考えていたように振る舞うこと（「非同期思考の演出」）
+  - ただし実際に調べていない情報を断言してはいけない
+  - 「〜調べようか？」「〜気になったんだけど、詳しく見てみる？」と提案に留めること
+- suggestedReplies で具体的なアクションを提案すること（例: 「近くのお店を調べて」「今日の予定を詳しく」）
+- 全部の情報を詰め込まない。重要なもの1〜2個に絞って自然に伝える
+- 予定がなければ天気の話、天気が平穏なら過去の会話の話題、のように臨機応変に
+- 過去の会話情報がない場合は、無理に引き継がず時間帯に合った短い挨拶でよい
+- 情報がほとんどない場合は、時間帯に合った短い挨拶だけでよい
+- キャラクターの口調を守る
+- 押し付けがましくならないように。さりげなく自然に
+- 通常の JSON レスポンス形式（text, emotion, motion, suggestedReplies）で返すこと
+```
+
+**Step 7: LLM 呼び出し**
+
+- 会話履歴は含めない（`messages` をブリーフィング専用メッセージで上書き）
+- システムプロンプトは通常チャットと共通（キャラクター設定・感情マッピング等は維持）
+- ストリーミングモードは使用しない（同期 HTTP レスポンス）
+
+**ブリーフィングメッセージの保存**:
+- DynamoDB のチャット履歴には保存しない（ブリーフィングは揮発的な挨拶）
+- ただし `syncService.saveMessage()` でフロント側の同期には含める
+- AgentCore Memory（中期記憶）にも送信しない
+
+##### ブリーフィング利用可能データソース一覧
+
+| データソース | タグ | 取得方法 | 用途 |
+|-------------|------|---------|------|
+| 中期記憶 | `<recent_conversations>` | AgentCore Memory セマンティック検索 | 最近の会話トピックの引き継ぎ |
+| 過去セッション要約 | `<past_sessions>` | DynamoDB SESSION# 直近7日 | 日別の会話要約 |
+| 現セッション要約 | `<current_session>` | DynamoDB SESSION# 現在 | 今日の会話内容 |
+| カレンダー | `<calendar>` | Google Calendar API（Tool Use） | 今日〜明日の予定 |
+| 天気 | `<weather>` | Open-Meteo API（Tool Use） | 現在地の天気 |
+| 永久記憶 FACTS | `<user_facts>` | DynamoDB PERMANENT_FACTS | ユーザーの基本情報 |
+| 永久記憶 PREFERENCES | `<user_preferences>` | DynamoDB PERMANENT_FACTS | 対話スタイル |
+
+#### 8-2. ブリーフィングコンテキスト引き継ぎ（lastBriefingContext）
+
+ブリーフィングで AI が話した内容を、ユーザーの次の発言時に LLM に引き継ぐ仕組み。ブリーフィングへの返答が自然な会話として成立するようにする。
+
+##### データフロー
+
+```
+1. ブリーフィング完了
+   → chatController.requestBriefing()
+   → store.setLastBriefingContext(assistantMessage.content)
+   → appStore.lastBriefingContext に保持（非永続、メモリのみ）
+
+2. ユーザーが次にメッセージを送信
+   → chatController.sendMessage()
+   → const briefingContext = store.lastBriefingContext  // 取得
+   → store.setLastBriefingContext(null)                 // クリア（1回限り）
+   → llmClient.sendMessage(..., briefingContext)        // REST リクエストに含める
+
+3. Lambda（バックエンド）
+   → body.lastBriefingContext を抽出（最大500文字にトリム）
+   → buildSystemContentBlocks() に briefingContext を渡す
+   → 動的コンテキストに <recent_briefing_context> タグとして注入
+
+4. システムプロンプト内の注入結果:
+   <recent_briefing_context>
+   直前にあなた（AI）がブリーフィングで話した内容：
+   {ブリーフィングの発言テキスト}
+   ユーザーの発言がこの内容に関連している場合は、文脈を踏まえて自然に返答してください。
+   </recent_briefing_context>
+```
+
+##### 設計上のポイント
+
+| ポイント | 詳細 |
+|---------|------|
+| 1回限り | `lastBriefingContext` は初回送信時に取得してクリア。2回目以降は渡さない |
+| 非永続 | Zustand の persist 対象外。ページリロードで消える（意図的） |
+| 最大500文字 | バックエンド側でトリムし、プロンプト肥大化を防止 |
+| ストリーミング対応 | WebSocket ストリーミング・同期 HTTP 両方で引き継ぎ可能 |
+| 条件付き注入 | `lastBriefingContext` が存在する場合のみプロンプトに含める（通常チャットには影響なし） |
+
+#### 8-3. 天気アイコン常時表示
+
+LLM を使わず、フロントエンドから直接天気情報を取得して Live2D キャンバス上に表示する機能。
+
+##### 実装構成
+
+| レイヤー | ファイル | 役割 |
+|---------|--------|------|
+| フック | `useWeatherIcon.ts` | Open-Meteo API 呼び出し + ポーリング |
+| コンポーネント | `WeatherOverlay.tsx` | SVG アイコン + 気温のオーバーレイ表示 |
+
+##### 動作仕様
+
+| 項目 | 仕様 |
+|------|------|
+| データソース | Open-Meteo API（`/v1/forecast?current_weather=true`）— APIキー不要 |
+| 位置情報 | `appStore.currentLocation`（Geolocation API 由来） |
+| ポーリング間隔 | 30分（`setInterval`） |
+| 位置変化検知 | `appStore.subscribe` で `currentLocation` を監視、null → 値の遷移で即時取得 |
+| リクエスト制御 | `AbortController` で前回リクエストをキャンセル |
+| 表示位置 | Live2D キャンバスの左上（`absolute top-2 left-2`） |
+| UI | SVG 線画アイコン + 気温（°C）、半透明背景（`bg-black/30 backdrop-blur-sm`） |
+| キャラクター非表示時 | 折りたたみバーに天気アイコンを継続表示 |
+
+##### 対応天気コード（WMO Weather Interpretation Codes）
+
+| WMOコード | 天気 | アイコン | 昼夜判定 |
+|-----------|------|---------|---------|
+| 0 | 快晴 | 太陽 / 月 | あり |
+| 1 | 薄曇り | 太陽+雲 / 月+雲 | あり |
+| 2-3 | 曇り | 雲 | なし |
+| 45, 48 | 霧 | 雲+横線 | なし |
+| 51-57 | 霧雨 | 雲+小雨滴 | なし |
+| 61-65 | 雨 | 雲+雨滴 | なし |
+| 66-67 | 凍雨 | 雲+雨滴+雪点 | なし |
+| 71-77 | 雪 | 雲+雪点 | なし |
+| 80-82 | にわか雨 | 雲+大雨滴 | なし |
+| 85-86 | にわか雪 | 雲+大雪点 | なし |
+| 95-99 | 雷雨 | 雲+稲妻 | なし |
+
+#### 8-4. プロアクティブ機能の全体データフロー
+
+```
+── ブリーフィング（起動時/復帰時/30分ポーリング）──
+useBriefing hook
+  → briefingService.shouldTrigger()  [時間帯 + 3h クールダウン]
+  → chatController.requestBriefing(currentLocation)
+    → REST POST /llm/chat（message='__briefing__'）
+      → Lambda: 記憶3層(中期/過去セッション/現セッション) + カレンダー + 天気 + 永久記憶を並列取得
+      → ブリーフィング専用プロンプト構築（記憶クロスオーバー + 非同期思考の演出）
+      → Bedrock Claude Haiku 4.5（Converse API）
+      → JSON レスポンス（text + emotion + motion + suggestedReplies）
+    → アシスタントメッセージとして表示（ユーザーメッセージなし）
+    → store.setLastBriefingContext(content)  ← 次の発言時に引き継ぎ
+    → Live2D 表情+モーション + TTS 再生
+
+── ブリーフィングコンテキスト引き継ぎ（次の初回送信時）──
+ユーザーがメッセージを送信
+  → chatController.sendMessage()
+  → store.lastBriefingContext を取得してクリア（1回限り）
+  → REST/WebSocket で lastBriefingContext をバックエンドに送信
+  → Lambda: <recent_briefing_context> タグとしてシステムプロンプトに注入
+  → LLM がブリーフィングの文脈を踏まえて自然に返答
+
+── 天気アイコン（常時・LLM不使用）──
+useWeatherIcon hook
+  → Open-Meteo API 直接呼び出し（30分ポーリング）
+  → WeatherOverlay コンポーネント
+  → Live2D キャンバス左上に SVG アイコン + 気温表示
+```
+
+### 9. セキュリティ設計
 - システムプロンプトはバックエンド（Lambda）で完全生成。フロントエンドに漏洩しない
 - API キーは SSM Parameter Store で管理
 - Prompt Caching（cachePoint 2箇所）でコスト最適化
@@ -285,10 +573,10 @@ EventBridge rate(15 minutes) → sessionFinalizer Lambda
 
 ```
 butler-assistant-app/     ← メインアプリ（React + Vite）
-├── コンポーネント 33個 / サービス 19個 / フック 10個 / ストア 3個
+├── コンポーネント 34個 / サービス 20個 / フック 10個 / ストア 3個
 ├── プラットフォーム抽象化（Web / Tauri / Capacitor）
 ├── Live2D レンダリング + フェイストラッキング（MediaPipe + Kalidokit）
-└── PoC（音声認識、GPS、感情分析、フェイストラッキング等）
+└── PoC（音声認識、GPS、感情分析、フェイストラッキング、ターミナル等）
 
 butler-admin-app/         ← 管理画面（React + Cognito TOTP MFA）
 ├── ユーザー管理（一覧・詳細・ロール制御）
@@ -312,7 +600,7 @@ aiba-extension/           ← Chrome 拡張機能（Manifest V3）
 butler-assistant-app/          # フロントエンド（React + Vite + TypeScript）
 ├── src/
 │   ├── auth/               # 認証（Cognito + AWS Amplify）
-│   ├── components/         # React コンポーネント 33個（PascalCase.tsx）
+│   ├── components/         # React コンポーネント 34個（PascalCase.tsx）
 │   │   ├── ChatUI.tsx          # メインチャットUI
 │   │   ├── ThemeChat.tsx       # トピック別チャット
 │   │   ├── GroupChat.tsx       # グループチャット
@@ -325,6 +613,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── MapView.tsx         # 地図表示（Leaflet）
 │   │   ├── Settings.tsx        # 設定画面
 │   │   ├── WorkBadge.tsx       # MCP接続バッジ
+│   │   ├── WorkConnectModal.tsx # MCP接続モーダル
 │   │   ├── WeatherOverlay.tsx  # 天気アイコン+気温オーバーレイ
 │   │   └── ...                 # モーダル、ナビゲーション等
 │   ├── hooks/              # カスタムフック 10個
@@ -338,12 +627,13 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── useQRScanner.ts         # QR コード読み込み
 │   │   ├── useBriefing.ts          # プロアクティブ・ブリーフィング
 │   │   └── useWeatherIcon.ts       # 天気アイコン表示（Open-Meteo API）
-│   ├── services/           # ビジネスロジック 19個（camelCase.ts、index.ts 除く）
+│   ├── services/           # ビジネスロジック 20個（camelCase.ts、index.ts 除く）
 │   │   ├── llmClient.ts        # LLM (Bedrock Claude) 通信
 │   │   ├── chatController.ts   # チャットコントローラー
 │   │   ├── responseParser.ts   # LLM レスポンスパーサー
 │   │   ├── live2dRenderer.ts   # Live2D レンダリング
 │   │   ├── modelLoader.ts      # Live2D モデル読み込み
+│   │   ├── modelService.ts     # モデル一覧取得
 │   │   ├── motionController.ts # モーション制御
 │   │   ├── ttsService.ts       # 音声合成 (Amazon Polly)
 │   │   ├── themeService.ts     # トピック管理
@@ -352,18 +642,23 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── groupService.ts     # グループ管理
 │   │   ├── workService.ts      # MCP接続管理
 │   │   ├── briefingService.ts  # ブリーフィングトリガー管理
+│   │   ├── wsService.ts        # WebSocket サービス
+│   │   ├── syncService.ts      # メッセージ同期
+│   │   ├── skillClient.ts      # OAuth スキル接続
+│   │   ├── greetingService.ts  # 挨拶生成
+│   │   ├── sentimentService.ts # 感情分析
 │   │   └── ...
 │   ├── stores/             # Zustand 状態管理 3個
-│   │   ├── appStore.ts         # メッセージ、モーション、設定（persist有）
+│   │   ├── appStore.ts         # メッセージ、モーション、設定、lastBriefingContext（persist有、ブリーフィングコンテキストは非永続）
 │   │   ├── themeStore.ts       # トピック一覧、アクティブトピック
 │   │   └── groupChatStore.ts   # フレンド、グループ、WS接続状態
 │   ├── types/              # 型定義 10ファイル（エラークラス、サービスIF等）
 │   ├── platform/           # プラットフォーム抽象化（Web / Tauri / Capacitor）
 │   ├── lib/live2d/         # Live2D Cubism SDK ラッパー
 │   ├── utils/              # ユーティリティ（performance, dateFormat）
-│   └── poc/                # 実験・検証ページ（フェイストラッキング、GPS、STT等）
+│   └── poc/                # 実験・検証ページ（フェイストラッキング、GPS、STT、ターミナル等）
 ├── public/models/          # Live2D モデルファイル
-├── src-tauri/              # Tauri 2 デスクトップ設定
+├── src-tauri/              # Tauri 2 デスクトップ設定（PTY サポート）
 └── ios/                    # Capacitor 8 iOS
 
 butler-admin-app/              # 管理画面（React + Cognito TOTP MFA）
@@ -382,7 +677,7 @@ infra/
 ├── lib/butler-stack.ts     # AWS インフラ定義（CDK）
 └── lambda/
     ├── llm/                # LLM チャット
-    │   ├── chat.ts             # メインハンドラー（システムプロンプト生成・Prompt Caching）
+    │   ├── chat.ts             # メインハンドラー（システムプロンプト生成・Prompt Caching・ブリーフィング）
     │   ├── skills/             # スキル実装 7ファイル
     │   │   ├── toolDefinitions.ts  # ツール定義
     │   │   ├── index.ts            # スキルルーティング
@@ -398,8 +693,8 @@ infra/
     ├── friends/            # フレンド管理（generateCode, getCode, link, list, unfriend）
     ├── groups/             # グループ管理（create, addMember, leave, members）
     ├── conversations/      # グループチャット会話（list, messagesList, messagesSend, messagesPoll, messagesRead）
-    ├── ws/                 # WebSocket（authorizer, connect, disconnect）
-    ├── mcp/                # MCP管理（connect, disconnect, status, registry）
+    ├── ws/                 # WebSocket（authorizer, connect, disconnect, default）
+    ├── mcp/                # MCP管理（connect, disconnect, status, registryManage, registryResolve, mcpClient）
     ├── skills/             # OAuth 管理（callback, connections, disconnect）
     ├── memory/             # 中期記憶イベント保存（AgentCore Memory）
     ├── memos/              # メモ管理（save, list, delete）
@@ -445,7 +740,9 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
   <session_checkpoints>      チェックポイント
   <theme_context>            トピック情報
   <category_context>         カテゴリ別プロンプト
+  <subcategory_context>      サブカテゴリ別プロンプト
   <work_context>             MCP 接続情報
+  <recent_briefing_context>  直前のブリーフィング発言（初回送信時のみ）
 ```
 
 ## クライアント・サーバー通信仕様
@@ -464,6 +761,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 4. フロントエンド: chat_delta → streamingText 蓄積 → タイプライター表示
 5. フロントエンド: chat_complete → メタデータ抽出 → メッセージ確定
 ※ WebSocket 未接続時は同期 HTTP フォールバック（レスポンス全体を待つ）
+※ ブリーフィングモードは常に同期 HTTP（ストリーミング不使用）
 ```
 
 #### リクエストボディ
@@ -479,7 +777,8 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
   "selectedModelId": "Live2DモデルID（キャラ設定取得用）",
   "streaming": true,
   "connectionId": "WebSocket接続ID（ストリーミング時必須）",
-  "includeDebug": true
+  "includeDebug": true,
+  "lastBriefingContext": "直前のブリーフィング発言テキスト（初回送信時のみ）"
 }
 ```
 
@@ -495,6 +794,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 | `streaming` | × | `true` で WebSocket ストリーミングモード。HTTP 202 即時返却 |
 | `connectionId` | × | WebSocket 接続ID。`streaming: true` 時に必須 |
 | `includeDebug` | × | `true` でシステムプロンプトをレスポンスに含める（管理者のみ） |
+| `lastBriefingContext` | × | ブリーフィング直後の初回送信時のみ。最大500文字にトリム |
 
 #### レスポンスボディ
 
@@ -578,21 +878,24 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
    - DynamoDB GLOBAL_MODEL#{id}（モデルメタ: キャラ設定/感情/モーション）
 3. システムプロンプト構築（3ブロック + cachePoint 2箇所）
 4. セッションコンテキスト取得（要約 + 直近10メッセージ + チェックポイント）
-5. Bedrock Converse API 呼び出し（Tool Use ループ、最大5回）
+5. lastBriefingContext の注入（存在する場合のみ、<recent_briefing_context> タグ）
+6. Bedrock Converse API 呼び出し（Tool Use ループ、最大5回）
    ↓ stopReason === 'tool_use' の場合:
      - ツール実行（カレンダー/場所検索/Web検索/天気/メモ/MCP）
      - ツール結果を messages に追加して再呼び出し
    ↓ stopReason === 'end_turn' の場合:
      - テキストレスポンスを抽出
-6. ストリーミング送信（streaming: true 時）:
+7. ストリーミング送信（streaming: true 時）:
    - テキスト生成中: WebSocket chat_delta で差分をリアルタイム送信
    - 生成完了: WebSocket chat_complete でメタデータ付き完了通知
-7. 後処理:
+8. 後処理:
    - メッセージ保存（DynamoDB MSG#）
    - ターンカウント更新 → 5ターンで要約 Lambda 非同期起動
    - ACTIVE_SESSION upsert（TTL: 24時間）
    - 新規トピック時の自動命名
-8. レスポンス返却（同期モード時）/ 完了（ストリーミングモード時）
+9. レスポンス返却（同期モード時）/ 完了（ストリーミングモード時）
+
+※ ブリーフィングモード時は上記フローの前にブリーフィング専用処理が挿入される（8-1 参照）
 ```
 
 ### Bedrock 推論設定
@@ -679,7 +982,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 ### 現在の課題（レスポンス改善の観点）
 
-1. ~~**同期 HTTP 方式**~~: ✅ WebSocket ストリーミングで解決済み（chat_delta でリアルタイム表示）
+1. ~~**同期 HTTP 方式**~~: WebSocket ストリーミングで解決済み（chat_delta でリアルタイム表示）
 2. **Tool Use ループ**: ツール使用時は複数回の Bedrock 呼び出しが直列で発生し、待ち時間が増加
 3. **TTS の直列化**: LLM レスポンス受信後に TTS API を呼び出すため、音声再生開始がさらに遅れる
 4. **JSON パース依存**: LLM が JSON 形式で応答する必要があり、パース失敗時はフォールバックで情報が欠落
@@ -692,6 +995,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
     → DynamoDB からプロフィール・永久記憶・モデルメタデータを並列取得
     → モデルメタデータからキャラクター設定・感情/モーション候補を動的生成
     → システムプロンプト構築 + Prompt Caching
+    → lastBriefingContext があれば <recent_briefing_context> タグで注入
     → Bedrock Claude Haiku 4.5（Converse API + Tool Use）
     → ツール実行（カレンダー / 天気 / 検索 / メモ等）
     → WebSocket chat_delta でテキスト差分をリアルタイム送信
@@ -702,11 +1006,14 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
   → 5ターンごと: ローリング要約 Lambda 非同期起動
   → 15分無操作: EventBridge → 永久事実自動抽出
 
-プロアクティブ・ブリーフィング（起動時/復帰時）:
-  useBriefing hook → chatController.requestBriefing()
+プロアクティブ・ブリーフィング（起動時/復帰時/30分ポーリング）:
+  useBriefing hook → briefingService.shouldTrigger() [JST 6-23時 + 3hクールダウン]
+    → chatController.requestBriefing()
     → Lambda /llm/chat（'__briefing__'）
-    → カレンダー + 天気を事前自動取得 → 専用プロンプトで応答生成
+    → 記憶3層 + カレンダー + 天気 + 永久記憶を並列取得
+    → 専用プロンプト（記憶クロスオーバー + 非同期思考の演出）で応答生成
     → Live2D アニメーション + TTS（DynamoDB 保存なし）
+    → store.setLastBriefingContext() でコンテキスト保持 → 次の初回送信時に引き継ぎ
 
 天気アイコン（LLM 不使用）:
   useWeatherIcon hook → Open-Meteo API（30分ポーリング）
@@ -730,9 +1037,9 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 | 項目 | 数量 |
 |------|------|
-| フロントエンド コンポーネント | 33個 |
+| フロントエンド コンポーネント | 34個 |
 | カスタムフック | 10個 |
-| サービス | 19個 |
+| サービス | 20個 |
 | Zustand ストア | 3個 |
 | Lambda 関数 | 35個 |
 | LLM スキル | 7種（カレンダー×2、場所検索、Web検索、天気、メモ×4） |

@@ -23,7 +23,16 @@ function extractTextFromContent(content: string): string {
     }
   } catch { /* JSON パース失敗 */ }
 
-  // 3. フォールバック: 末尾の {"text" パターンを除去（テキスト + JSON 混在対策）
+  // 3. フォールバック: 平文テキスト + JSON メタデータが混在する場合
+  // 最初の `{"` 以降を除去（LLM が JSON ラッパーなしで応答した場合）
+  if (!content.trimStart().startsWith('{')) {
+    const jsonStart = content.indexOf('{"')
+    if (jsonStart > 0) {
+      return content.slice(0, jsonStart).trim()
+    }
+  }
+
+  // 末尾の {"text" パターンを除去
   const idx = content.indexOf('{"text"')
   if (idx > 0) {
     return content.slice(0, idx).trim()
