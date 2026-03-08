@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/auth/authStore'
-import type { UIConfig, UserLocation } from '@/types'
-
-/** 位置情報ステータス */
-export interface GeolocationStatus {
-  location: UserLocation | null
-  loading: boolean
-  error: string | null
-}
+import type { UIConfig } from '@/types'
 
 interface SettingsProps {
   isOpen: boolean
@@ -16,22 +9,17 @@ interface SettingsProps {
     ui: UIConfig
   }
   onSave: (config: { ui?: Partial<UIConfig> }) => void
-  geolocationStatus?: GeolocationStatus
 }
 
 /**
  * 設定パネル コンポーネント
  */
-export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }: SettingsProps) {
+export function Settings({ isOpen, onClose, config, onSave }: SettingsProps) {
   const isAdmin = useAuthStore((s) => s.isAdmin)
 
   // UI設定のローカル状態
   const [theme, setTheme] = useState<'light' | 'dark'>(config.ui.theme)
   const [fontSize, setFontSize] = useState(config.ui.fontSize)
-  const [characterSize, setCharacterSize] = useState(config.ui.characterSize)
-  const [geolocationEnabled, setGeolocationEnabled] = useState(config.ui.geolocationEnabled)
-  const [sentimentEnabled, setSentimentEnabled] = useState(config.ui.sentimentEnabled)
-  const [activityLoggingEnabled, setActivityLoggingEnabled] = useState(config.ui.activityLoggingEnabled)
   const [developerMode, setDeveloperMode] = useState(config.ui.developerMode)
 
   const [isSaving, setIsSaving] = useState(false)
@@ -40,10 +28,6 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
   useEffect(() => {
     setTheme(config.ui.theme)
     setFontSize(config.ui.fontSize)
-    setCharacterSize(config.ui.characterSize)
-    setGeolocationEnabled(config.ui.geolocationEnabled)
-    setSentimentEnabled(config.ui.sentimentEnabled)
-    setActivityLoggingEnabled(config.ui.activityLoggingEnabled)
     setDeveloperMode(config.ui.developerMode)
   }, [config])
 
@@ -54,10 +38,6 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
         ui: {
           theme,
           fontSize,
-          characterSize,
-          geolocationEnabled,
-          sentimentEnabled,
-          activityLoggingEnabled,
           developerMode,
         },
       })
@@ -74,10 +54,6 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
     // 状態をリセット
     setTheme(config.ui.theme)
     setFontSize(config.ui.fontSize)
-    setCharacterSize(config.ui.characterSize)
-    setGeolocationEnabled(config.ui.geolocationEnabled)
-    setSentimentEnabled(config.ui.sentimentEnabled)
-    setActivityLoggingEnabled(config.ui.activityLoggingEnabled)
     setDeveloperMode(config.ui.developerMode)
     onClose()
   }
@@ -180,103 +156,16 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
                     data-testid="font-size-slider"
                   />
                 </div>
-
-                {/* キャラクターサイズ */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    キャラクターサイズ: {characterSize}%
-                  </label>
-                  <input
-                    type="range"
-                    min="50"
-                    max="150"
-                    step="10"
-                    value={characterSize}
-                    onChange={(e) => setCharacterSize(parseInt(e.target.value, 10))}
-                    className="w-full"
-                    data-testid="character-size-slider"
-                  />
-                </div>
               </div>
             </div>
 
             {/* その他セクション */}
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4" data-testid="other-section-title">
-                その他
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <div>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        位置情報
-                      </span>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        現在地を共有して近くの場所を検索できます
-                      </p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={geolocationEnabled}
-                      onChange={(e) => setGeolocationEnabled(e.target.checked)}
-                      className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      data-testid="geolocation-toggle"
-                    />
-                  </label>
-                  {config.ui.geolocationEnabled && geolocationStatus && (
-                    <div className="mt-1.5 ml-1">
-                      {geolocationStatus.loading && (
-                        <p className="text-xs text-blue-500">取得中...</p>
-                      )}
-                      {geolocationStatus.error && (
-                        <p className="text-xs text-red-500" data-testid="geolocation-error">
-                          {geolocationStatus.error}
-                        </p>
-                      )}
-                      {geolocationStatus.location && !geolocationStatus.loading && (
-                        <p className="text-xs text-green-600 dark:text-green-400" data-testid="geolocation-status">
-                          取得済み ({geolocationStatus.location.lat.toFixed(4)}, {geolocationStatus.location.lng.toFixed(4)})
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <label className="flex items-center justify-between cursor-pointer">
-                  <div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      入力中の表情変化
-                    </span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      テキスト入力中にキャラクターの表情がリアルタイムで変化します
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={sentimentEnabled}
-                    onChange={(e) => setSentimentEnabled(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    data-testid="sentiment-toggle"
-                  />
-                </label>
-                <label className="flex items-center justify-between cursor-pointer">
-                  <div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      生活リズム学習
-                    </span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      ONにすると、生活リズムを学習して最適なタイミングで話しかける準備を行います（操作時刻のみを記録します）
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={activityLoggingEnabled}
-                    onChange={(e) => setActivityLoggingEnabled(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    data-testid="activity-logging-toggle"
-                  />
-                </label>
-                {isAdmin && (
+            {isAdmin && (
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4" data-testid="other-section-title">
+                  その他
+                </h3>
+                <div className="space-y-4">
                   <label className="flex items-center justify-between cursor-pointer">
                     <div>
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -294,9 +183,9 @@ export function Settings({ isOpen, onClose, config, onSave, geolocationStatus }:
                       data-testid="developer-mode-toggle"
                     />
                   </label>
-                )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 

@@ -1,13 +1,14 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color: #213547;
+  background-color: #ffffff;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -15,17 +16,16 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+.dark {
+  color-scheme: dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
 }
 
 /* Markdown コンテンツスタイル */
@@ -163,39 +163,37 @@ body {
   margin: 0.75em 0;
 }
 
-/* ダークモード */
-@media (prefers-color-scheme: dark) {
-  .markdown-content th,
-  .markdown-content td {
-    border-color: #4b5563;
-  }
+/* ダークモード（クラスベース） */
+.dark .markdown-content th,
+.dark .markdown-content td {
+  border-color: #4b5563;
+}
 
-  .markdown-content th {
-    background-color: rgba(255, 255, 255, 0.06);
-  }
+.dark .markdown-content th {
+  background-color: rgba(255, 255, 255, 0.06);
+}
 
-  .markdown-content code {
-    background-color: rgba(255, 255, 255, 0.1);
-  }
+.dark .markdown-content code {
+  background-color: rgba(255, 255, 255, 0.1);
+}
 
-  .markdown-content pre {
-    background-color: rgba(255, 255, 255, 0.1);
-  }
+.dark .markdown-content pre {
+  background-color: rgba(255, 255, 255, 0.1);
+}
 
-  .markdown-content a {
-    color: #60a5fa;
-  }
+.dark .markdown-content a {
+  color: #60a5fa;
+}
 
-  .markdown-content a:hover {
-    color: #93bbfd;
-  }
+.dark .markdown-content a:hover {
+  color: #93bbfd;
+}
 
-  .markdown-content blockquote {
-    border-left-color: #4b5563;
-    color: #9ca3af;
-  }
+.dark .markdown-content blockquote {
+  border-left-color: #4b5563;
+  color: #9ca3af;
+}
 
-  .markdown-content hr {
-    border-top-color: #4b5563;
-  }
+.dark .markdown-content hr {
+  border-top-color: #4b5563;
 }

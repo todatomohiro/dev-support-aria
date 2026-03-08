@@ -81,20 +81,6 @@ describe('Settings', () => {
       expect(slider).toHaveValue('18')
     })
 
-    it('キャラクターサイズを調整できる', () => {
-      render(
-        <Settings
-          isOpen={true}
-          onClose={mockOnClose}
-          config={mockConfig}
-          onSave={mockOnSave}
-        />
-      )
-
-      const slider = screen.getByTestId('character-size-slider')
-      fireEvent.change(slider, { target: { value: '120' } })
-      expect(slider).toHaveValue('120')
-    })
   })
 
   describe('保存とキャンセル', () => {
@@ -118,7 +104,6 @@ describe('Settings', () => {
         ui: {
           theme: 'dark',
           fontSize: 14,
-          characterSize: 100,
           developerMode: false,
         },
       })

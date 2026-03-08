@@ -71,7 +71,7 @@ function App() {
   const showLive2D = showLive2DRoute && characterVisible
 
   // 位置情報フック
-  const { location: geoLocation, loading: geoLoading, error: geoError, requestLocation, clearLocation } = useGeolocation()
+  const { location: geoLocation, error: geoError, requestLocation, clearLocation } = useGeolocation()
 
   // プロアクティブ・ブリーフィング（起動時・復帰時にAIから話しかける）
   useBriefing()
@@ -636,7 +636,6 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         config={{ ui: config.ui }}
         onSave={handleSaveSettings}
-        geolocationStatus={{ location: geoLocation, loading: geoLoading, error: geoError }}
       />
 
       {/* 検索モーダル */}

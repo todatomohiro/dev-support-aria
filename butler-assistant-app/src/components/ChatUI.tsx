@@ -392,7 +392,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
         {streamingText != null && streamingText.length > 0 && (
           <div className="flex justify-start" data-testid="streaming-message">
             <div className="max-w-[85%] sm:max-w-[70%] rounded-lg p-2 sm:p-3 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100">
-              <div className="markdown-content text-sm sm:text-base">
+              <div className="markdown-content">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {streamingText}
                 </ReactMarkdown>
@@ -474,7 +474,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder="メッセージを入力..."
-              className="w-full resize-none bg-transparent text-gray-900 dark:text-gray-100 p-2.5 sm:p-3 pr-11 text-sm sm:text-base border-none"
+              className="w-full resize-none bg-transparent text-gray-900 dark:text-gray-100 p-2.5 sm:p-3 pr-11 border-none"
               style={{ outline: 'none', boxShadow: 'none' }}
               rows={1}
               disabled={isLoading}
@@ -663,9 +663,9 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
         }`}
       >
         {isUser ? (
-          <p className="whitespace-pre-wrap text-sm sm:text-base">{linkifyContent(message.content, true)}</p>
+          <p className="whitespace-pre-wrap">{linkifyContent(message.content, true)}</p>
         ) : (
-          <div className="markdown-content text-sm sm:text-base">
+          <div className="markdown-content">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{

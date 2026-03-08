@@ -6,7 +6,7 @@ import { modelService } from '@/services/modelService'
 import { skillClient } from '@/services/skillClient'
 import { currentPlatform } from '@/platform'
 import type { ServerModel } from '@/services/modelService'
-import type { ModelReference, SkillConnection } from '@/types'
+import type { ModelReference, SkillConnection, UIConfig } from '@/types'
 import { AVAILABLE_SKILLS } from '@/types'
 
 type AibaTab = 'my' | 'skills' | 'shop' | 'studio'
@@ -183,11 +183,47 @@ function MyAibaTab() {
   )
 }
 
-/** マイSkills タブ — 外部サービス連携管理 */
+/** 機能トグル定義 */
+interface FeatureToggle {
+  id: keyof Pick<UIConfig, 'geolocationEnabled' | 'sentimentEnabled' | 'activityLoggingEnabled'>
+  name: string
+  description: string
+  icon: string
+}
+
+const FEATURE_TOGGLES: FeatureToggle[] = [
+  {
+    id: 'geolocationEnabled',
+    name: '位置情報',
+    description: '現在地を共有して近くの場所を検索できます',
+    icon: '📍',
+  },
+  {
+    id: 'sentimentEnabled',
+    name: '入力中の表情変化',
+    description: 'テキスト入力中にキャラクターの表情がリアルタイムで変化します',
+    icon: '😊',
+  },
+  {
+    id: 'activityLoggingEnabled',
+    name: '生活リズム学習',
+    description: '生活リズムを学習して最適なタイミングで話しかける準備を行います',
+    icon: '🕐',
+  },
+]
+
+/** マイSkills タブ — サービス連携 + 機能管理 */
 function SkillsTab() {
+  const config = useAppStore((s) => s.config)
+  const updateConfig = useAppStore((s) => s.updateConfig)
   const [connections, setConnections] = useState<SkillConnection[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
+
+  /** 機能トグルの変更（即時反映） */
+  const handleFeatureToggle = (featureId: FeatureToggle['id'], enabled: boolean) => {
+    updateConfig({ ui: { ...config.ui, [featureId]: enabled } })
+  }
 
   const loadConnections = useCallback(async () => {
     setIsLoading(true)
@@ -275,62 +311,114 @@ function SkillsTab() {
     connections.some((c) => c.service === serviceId)
 
   return (
-    <div>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        外部サービスを連携すると、チャットからサービスを操作できます。
-      </p>
+    <div className="max-w-3xl">
+      {/* サービス連携セクション */}
+      <div className="mb-8">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">サービス連携</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          外部サービスを連携すると、チャットからサービスを操作できます。
+        </p>
 
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 py-4">
-          <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-          読み込み中...
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {AVAILABLE_SKILLS.map((skill) => (
-            <div
-              key={skill.id}
-              className="flex items-center justify-between p-4 bg-white dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600"
-              data-testid={`skill-row-${skill.id}`}
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 py-4">
+            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+            読み込み中...
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {AVAILABLE_SKILLS.map((skill) => (
+              <div
+                key={skill.id}
+                className="flex items-center justify-between p-4 bg-white dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600/50 hover:border-gray-300 dark:hover:border-gray-500/50 transition-colors"
+                data-testid={`skill-row-${skill.id}`}
+              >
+                <div className="flex items-center gap-3 md:gap-4">
+                  <span className="text-2xl">{skill.icon}</span>
+                  <div>
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {skill.name}
+                    </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {skill.description}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 md:gap-3">
+                  {isConnected(skill.id) ? (
+                    <>
+                      <span className="px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/50 rounded">
+                        接続済み
+                      </span>
+                      <button
+                        onClick={() => handleDisconnect(skill.id)}
+                        className="px-3 py-1 text-xs text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded hover:bg-red-50 dark:hover:bg-red-900/30"
+                      >
+                        解除
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handleConnect(skill.id)}
+                      disabled={isConnecting}
+                      className="px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 disabled:opacity-50"
+                    >
+                      {isConnecting ? '接続中...' : '接続する'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 機能セクション */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">機能</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          各機能のON/OFFを切り替えられます。変更は即時反映されます。
+        </p>
+
+        <div className="space-y-2">
+          {FEATURE_TOGGLES.map((feature) => (
+            <label
+              key={feature.id}
+              className="flex items-center justify-between p-4 bg-white dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600/50 hover:border-gray-300 dark:hover:border-gray-500/50 transition-colors cursor-pointer"
+              data-testid={`feature-row-${feature.id}`}
             >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{skill.icon}</span>
+              <div className="flex items-center gap-3 md:gap-4">
+                <span className="text-2xl">{feature.icon}</span>
                 <div>
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {skill.name}
+                    {feature.name}
                   </span>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {skill.description}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {feature.description}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                {isConnected(skill.id) ? (
-                  <>
-                    <span className="px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/50 rounded">
-                      接続済み
-                    </span>
-                    <button
-                      onClick={() => handleDisconnect(skill.id)}
-                      className="px-3 py-1 text-xs text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded hover:bg-red-50 dark:hover:bg-red-900/30"
-                    >
-                      解除
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => handleConnect(skill.id)}
-                    disabled={isConnecting}
-                    className="px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 disabled:opacity-50"
-                  >
-                    {isConnecting ? '接続中...' : '接続する'}
-                  </button>
-                )}
+              <div
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+                  config.ui[feature.id] ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    config.ui[feature.id] ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+                <input
+                  type="checkbox"
+                  checked={config.ui[feature.id]}
+                  onChange={(e) => handleFeatureToggle(feature.id, e.target.checked)}
+                  className="sr-only"
+                  data-testid={`feature-toggle-${feature.id}`}
+                />
               </div>
-            </div>
+            </label>
           ))}
         </div>
-      )}
+      </div>
     </div>
   )
 }
