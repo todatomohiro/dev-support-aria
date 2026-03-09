@@ -437,11 +437,10 @@
       isTabCapturing = true
       ensureSession()
       updateRecUI()
-      LOG('字幕キャプチャ開始')
-    } else if (status === 'unavailable') {
-      isTabCapturing = false
+      LOG('RTC 字幕受信開始')
+    } else if (status === 'unavailable' || status === 'waiting') {
+      // waiting: RTC フック済みだがまだデータ未受信
       updateRecUI()
-      LOG('字幕キャプチャ利用不可')
     }
   })
 
@@ -500,13 +499,13 @@
       micStatus.className = 'an-source-item' + (isMicListening ? ' active' : '')
     }
 
-    // 参加者音声状態（字幕スクレイピング）
+    // 参加者音声状態（RTC データチャネル）
     if (tabStatus) {
       if (isTabCapturing) {
-        tabStatus.innerHTML = '参加者: <span class="an-source-active">字幕取得中</span>'
+        tabStatus.innerHTML = '参加者: <span class="an-source-active">RTC 受信中</span>'
         tabStatus.className = 'an-source-item active'
       } else {
-        tabStatus.innerHTML = '参加者: <span style="color:#64748b;">字幕 ON で自動開始</span>'
+        tabStatus.innerHTML = '参加者: <span style="color:#64748b;">待機中...</span>'
         tabStatus.className = 'an-source-item'
       }
     }
