@@ -95,7 +95,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updateParts.push('subcategory = :sub')
       expressionValues[':sub'] = { S: subcategory }
     }
-
     await client.send(new UpdateItemCommand({
       TableName: TABLE_NAME,
       Key: {

@@ -424,8 +424,10 @@ class ChatControllerImpl {
 
   /**
    * メモリイベントを AgentCore Memory に保存（fire-and-forget）
+   *
+   * プライベートモードの場合は isPrivate フラグを付与し、バックエンドで保存をスキップさせる。
    */
-  private async storeMemoryEvent(userMessage: string, assistantMessage: string): Promise<void> {
+  private async storeMemoryEvent(userMessage: string, assistantMessage: string, isPrivate = false): Promise<void> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     const accessToken = await getIdToken()
     if (!apiBaseUrl || !accessToken) return
@@ -441,6 +443,7 @@ class ChatControllerImpl {
           { role: 'user', content: userMessage },
           { role: 'assistant', content: assistantMessage },
         ],
+        ...(isPrivate ? { isPrivate: true } : {}),
       }),
     }).catch((error) => {
       console.warn('[Memory] メモリイベント保存エラー:', error)
@@ -623,7 +626,7 @@ class ChatControllerImpl {
         () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, themeId, appStore.currentLocation ?? undefined, themeModelKey, appStore.config.ui.developerMode)
       )
 
-      this.processThemeResponse(structuredResponse, content.trim(), themeId, store)
+      this.processThemeResponse(structuredResponse, content.trim(), themeId, store, activeTheme?.isPrivate)
     } catch (error) {
       // エラーハンドリング
       await this.handleThemeError(error, store)
@@ -680,7 +683,7 @@ class ChatControllerImpl {
               event,
             )
 
-            this.processThemeResponse(structuredResponse, content, themeId, useThemeStore.getState())
+            this.processThemeResponse(structuredResponse, content, themeId, useThemeStore.getState(), activeTheme?.isPrivate)
 
             finalAppStore.setLoading(false)
             resolve()
@@ -714,7 +717,7 @@ class ChatControllerImpl {
   /**
    * テーマレスポンスの共通処理（ストリーミング・非ストリーミング共用）
    */
-  private processThemeResponse(structuredResponse: StructuredResponse, content: string, themeId: string, store: ReturnType<typeof useThemeStore.getState>): void {
+  private processThemeResponse(structuredResponse: StructuredResponse, content: string, themeId: string, store: ReturnType<typeof useThemeStore.getState>, isPrivate = false): void {
     const appStore = useAppStore.getState()
 
     // アシスタントメッセージを作成
@@ -757,7 +760,7 @@ class ChatControllerImpl {
       ttsService.synthesizeAndPlay(assistantMessage.content)
     }
 
-    this.storeMemoryEvent(content, structuredResponse.text)
+    this.storeMemoryEvent(content, structuredResponse.text, isPrivate)
     this.playExpression(structuredResponse)
     store.setError(null)
   }

@@ -91,6 +91,11 @@ function App() {
   const activeThemeId = useThemeStore((s) => s.activeThemeId)
   const themeThemes = useThemeStore((s) => s.themes)
 
+  // 現在のテーマがプライベートかどうか（キャラクター折りたたみバーの位置調整用）
+  const isCurrentThemePrivate = activeThemeId
+    ? themeThemes.find(t => t.themeId === activeThemeId)?.isPrivate === true
+    : false
+
   // 現在のセッション名を判定（設計書: ヘッダーにはセッション名のみ表示）
   const currentSessionName = location.pathname.startsWith('/aiba')
     ? 'Ai-Ba'
@@ -565,7 +570,7 @@ function App() {
               {/* キャラクター非表示時: 天気バッジ + 展開ボタン */}
               {showLive2DRoute && !characterVisible && (
                 <div
-                  className="absolute top-2 left-2 z-20 flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-black/5 dark:bg-white/10 backdrop-blur-sm"
+                  className={`absolute left-2 z-20 flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-black/5 dark:bg-white/10 backdrop-blur-sm ${isCurrentThemePrivate ? 'top-10' : 'top-2'}`}
                   data-testid="character-collapsed-bar"
                 >
                   {weatherInfo && (

@@ -202,6 +202,14 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
 
   return (
     <div className="flex flex-col h-full" data-testid="theme-chat">
+      {/* プライベートモードバー */}
+      {currentTheme?.isPrivate && (
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-gray-500 text-white text-xs shrink-0 relative z-30">
+          <span>🔒</span>
+          <span className="flex-1">プライベートモード — 会話内容は記憶されません</span>
+        </div>
+      )}
+
       {/* ワークバッジ */}
       {workConnection && (
         <div className="px-4 pt-2 shrink-0">

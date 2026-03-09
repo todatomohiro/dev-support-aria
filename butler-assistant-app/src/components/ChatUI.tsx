@@ -449,7 +449,11 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
         )}
         {messages.map((message) => (
           <div key={message.id}>
-            <MessageBubble message={message} developerMode={developerMode} />
+            {message.role === 'transcript' ? (
+              <TranscriptBlock message={message} />
+            ) : (
+              <MessageBubble message={message} developerMode={developerMode} />
+            )}
             {message.suggestedTheme && onCreateTheme && (
               <ThemeSuggestionCard
                 themeName={message.suggestedTheme.themeName}
@@ -739,6 +743,54 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
             </button>
           )}
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * トランスクリプトブロック（会議文字起こし表示）
+ */
+function TranscriptBlock({ message }: { message: Message }) {
+  const [expanded, setExpanded] = useState(false)
+  const entries = message.transcriptEntries ?? []
+
+  const fmtTime = (ts: number) => {
+    const d = new Date(ts)
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+  }
+
+  return (
+    <div className="flex justify-start" data-testid="transcript-block" data-timestamp={message.timestamp}>
+      <div className="max-w-[90%] sm:max-w-[80%] rounded-lg p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-2 w-full text-left text-sm font-medium text-blue-700 dark:text-blue-300"
+        >
+          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m-4 0h8m-4-16a3 3 0 013 3v4a3 3 0 01-6 0V7a3 3 0 013-3z" />
+          </svg>
+          <span className="flex-1">{message.content}</span>
+          <svg className={`w-3 h-3 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {expanded && entries.length > 0 && (
+          <div className="mt-2 space-y-1 text-xs">
+            {entries.map((entry, i) => (
+              <div key={i} className="flex gap-2">
+                <span className="text-gray-400 dark:text-gray-500 shrink-0">{fmtTime(entry.timestamp)}</span>
+                <span className={`font-medium shrink-0 ${entry.source === 'mic' ? 'text-purple-600 dark:text-purple-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                  {entry.speaker}
+                </span>
+                <span className="text-gray-700 dark:text-gray-300">{entry.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">
+          {formatRelativeTimestamp(message.timestamp)}
         </div>
       </div>
     </div>

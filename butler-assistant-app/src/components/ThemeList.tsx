@@ -6,6 +6,7 @@ interface ThemeListProps {
   themes: ThemeSession[]
   onSelectTheme: (themeId: string) => void
   onCreate: () => Promise<void>
+  onCreatePrivate: () => Promise<void>
   onDelete: (themeId: string) => Promise<void>
   isLoading: boolean
   error: string | null
@@ -14,7 +15,7 @@ interface ThemeListProps {
 /**
  * テーマ一覧画面
  */
-export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading, error }: ThemeListProps) {
+export function ThemeList({ themes, onSelectTheme, onCreate, onCreatePrivate, onDelete, isLoading, error }: ThemeListProps) {
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
 
   const handleDelete = useCallback(async (e: React.MouseEvent, themeId: string) => {
@@ -43,16 +44,26 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">トピック</h2>
-        <button
-          onClick={() => onCreate()}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-          data-testid="create-theme-button"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          新規チャットを始める
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onCreatePrivate()}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+            data-testid="create-private-theme-button"
+            title="会話内容をAIが記憶しないモード"
+          >
+            🔒 プライベート
+          </button>
+          <button
+            onClick={() => onCreate()}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+            data-testid="create-theme-button"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            新規チャットを始める
+          </button>
+        </div>
       </div>
 
       {/* コンテンツ */}
@@ -77,7 +88,11 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
               <button
                 key={theme.themeId}
                 onClick={() => onSelectTheme(theme.themeId)}
-                className="flex flex-col p-4 text-left bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-sm transition-all group"
+                className={`flex flex-col p-4 text-left rounded-lg hover:shadow-sm transition-all group ${
+                  theme.isPrivate
+                    ? 'bg-gray-50 dark:bg-gray-800/80 border-l-4 border-l-gray-400 dark:border-l-gray-500 border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500'
+                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600'
+                }`}
                 data-testid={`theme-card-${theme.themeId}`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -101,9 +116,16 @@ export function ThemeList({ themes, onSelectTheme, onCreate, onDelete, isLoading
                     </svg>
                   </button>
                 </div>
-                <span className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-                  {formatDate(theme.updatedAt)}
-                </span>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                    {formatDate(theme.updatedAt)}
+                  </span>
+                  {theme.isPrivate && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-700 rounded">
+                      🔒 プライベート
+                    </span>
+                  )}
+                </div>
               </button>
             ))}
           </div>

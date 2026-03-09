@@ -9,7 +9,7 @@ export interface ThemeServiceType {
   /** テーマ一覧を取得 */
   listThemes(): Promise<ThemeSession[]>
   /** テーマを作成 */
-  createTheme(themeName: string, category?: string, modelKey?: ModelKey): Promise<{ themeId: string; themeName: string }>
+  createTheme(themeName: string, category?: string, modelKey?: ModelKey, isPrivate?: boolean): Promise<{ themeId: string; themeName: string }>
   /** テーマを削除 */
   deleteTheme(themeId: string): Promise<void>
   /** テーマ名を更新 */
@@ -37,10 +37,10 @@ export class ThemeServiceImpl implements ThemeServiceType {
   /**
    * テーマを作成
    */
-  async createTheme(themeName: string, category?: string, modelKey?: ModelKey): Promise<{ themeId: string; themeName: string }> {
+  async createTheme(themeName: string, category?: string, modelKey?: ModelKey, isPrivate?: boolean): Promise<{ themeId: string; themeName: string }> {
     const data = await this.fetchAPI('/themes', {
       method: 'POST',
-      body: JSON.stringify({ themeName, ...(category ? { category } : {}), ...(modelKey ? { modelKey } : {}) }),
+      body: JSON.stringify({ themeName, ...(category ? { category } : {}), ...(modelKey ? { modelKey } : {}), ...(isPrivate ? { isPrivate: true } : {}) }),
     }) as { themeId: string; themeName: string }
     return data
   }

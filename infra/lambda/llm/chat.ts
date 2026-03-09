@@ -680,7 +680,7 @@ async function updateSessionAndMaybeSummarize(
   turnsSinceSummary: number,
   userMessage: string,
   assistantMessage: string,
-  overrides?: { msgPK?: string; sessionSK?: string; themeId?: string }
+  overrides?: { msgPK?: string; sessionSK?: string; themeId?: string; isPrivate?: boolean }
 ): Promise<void> {
   const nowDate = new Date()
   const now = nowDate.toISOString()
@@ -757,7 +757,7 @@ async function updateSessionAndMaybeSummarize(
     },
   }))
 
-  // 5ターンに達したら要約 Lambda を非同期起動
+  // 5ターンに達したら要約 Lambda を非同期起動（セッション内要約はプライベートでも実行）
   if (newTurnsSinceSummary >= SUMMARY_INTERVAL && SUMMARIZE_FUNCTION_NAME) {
     console.log(`[LLM] ${newTurnsSinceSummary} ターン経過 — 要約 Lambda を非同期起動`)
     try {
@@ -798,13 +798,14 @@ async function updateSessionAndMaybeSummarize(
         PK: { S: 'ACTIVE_SESSION' },
         SK: { S: overrides?.themeId ? `${userId}#theme:${overrides.themeId}` : `${userId}#${sessionId}` },
       },
-      UpdateExpression: `SET userId = :uid, sessionId = :sid, updatedAt = :now, ttlExpiry = :ttl${overrides?.themeId ? ', themeId = :tid' : ''}`,
+      UpdateExpression: `SET userId = :uid, sessionId = :sid, updatedAt = :now, ttlExpiry = :ttl${overrides?.themeId ? ', themeId = :tid' : ''}${overrides?.isPrivate ? ', isPrivate = :priv' : ''}`,
       ExpressionAttributeValues: {
         ':uid': { S: userId },
         ':sid': { S: sessionId },
         ':now': { S: now },
         ':ttl': { N: String(Math.floor(Date.now() / 1000) + 24 * 60 * 60) },
         ...(overrides?.themeId ? { ':tid': { S: overrides.themeId } } : {}),
+        ...(overrides?.isPrivate ? { ':priv': { BOOL: true } } : {}),
       },
     }))
   } catch (error) {
@@ -1232,7 +1233,7 @@ function getJSTDateLabel(dateKey: string, todayKey: string, yesterdayKey: string
 /**
  * DynamoDB からテーマセッション情報を取得
  */
-async function getThemeContext(userId: string, themeId: string): Promise<{ themeName: string; category?: string; subcategory?: string; totalTurns?: number; renamedByUser?: boolean } | null> {
+async function getThemeContext(userId: string, themeId: string): Promise<{ themeName: string; category?: string; subcategory?: string; totalTurns?: number; renamedByUser?: boolean; isPrivate?: boolean } | null> {
   try {
     const result = await dynamo.send(new GetItemCommand({
       TableName: TABLE_NAME,
@@ -1248,6 +1249,7 @@ async function getThemeContext(userId: string, themeId: string): Promise<{ theme
       ...(result.Item.subcategory?.S ? { subcategory: result.Item.subcategory.S } : {}),
       ...(result.Item.totalTurns?.N ? { totalTurns: parseInt(result.Item.totalTurns.N, 10) } : {}),
       ...(result.Item.renamedByUser?.S === 'true' ? { renamedByUser: true } : {}),
+      ...(result.Item.isPrivate?.BOOL === true || result.Item.isPrivate?.S === 'true' ? { isPrivate: true } : {}),
     }
   } catch (error) {
     console.warn('[LLM] テーマコンテキスト取得エラー（スキップ）:', error)
@@ -1558,7 +1560,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let enhancedSystemPrompt: string  // デバッグ用
   let sessionTurnsSinceSummary = 0
   let sessionSummary = ''
-  let themeContext: { themeName: string; category?: string; subcategory?: string; totalTurns?: number; renamedByUser?: boolean } | null = null
+  let themeContext: { themeName: string; category?: string; subcategory?: string; totalTurns?: number; renamedByUser?: boolean; isPrivate?: boolean } | null = null
   let mcpConn: MCPConnection | null = null
 
   if (sessionId) {
@@ -1884,7 +1886,7 @@ ${briefingParts.join('\n\n')}
         if (sessionId && !isBriefingMode) {
           try {
             const sessionOverrides = themeId
-              ? { msgPK: `USER#${userId}#THEME#${themeId}`, sessionSK: `THEME_SESSION#${themeId}`, themeId }
+              ? { msgPK: `USER#${userId}#THEME#${themeId}`, sessionSK: `THEME_SESSION#${themeId}`, themeId, ...(themeContext?.isPrivate ? { isPrivate: true } : {}) }
               : undefined
             await updateSessionAndMaybeSummarize(userId, sessionId, sessionTurnsSinceSummary, message, textForStorage, sessionOverrides)
           } catch (error) {
@@ -2033,7 +2035,7 @@ ${briefingParts.join('\n\n')}
       if (sessionId && !isBriefingMode) {
         try {
           const sessionOverrides = themeId
-            ? { msgPK: `USER#${userId}#THEME#${themeId}`, sessionSK: `THEME_SESSION#${themeId}`, themeId }
+            ? { msgPK: `USER#${userId}#THEME#${themeId}`, sessionSK: `THEME_SESSION#${themeId}`, themeId, ...(themeContext?.isPrivate ? { isPrivate: true } : {}) }
             : undefined
           await updateSessionAndMaybeSummarize(
             userId,

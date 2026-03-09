@@ -67,13 +67,33 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       Limit: limit,
     }))
 
-    const roleOrder: Record<string, number> = { user: 0, assistant: 1 }
+    const roleOrder: Record<string, number> = { user: 0, transcript: 0, assistant: 1 }
 
     // chat Lambda 形式のメッセージを frontend Message 形式に変換
     const messages = (result.Items ?? [])
       .map((item) => {
         const role = item.role?.S ?? 'user'
         const rawContent = item.content?.S ?? ''
+
+        // トランスクリプトメッセージの処理
+        if (role === 'transcript') {
+          try {
+            const parsed = JSON.parse(rawContent)
+            if (parsed.__type === 'transcript' && Array.isArray(parsed.entries)) {
+              const count = parsed.entries.length
+              const speakers = [...new Set(parsed.entries.map((e: { speaker: string }) => e.speaker))]
+              return {
+                id: item.SK?.S ?? '',
+                role: 'transcript',
+                content: `${speakers.join('・')} — ${count}件の発言`,
+                timestamp: item.createdAt?.S ? new Date(item.createdAt.S).getTime() : 0,
+                transcriptEntries: parsed.entries,
+              }
+            }
+          } catch { /* JSON パース失敗 → スキップ */ }
+          return null
+        }
+
         // アシスタントの JSON レスポンスから text のみ抽出
         const content = role === 'assistant' ? extractTextFromContent(rawContent) : rawContent
         return {
@@ -83,6 +103,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           timestamp: item.createdAt?.S ? new Date(item.createdAt.S).getTime() : 0,
         }
       })
+      .filter((m): m is { id: string; role: string; content: string; timestamp: number; transcriptEntries?: unknown[] } => m !== null)
       // 時系列順にソート（同一タイムスタンプ内は user → assistant の順）
       .sort((a, b) => {
         if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp

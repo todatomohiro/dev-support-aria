@@ -29,16 +29,24 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   let messages: Array<{ role: string; content: string }>
+  let isPrivate = false
 
   try {
     const body = JSON.parse(event.body)
     messages = body.messages
+    isPrivate = body.isPrivate === true
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return response(400, { error: 'messages array is required' })
     }
   } catch {
     return response(400, { error: 'Invalid JSON' })
+  }
+
+  // プライベートモードでは中期記憶への保存をスキップ
+  if (isPrivate) {
+    console.log('[Memory] プライベートモード — AgentCore Memory 保存スキップ')
+    return response(200, { success: true, skipped: true })
   }
 
   try {

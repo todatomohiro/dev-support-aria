@@ -153,6 +153,8 @@ export interface ThemeSession {
   workActive?: boolean
   /** ワーク有効期限 */
   workExpiresAt?: string
+  /** プライベートモード（学習OFF） */
+  isPrivate?: boolean
 }
 
 /**

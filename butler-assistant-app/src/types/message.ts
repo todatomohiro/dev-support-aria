@@ -5,7 +5,7 @@ import type { MapData } from './response'
  */
 export interface Message {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'transcript'
   content: string
   timestamp: number
   motion?: string
@@ -19,6 +19,16 @@ export interface Message {
   suggestedTheme?: { themeName: string }
   /** LLM が提案する回答候補（クイックリプライ） */
   suggestedReplies?: string[]
+  /** トランスクリプトエントリ（role='transcript' 時） */
+  transcriptEntries?: TranscriptEntry[]
+}
+
+/** 会議文字起こしの1エントリ */
+export interface TranscriptEntry {
+  speaker: string
+  text: string
+  timestamp: number
+  source: string
 }
 
 /**

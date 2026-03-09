@@ -173,9 +173,14 @@ export const handler: Handler<SummarizeEvent, void> = async (event) => {
       updatedAt: { S: now },
       ...(sessionResult.Item?.createdAt ? { createdAt: sessionResult.Item.createdAt } : { createdAt: { S: now } }),
       ...(sessionResult.Item?.totalTurns ? { totalTurns: sessionResult.Item.totalTurns } : {}),
-      // テーマセッションの場合は themeName と themeId を保持
+      // テーマセッションの場合は既存属性を保持
       ...(sessionResult.Item?.themeName ? { themeName: sessionResult.Item.themeName } : {}),
       ...(sessionResult.Item?.themeId ? { themeId: sessionResult.Item.themeId } : {}),
+      ...(sessionResult.Item?.isPrivate ? { isPrivate: sessionResult.Item.isPrivate } : {}),
+      ...(sessionResult.Item?.category ? { category: sessionResult.Item.category } : {}),
+      ...(sessionResult.Item?.subcategory ? { subcategory: sessionResult.Item.subcategory } : {}),
+      ...(sessionResult.Item?.modelKey ? { modelKey: sessionResult.Item.modelKey } : {}),
+      ...(sessionResult.Item?.renamedByUser ? { renamedByUser: sessionResult.Item.renamedByUser } : {}),
       ttlExpiry: { N: String(ttlExpiry) },
     },
   }))

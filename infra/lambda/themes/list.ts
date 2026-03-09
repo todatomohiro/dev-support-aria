@@ -56,6 +56,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           modelKey: record.modelKey ?? 'haiku',
           ...(record.category ? { category: record.category } : {}),
           ...(record.subcategory ? { subcategory: record.subcategory } : {}),
+          ...(record.isPrivate === true || record.isPrivate === 'true' ? { isPrivate: true } : {}),
           ...(workExpiresAt ? { workActive: true, workExpiresAt } : {}),
         }
       })

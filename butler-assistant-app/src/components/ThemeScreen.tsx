@@ -69,6 +69,13 @@ export function ThemeScreen() {
     await handleCreateTheme('新規トピック')
   }, [handleCreateTheme])
 
+  /** プライベートトピックを作成 */
+  const handleQuickCreatePrivate = useCallback(async () => {
+    const result = await themeService.createTheme('新規トピック', undefined, undefined, true)
+    await loadThemes()
+    handleSelectTheme(result.themeId)
+  }, [loadThemes, handleSelectTheme])
+
   /** テーマを削除（楽観的UI: 即座にリストから除去） */
   const handleDeleteTheme = useCallback(async (themeId: string) => {
     // 楽観的にUIから即削除
@@ -111,6 +118,7 @@ export function ThemeScreen() {
       themes={themes}
       onSelectTheme={handleSelectTheme}
       onCreate={handleQuickCreate}
+      onCreatePrivate={handleQuickCreatePrivate}
       onDelete={handleDeleteTheme}
       isLoading={isLoading}
       error={error}

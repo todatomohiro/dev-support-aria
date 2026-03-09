@@ -1,4 +1,5 @@
 import { useGroupChatStore } from '@/stores/groupChatStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { getIdToken } from '@/auth'
 import { groupService } from '@/services/groupService'
 import type { GroupMessage } from '@/types'
@@ -192,7 +193,7 @@ export class WsServiceImpl implements WsServiceType {
   /**
    * 受信メッセージを処理
    */
-  private handleMessage(data: { type: string; conversationId?: string; groupId?: string; message?: unknown; lastMessage?: string; updatedAt?: number; userId?: string; nickname?: string; lastReadAt?: number; requestId?: string; delta?: string; tool?: string; content?: string; error?: string }): void {
+  private handleMessage(data: { type: string; conversationId?: string; groupId?: string; message?: unknown; lastMessage?: string; updatedAt?: number; userId?: string; nickname?: string; lastReadAt?: number; requestId?: string; delta?: string; tool?: string; content?: string; error?: string; themeId?: string; entries?: unknown[]; startTime?: number; endTime?: number }): void {
     // チャットストリーミングイベント
     if (data.type.startsWith('chat_') && this.chatStreamCallback) {
       this.chatStreamCallback(data as ChatStreamEvent)
@@ -203,6 +204,24 @@ export class WsServiceImpl implements WsServiceType {
     if (data.type.startsWith('terminal_')) {
       if (this.terminalEventCallback) {
         this.terminalEventCallback(data as unknown as TerminalEvent)
+      }
+      return
+    }
+
+    // 会議トランスクリプトチャンク（拡張機能からのリアルタイム字幕）
+    if (data.type === 'transcript_chunk' && data.themeId && Array.isArray(data.entries)) {
+      const store = useThemeStore.getState()
+      // アクティブなテーマと一致する場合のみメッセージに追加
+      if (store.activeThemeId === data.themeId) {
+        const entries = data.entries as Array<{ speaker: string; text: string; timestamp: number; source: string }>
+        const speakers = [...new Set(entries.map(e => e.speaker))]
+        store.addMessage({
+          id: `tr-${data.startTime}-${data.endTime}`,
+          role: 'transcript' as const,
+          content: `${speakers.join('・')} — ${entries.length}件の発言`,
+          timestamp: data.startTime ?? Date.now(),
+          transcriptEntries: entries,
+        })
       }
       return
     }

@@ -1092,6 +1092,25 @@ export class ButlerStack extends cdk.Stack {
       description: 'Transcribe Streaming presigned URL endpoint (PoC)',
     })
 
+    // ── Meeting Transcript API（拡張機能 → Ai-Ba アプリ 字幕ストリーミング） ──
+    const meetingTranscriptFn = new lambdaNode.NodejsFunction(this, 'MeetingTranscriptFn', {
+      ...lambdaDefaults,
+      timeout: cdk.Duration.seconds(10),
+      entry: path.join(__dirname, '..', 'lambda', 'meeting', 'transcript.ts'),
+      functionName: 'butler-meeting-transcript',
+    })
+    table.grantReadWriteData(meetingTranscriptFn)
+    meetingTranscriptFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [wsManageConnectionsArn],
+    }))
+    meetingTranscriptFn.addEnvironment('WEBSOCKET_ENDPOINT', wsStage.callbackUrl)
+
+    // /meeting/transcript
+    const meetingResource = api.root.addResource('meeting')
+    const meetingTranscriptResource = meetingResource.addResource('transcript')
+    meetingTranscriptResource.addMethod('POST', new apigateway.LambdaIntegration(meetingTranscriptFn), authMethodOptions)
+
     // ── Meeting Noter API（PoC） ──
     const meetingNoterFn = new lambdaNode.NodejsFunction(this, 'MeetingNoterFn', {
       ...lambdaDefaults,

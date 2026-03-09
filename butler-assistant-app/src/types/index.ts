@@ -1,5 +1,5 @@
 // Message types
-export type { Message, ConversationHistory } from './message'
+export type { Message, ConversationHistory, TranscriptEntry } from './message'
 
 // Response types
 export type {

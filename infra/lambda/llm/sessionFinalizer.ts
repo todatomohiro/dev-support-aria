@@ -1,6 +1,7 @@
 import {
   DynamoDBClient,
   QueryCommand,
+  DeleteItemCommand,
 } from '@aws-sdk/client-dynamodb'
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda'
 import type { Handler } from 'aws-lambda'
@@ -57,10 +58,28 @@ export const handler: Handler = async () => {
     const userId = item.userId?.S
     const sessionId = item.sessionId?.S
     const themeId = item.themeId?.S
+    const isPrivate = item.isPrivate?.BOOL === true
     if (!userId || !sessionId) continue
 
     const sessionType = themeId ? `themeId=${themeId}` : `sessionId=${sessionId}`
-    console.log(`[SessionFinalizer] セッション終了検出: userId=${userId}, ${sessionType}, elapsed=${Math.round(elapsed / 60000)}分`)
+    console.log(`[SessionFinalizer] セッション終了検出: userId=${userId}, ${sessionType}, isPrivate=${isPrivate}, elapsed=${Math.round(elapsed / 60000)}分`)
+
+    // プライベートモードのセッションは extractFacts をスキップ（記憶汚染防止）
+    if (isPrivate) {
+      console.log(`[SessionFinalizer] プライベートセッション — extractFacts スキップ: userId=${userId}, ${sessionType}`)
+      // ACTIVE_SESSION レコードは削除（extractFacts 内の deleteActiveSession 相当）
+      try {
+        const sk = themeId ? `${userId}#theme:${themeId}` : `${userId}#${sessionId}`
+        await dynamo.send(new DeleteItemCommand({
+          TableName: TABLE_NAME,
+          Key: { PK: { S: 'ACTIVE_SESSION' }, SK: { S: sk } },
+        }))
+      } catch (delErr) {
+        console.warn('[SessionFinalizer] ACTIVE_SESSION 削除エラー:', delErr)
+      }
+      processedCount++
+      continue
+    }
 
     try {
       await lambdaClient.send(new InvokeCommand({

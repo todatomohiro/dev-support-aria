@@ -41,6 +41,9 @@
 
   // Ai-Ba トピック連携
   let linkedThemeId = null  // 自動作成されたトピック ID
+  let streamBatchTimer = null // 字幕ストリーミング用バッチタイマー
+  let streamBatchEntries = [] // ストリーミング用バッファ
+  const STREAM_INTERVAL = 30000 // 30秒ごとにバッチ送信
 
   // Ai-Ba 認証
   let aibaToken = null
@@ -358,11 +361,12 @@
       isMicMuted = false
       isCaptionMuted = false
       stopMicRecording()
+      stopStreamBatch()
       updateRecUI()
       LOG('文字起こし終了')
 
-      // Ai-Ba トピックに自動保存
-      autoSaveToTopic()
+      // 残りのバッチをフラッシュしてから自動保存
+      flushStreamBatch().then(() => autoSaveToTopic())
     } else {
       // 開始
       isTranscribing = true
@@ -374,8 +378,10 @@
       updateRecUI()
       LOG('文字起こし開始')
 
-      // Ai-Ba にプライベートトピックを自動作成
-      autoCreateTopic()
+      // Ai-Ba にプライベートトピックを自動作成 → 成功したらストリーミング開始
+      autoCreateTopic().then(() => {
+        if (linkedThemeId) startStreamBatch()
+      })
     }
   }
 
@@ -763,6 +769,11 @@
 
     // サーバーに非同期保存
     queueTranscriptSync(entry)
+
+    // リアルタイムストリーミング用バッファに追加
+    if (linkedThemeId && aibaToken) {
+      streamBatchEntries.push(entry)
+    }
   }
 
   function entryHTML(entry) {
@@ -979,6 +990,62 @@
         btn.textContent = 'トピック保存'
         btn.disabled = false
       }
+    }
+  }
+
+  // ──────────────────────────────────────────
+  // リアルタイムストリーミング（Phase 2b）
+  // ──────────────────────────────────────────
+
+  /** 30秒ごとにバッチ送信するタイマーを開始 */
+  function startStreamBatch() {
+    if (streamBatchTimer) return
+    LOG('ストリーミングバッチ開始（30秒間隔）')
+    streamBatchTimer = setInterval(() => {
+      flushStreamBatch()
+    }, STREAM_INTERVAL)
+  }
+
+  /** バッチタイマーを停止 */
+  function stopStreamBatch() {
+    if (streamBatchTimer) {
+      clearInterval(streamBatchTimer)
+      streamBatchTimer = null
+      LOG('ストリーミングバッチ停止')
+    }
+  }
+
+  /** バッファに溜まった字幕エントリを POST /meeting/transcript に送信 */
+  async function flushStreamBatch() {
+    if (streamBatchEntries.length === 0 || !linkedThemeId || !aibaToken || !aibaApiUrl) return
+
+    const entries = [...streamBatchEntries]
+    streamBatchEntries = []
+
+    try {
+      const res = await fetch(`${aibaApiUrl}/meeting/transcript`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${aibaToken}`,
+        },
+        body: JSON.stringify({
+          themeId: linkedThemeId,
+          entries,
+        }),
+      })
+
+      if (!res.ok) {
+        LOG('ストリーム送信エラー:', res.status)
+        // 失敗した分を戻す
+        streamBatchEntries.unshift(...entries)
+      } else {
+        const data = await res.json()
+        LOG(`ストリーム送信完了: ${data.saved} 件`)
+      }
+    } catch (err) {
+      LOG('ストリーム送信エラー:', err.message)
+      streamBatchEntries.unshift(...entries)
     }
   }
 
