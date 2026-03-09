@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Ai-Ba Security Settings Mock</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f172a;
+    color: #f1f5f9;
+    min-height: 100dvh;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid #1e293b;
+    background: #0f172a;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .back-btn {
+    width: 36px; height: 36px;
+    border: none; border-radius: 10px;
+    background: #1e293b;
+    color: #94a3b8;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .header-title { font-size: 17px; font-weight: 600; }
+
+  /* ── Content ── */
+  .content { padding: 16px; max-width: 480px; margin: 0 auto; }
+
+  .section {
+    margin-bottom: 24px;
+  }
+  .section-label {
+    font-size: 12px; color: #64748b; font-weight: 600;
+    letter-spacing: 0.05em;
+    padding: 0 4px 8px;
+  }
+  .card {
+    background: #1e293b;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .card-item {
+    padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .card-item:hover { background: #263348; }
+  .card-item + .card-item { border-top: 1px solid #334155; }
+  .card-item-left { display: flex; align-items: center; gap: 12px; }
+  .card-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .card-icon.blue { background: rgba(59,130,246,0.15); }
+  .card-icon.green { background: rgba(34,197,94,0.15); }
+  .card-icon.red { background: rgba(239,68,68,0.15); }
+  .card-label { font-size: 15px; font-weight: 500; }
+  .card-sublabel { font-size: 12px; color: #64748b; margin-top: 2px; }
+  .card-arrow { color: #475569; font-size: 14px; }
+  .badge {
+    font-size: 11px; font-weight: 600;
+    padding: 3px 8px; border-radius: 6px;
+  }
+  .badge-off { background: rgba(239,68,68,0.15); color: #f87171; }
+  .badge-on { background: rgba(34,197,94,0.15); color: #4ade80; }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #1e293b;
+    border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px;
+    max-height: 90dvh;
+    overflow-y: auto;
+    animation: slideUp 0.3s ease;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  .modal-handle {
+    width: 36px; height: 4px;
+    background: #475569;
+    border-radius: 2px;
+    margin: 10px auto 0;
+  }
+  .modal-header {
+    padding: 16px 20px 0;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-title { font-size: 18px; font-weight: 700; }
+  .modal-close {
+    width: 32px; height: 32px;
+    border: none; border-radius: 50%;
+    background: #334155;
+    color: #94a3b8;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal-body { padding: 20px; }
+
+  /* ── Form ── */
+  .form-group { margin-bottom: 16px; }
+  .form-label {
+    font-size: 13px; color: #94a3b8; font-weight: 500;
+    margin-bottom: 6px; display: block;
+  }
+  .form-input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid #334155;
+    border-radius: 10px;
+    background: #0f172a;
+    color: #f1f5f9;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-input:focus { border-color: #6366f1; }
+  .form-input::placeholder { color: #475569; }
+  .form-hint {
+    font-size: 12px; color: #64748b;
+    margin-top: 4px;
+  }
+  .form-error {
+    font-size: 12px; color: #f87171;
+    margin-top: 4px; display: none;
+  }
+  .form-link {
+    font-size: 13px; color: #6366f1;
+    cursor: pointer; text-decoration: none;
+    margin-top: 4px; display: inline-block;
+  }
+  .form-link:hover { color: #818cf8; }
+
+  .password-wrap {
+    position: relative;
+  }
+  .password-toggle {
+    position: absolute; right: 12px; top: 50%;
+    transform: translateY(-50%);
+    background: none; border: none;
+    color: #64748b; font-size: 16px;
+    cursor: pointer;
+  }
+
+  /* ── Strength Bar ── */
+  .strength-bar {
+    display: flex; gap: 4px; margin-top: 8px;
+  }
+  .strength-seg {
+    flex: 1; height: 3px;
+    border-radius: 2px;
+    background: #334155;
+    transition: background 0.3s;
+  }
+  .strength-label {
+    font-size: 11px; color: #64748b;
+    margin-top: 4px; text-align: right;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    width: 100%;
+    padding: 14px;
+    border: none; border-radius: 12px;
+    font-size: 15px; font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary {
+    background: #6366f1;
+    color: #fff;
+  }
+  .btn-primary:hover { background: #5558e6; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-danger {
+    background: rgba(239,68,68,0.15);
+    color: #f87171;
+  }
+  .btn-danger:hover { background: rgba(239,68,68,0.25); }
+
+  /* ── MFA Setup Steps ── */
+  .mfa-steps { display: none; }
+  .mfa-steps.active { display: block; }
+
+  .qr-placeholder {
+    width: 200px; height: 200px;
+    margin: 16px auto;
+    background: #fff;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .qr-grid {
+    width: 160px; height: 160px;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 2px;
+  }
+  .qr-cell {
+    border-radius: 1px;
+  }
+  .qr-label {
+    text-align: center;
+    font-size: 13px; color: #94a3b8;
+    margin-bottom: 8px;
+  }
+
+  .secret-key {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+    font-family: ui-monospace, monospace;
+    font-size: 14px;
+    letter-spacing: 0.1em;
+    color: #a78bfa;
+    margin: 12px 0;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .secret-key:hover { background: #1e293b; }
+  .secret-key-hint {
+    font-size: 11px; color: #64748b;
+    text-align: center;
+  }
+
+  .totp-input-group {
+    display: flex; gap: 8px;
+    justify-content: center;
+    margin: 20px 0;
+  }
+  .totp-digit {
+    width: 44px; height: 52px;
+    border: 1.5px solid #334155;
+    border-radius: 10px;
+    background: #0f172a;
+    color: #f1f5f9;
+    font-size: 22px;
+    font-weight: 600;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .totp-digit:focus { border-color: #6366f1; }
+
+  /* ── Success State ── */
+  .success-icon {
+    width: 64px; height: 64px;
+    margin: 16px auto;
+    border-radius: 50%;
+    background: rgba(34,197,94,0.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+    animation: popIn 0.4s ease;
+  }
+  @keyframes popIn {
+    0% { transform: scale(0); }
+    60% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+  .success-title {
+    text-align: center;
+    font-size: 18px; font-weight: 700;
+    margin: 12px 0 4px;
+  }
+  .success-desc {
+    text-align: center;
+    font-size: 14px; color: #94a3b8;
+    margin-bottom: 24px;
+  }
+
+  /* ── Divider ── */
+  .divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 20px 0;
+    font-size: 12px; color: #475569;
+  }
+  .divider::before, .divider::after {
+    content: ''; flex: 1; height: 1px; background: #334155;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Main Screen ── -->
+<div id="mainScreen">
+  <div class="header">
+    <button class="back-btn" onclick="alert('← 設定画面に戻る')">←</button>
+    <div class="header-title">セキュリティ</div>
+  </div>
+
+  <div class="content">
+    <!-- パスワード -->
+    <div class="section">
+      <div class="section-label">パスワード</div>
+      <div class="card">
+        <div class="card-item" onclick="openModal('passwordModal')">
+          <div class="card-item-left">
+            <div class="card-icon blue">🔑</div>
+            <div>
+              <div class="card-label">パスワードを変更</div>
+              <div class="card-sublabel">最終変更: 2026/02/15</div>
+            </div>
+          </div>
+          <div class="card-arrow">›</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 二段階認証 -->
+    <div class="section">
+      <div class="section-label">二段階認証（MFA）</div>
+      <div class="card">
+        <div class="card-item" onclick="openMfaModal()">
+          <div class="card-item-left">
+            <div class="card-icon green">🛡️</div>
+            <div>
+              <div class="card-label">認証アプリ（TOTP）</div>
+              <div class="card-sublabel">Google Authenticator 等</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="badge" id="mfaBadge">未設定</span>
+            <div class="card-arrow">›</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- セッション -->
+    <div class="section">
+      <div class="section-label">セッション</div>
+      <div class="card">
+        <div class="card-item" onclick="alert('全端末からログアウトします')">
+          <div class="card-item-left">
+            <div class="card-icon red">📱</div>
+            <div>
+              <div class="card-label">すべての端末からログアウト</div>
+              <div class="card-sublabel">現在のセッションも終了します</div>
+            </div>
+          </div>
+          <div class="card-arrow">›</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Password Change Modal ── -->
+<div class="modal-overlay" id="passwordModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">パスワード変更</div>
+      <button class="modal-close" onclick="closeModal('passwordModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Step 1: Form -->
+      <div id="pwStep1">
+        <div class="form-group">
+          <label class="form-label">現在のパスワード</label>
+          <div class="password-wrap">
+            <input type="password" class="form-input" id="currentPw" placeholder="現在のパスワードを入力">
+            <button class="password-toggle" onclick="togglePw('currentPw')">👁</button>
+          </div>
+          <a class="form-link" onclick="openModal('forgotModal'); closeModal('passwordModal');">パスワードを忘れた場合</a>
+        </div>
+
+        <div class="divider">新しいパスワード</div>
+
+        <div class="form-group">
+          <label class="form-label">新しいパスワード</label>
+          <div class="password-wrap">
+            <input type="password" class="form-input" id="newPw" placeholder="8文字以上の英数字" oninput="checkStrength()">
+            <button class="password-toggle" onclick="togglePw('newPw')">👁</button>
+          </div>
+          <div class="strength-bar" id="strengthBar">
+            <div class="strength-seg"></div>
+            <div class="strength-seg"></div>
+            <div class="strength-seg"></div>
+            <div class="strength-seg"></div>
+          </div>
+          <div class="strength-label" id="strengthLabel"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">新しいパスワード（確認）</label>
+          <div class="password-wrap">
+            <input type="password" class="form-input" id="confirmPw" placeholder="もう一度入力" oninput="checkMatch()">
+            <button class="password-toggle" onclick="togglePw('confirmPw')">👁</button>
+          </div>
+          <div class="form-error" id="matchError">パスワードが一致しません</div>
+        </div>
+
+        <button class="btn btn-primary" id="changePwBtn" disabled onclick="changePwSuccess()">
+          パスワードを変更
+        </button>
+      </div>
+
+      <!-- Step 2: Success -->
+      <div id="pwStep2" style="display:none;">
+        <div class="success-icon">✓</div>
+        <div class="success-title">パスワードを変更しました</div>
+        <div class="success-desc">新しいパスワードで次回からログインしてください</div>
+        <button class="btn btn-primary" onclick="closeModal('passwordModal'); resetPwForm();">閉じる</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Forgot Password Modal ── -->
+<div class="modal-overlay" id="forgotModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">パスワードのリセット</div>
+      <button class="modal-close" onclick="closeModal('forgotModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="forgotStep1">
+        <p style="font-size:14px;color:#94a3b8;margin-bottom:20px;">
+          登録済みのメールアドレスに認証コードを送信します。
+        </p>
+        <div class="form-group">
+          <label class="form-label">メールアドレス</label>
+          <input type="email" class="form-input" placeholder="example@email.com">
+        </div>
+        <button class="btn btn-primary" onclick="showForgotStep2()">認証コードを送信</button>
+      </div>
+      <div id="forgotStep2" style="display:none;">
+        <p style="font-size:14px;color:#94a3b8;margin-bottom:20px;">
+          メールに届いた6桁のコードを入力してください。
+        </p>
+        <div class="totp-input-group">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this)">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this)">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this)">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this)">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this)">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">新しいパスワード</label>
+          <input type="password" class="form-input" placeholder="8文字以上の英数字">
+        </div>
+        <button class="btn btn-primary" onclick="closeModal('forgotModal'); alert('パスワードをリセットしました');">パスワードをリセット</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MFA Setup Modal ── -->
+<div class="modal-overlay" id="mfaModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title" id="mfaModalTitle">二段階認証の設定</div>
+      <button class="modal-close" onclick="closeModal('mfaModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Setup Step 1: QR Code -->
+      <div class="mfa-steps active" id="mfaSetup1">
+        <p style="font-size:14px;color:#94a3b8;margin-bottom:16px;">
+          認証アプリ（Google Authenticator, Authy 等）で下のQRコードをスキャンしてください。
+        </p>
+        <div class="qr-placeholder">
+          <div class="qr-grid" id="qrGrid"></div>
+        </div>
+        <div class="qr-label">QRコードをスキャン</div>
+
+        <div class="divider">QRコードを読めない場合</div>
+
+        <div class="secret-key" onclick="navigator.clipboard?.writeText('JBSW Y3DP EHPK 3PXP'); this.style.borderColor='#4ade80';">
+          JBSW Y3DP EHPK 3PXP
+        </div>
+        <div class="secret-key-hint">タップしてコピー → アプリに手動入力</div>
+
+        <div style="height:20px;"></div>
+        <button class="btn btn-primary" onclick="showMfaStep(2)">次へ — コードを入力</button>
+      </div>
+
+      <!-- Setup Step 2: Verify Code -->
+      <div class="mfa-steps" id="mfaSetup2">
+        <p style="font-size:14px;color:#94a3b8;margin-bottom:8px;">
+          認証アプリに表示されている6桁のコードを入力してください。
+        </p>
+        <div class="totp-input-group" id="mfaTotpInputs">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkMfaCode();">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkMfaCode();">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkMfaCode();">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkMfaCode();">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkMfaCode();">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkMfaCode();">
+        </div>
+        <button class="btn btn-primary" id="mfaVerifyBtn" disabled onclick="showMfaStep(3)">認証して有効化</button>
+      </div>
+
+      <!-- Setup Step 3: Success -->
+      <div class="mfa-steps" id="mfaSetup3">
+        <div class="success-icon">🛡️</div>
+        <div class="success-title">二段階認証を有効にしました</div>
+        <div class="success-desc">次回ログイン時から認証コードの入力が必要になります</div>
+        <button class="btn btn-primary" onclick="enableMfa(); closeModal('mfaModal');">完了</button>
+      </div>
+
+      <!-- Disable: Verify to turn off -->
+      <div class="mfa-steps" id="mfaDisable">
+        <p style="font-size:14px;color:#94a3b8;margin-bottom:8px;">
+          二段階認証を解除するには、認証アプリのコードを入力してください。
+        </p>
+        <div class="totp-input-group" id="mfaDisableInputs">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkDisableCode();">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkDisableCode();">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkDisableCode();">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkDisableCode();">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkDisableCode();">
+          <input class="totp-digit" maxlength="1" oninput="autoTab(this); checkDisableCode();">
+        </div>
+        <button class="btn btn-danger" id="mfaDisableBtn" disabled onclick="disableMfa(); closeModal('mfaModal');">二段階認証を解除</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let mfaEnabled = false;
+
+  // ── Modal ──
+  function openModal(id) {
+    document.getElementById(id).classList.add('open');
+  }
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+  }
+
+  // ── Password ──
+  function togglePw(inputId) {
+    const input = document.getElementById(inputId);
+    input.type = input.type === 'password' ? 'text' : 'password';
+  }
+
+  function checkStrength() {
+    const pw = document.getElementById('newPw').value;
+    const segs = document.querySelectorAll('#strengthBar .strength-seg');
+    const label = document.getElementById('strengthLabel');
+    let score = 0;
+    if (pw.length >= 8) score++;
+    if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+    if (/\d/.test(pw)) score++;
+    if (/[^a-zA-Z0-9]/.test(pw)) score++;
+
+    const colors = ['#ef4444', '#f59e0b', '#3b82f6', '#22c55e'];
+    const labels = ['弱い', 'まあまあ', '良い', '強い'];
+    segs.forEach((s, i) => {
+      s.style.background = i < score ? colors[score - 1] : '#334155';
+    });
+    label.textContent = pw.length > 0 ? labels[score - 1] || '' : '';
+    label.style.color = colors[score - 1] || '#64748b';
+    checkFormValid();
+  }
+
+  function checkMatch() {
+    const pw = document.getElementById('newPw').value;
+    const confirm = document.getElementById('confirmPw').value;
+    const err = document.getElementById('matchError');
+    if (confirm.length > 0 && pw !== confirm) {
+      err.style.display = 'block';
+    } else {
+      err.style.display = 'none';
+    }
+    checkFormValid();
+  }
+
+  function checkFormValid() {
+    const current = document.getElementById('currentPw').value;
+    const pw = document.getElementById('newPw').value;
+    const confirm = document.getElementById('confirmPw').value;
+    const btn = document.getElementById('changePwBtn');
+    btn.disabled = !(current.length > 0 && pw.length >= 8 && pw === confirm);
+  }
+
+  function changePwSuccess() {
+    document.getElementById('pwStep1').style.display = 'none';
+    document.getElementById('pwStep2').style.display = 'block';
+  }
+
+  function resetPwForm() {
+    document.getElementById('pwStep1').style.display = 'block';
+    document.getElementById('pwStep2').style.display = 'none';
+    document.getElementById('currentPw').value = '';
+    document.getElementById('newPw').value = '';
+    document.getElementById('confirmPw').value = '';
+    document.getElementById('changePwBtn').disabled = true;
+    document.querySelectorAll('#strengthBar .strength-seg').forEach(s => s.style.background = '#334155');
+    document.getElementById('strengthLabel').textContent = '';
+  }
+
+  // ── Forgot Password ──
+  function showForgotStep2() {
+    document.getElementById('forgotStep1').style.display = 'none';
+    document.getElementById('forgotStep2').style.display = 'block';
+  }
+
+  // ── MFA ──
+  function openMfaModal() {
+    // Reset all steps
+    document.querySelectorAll('.mfa-steps').forEach(s => s.classList.remove('active'));
+    if (mfaEnabled) {
+      document.getElementById('mfaModalTitle').textContent = '二段階認証の解除';
+      document.getElementById('mfaDisable').classList.add('active');
+      // Clear inputs
+      document.querySelectorAll('#mfaDisableInputs .totp-digit').forEach(i => i.value = '');
+      document.getElementById('mfaDisableBtn').disabled = true;
+    } else {
+      document.getElementById('mfaModalTitle').textContent = '二段階認証の設定';
+      document.getElementById('mfaSetup1').classList.add('active');
+    }
+    openModal('mfaModal');
+  }
+
+  function showMfaStep(step) {
+    document.querySelectorAll('.mfa-steps').forEach(s => s.classList.remove('active'));
+    document.getElementById('mfaSetup' + step).classList.add('active');
+    if (step === 2) {
+      // Clear and focus first input
+      document.querySelectorAll('#mfaTotpInputs .totp-digit').forEach(i => i.value = '');
+      document.getElementById('mfaVerifyBtn').disabled = true;
+      setTimeout(() => document.querySelector('#mfaTotpInputs .totp-digit')?.focus(), 100);
+    }
+  }
+
+  function checkMfaCode() {
+    const digits = document.querySelectorAll('#mfaTotpInputs .totp-digit');
+    const code = Array.from(digits).map(d => d.value).join('');
+    document.getElementById('mfaVerifyBtn').disabled = code.length < 6;
+  }
+
+  function checkDisableCode() {
+    const digits = document.querySelectorAll('#mfaDisableInputs .totp-digit');
+    const code = Array.from(digits).map(d => d.value).join('');
+    document.getElementById('mfaDisableBtn').disabled = code.length < 6;
+  }
+
+  function enableMfa() {
+    mfaEnabled = true;
+    const badge = document.getElementById('mfaBadge');
+    badge.textContent = '設定済み';
+    badge.className = 'badge badge-on';
+  }
+
+  function disableMfa() {
+    mfaEnabled = false;
+    const badge = document.getElementById('mfaBadge');
+    badge.textContent = '未設定';
+    badge.className = 'badge badge-off';
+  }
+
+  // ── Auto-tab for TOTP digits ──
+  function autoTab(input) {
+    if (input.value.length === 1) {
+      const next = input.nextElementSibling;
+      if (next && next.classList.contains('totp-digit')) next.focus();
+    }
+  }
+
+  // ── Generate fake QR code ──
+  const grid = document.getElementById('qrGrid');
+  for (let i = 0; i < 64; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'qr-cell';
+    cell.style.background = Math.random() > 0.45 ? '#000' : '#fff';
+    grid.appendChild(cell);
+  }
+
+  // Click outside modal to close
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.classList.remove('open');
+    });
+  });
+
+  // Keyboard handling for TOTP inputs (backspace)
+  document.querySelectorAll('.totp-digit').forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && input.value === '') {
+        const prev = input.previousElementSibling;
+        if (prev && prev.classList.contains('totp-digit')) {
+          prev.focus();
+          prev.value = '';
+        }
+      }
+    });
+    // Only allow numbers
+    input.addEventListener('input', () => {
+      input.value = input.value.replace(/[^0-9]/g, '');
+    });
+  });
+</script>
+</body>
+</html>

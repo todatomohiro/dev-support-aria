@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Ai-Ba Onboarding Mock</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f172a;
+    color: #f1f5f9;
+    overflow: hidden;
+    height: 100dvh;
+    width: 100vw;
+  }
+
+  /* ── 共通 ── */
+  .screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s ease, transform 0.6s ease;
+    transform: translateY(20px);
+  }
+  .screen.active {
+    opacity: 1; pointer-events: auto; transform: translateY(0);
+  }
+  .screen.exit {
+    opacity: 0; pointer-events: none; transform: translateY(-20px);
+  }
+
+  /* ── Step 1: Welcome ── */
+  .welcome-logo {
+    width: 100px; height: 100px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 42px; font-weight: 700; color: #fff;
+    margin-bottom: 32px;
+    animation: logoFloat 3s ease-in-out infinite;
+    box-shadow: 0 0 40px rgba(99,102,241,0.4);
+  }
+  @keyframes logoFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .welcome-title {
+    font-size: 28px; font-weight: 700;
+    margin-bottom: 8px;
+    animation: fadeUp 0.8s ease 0.3s both;
+  }
+  .welcome-subtitle {
+    font-size: 15px; color: #94a3b8;
+    margin-bottom: 48px;
+    animation: fadeUp 0.8s ease 0.5s both;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Step 2: Avatar Select ── */
+  .step-label {
+    font-size: 13px; color: #6366f1; font-weight: 600;
+    letter-spacing: 0.05em; margin-bottom: 8px;
+  }
+  .step-title {
+    font-size: 22px; font-weight: 700; margin-bottom: 6px;
+  }
+  .step-desc {
+    font-size: 14px; color: #94a3b8; margin-bottom: 28px;
+    text-align: center; line-height: 1.5;
+  }
+
+  .avatar-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    width: 100%; max-width: 320px;
+    margin-bottom: 32px;
+  }
+  .avatar-card {
+    position: relative;
+    background: #1e293b;
+    border: 2px solid #334155;
+    border-radius: 16px;
+    padding: 16px 12px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+  .avatar-card:hover {
+    border-color: #6366f1;
+    background: #1e293b;
+    transform: translateY(-2px);
+  }
+  .avatar-card.selected {
+    border-color: #6366f1;
+    background: linear-gradient(180deg, rgba(99,102,241,0.15), rgba(99,102,241,0.05));
+    box-shadow: 0 0 20px rgba(99,102,241,0.2);
+  }
+  .avatar-card.selected::after {
+    content: '✓';
+    position: absolute; top: 8px; right: 8px;
+    width: 22px; height: 22px;
+    background: #6366f1; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #fff;
+  }
+  .avatar-preview {
+    width: 80px; height: 100px;
+    margin: 0 auto 10px;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 48px;
+  }
+  .avatar-name {
+    font-size: 14px; font-weight: 600;
+  }
+  .avatar-desc {
+    font-size: 11px; color: #64748b; margin-top: 2px;
+  }
+
+  /* ── Step 3: Name Input ── */
+  .name-input-wrap {
+    width: 100%; max-width: 300px;
+    margin-bottom: 12px;
+  }
+  .name-input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 2px solid #334155;
+    border-radius: 12px;
+    background: #1e293b;
+    color: #f1f5f9;
+    font-size: 17px;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.3s;
+  }
+  .name-input::placeholder { color: #475569; }
+  .name-input:focus { border-color: #6366f1; }
+  .name-skip {
+    font-size: 13px; color: #64748b; cursor: pointer;
+    margin-bottom: 40px;
+  }
+  .name-skip:hover { color: #94a3b8; }
+
+  /* ── Step 4: Ready ── */
+  .ready-avatar {
+    width: 120px; height: 150px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 72px;
+    margin-bottom: 24px;
+    animation: readyBounce 0.6s ease 0.3s both;
+  }
+  @keyframes readyBounce {
+    0% { opacity: 0; transform: scale(0.5); }
+    60% { transform: scale(1.1); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  .ready-greeting {
+    font-size: 20px; font-weight: 600;
+    margin-bottom: 8px;
+    animation: fadeUp 0.6s ease 0.5s both;
+  }
+  .ready-message {
+    font-size: 14px; color: #94a3b8;
+    text-align: center; line-height: 1.6;
+    margin-bottom: 40px;
+    animation: fadeUp 0.6s ease 0.7s both;
+  }
+
+  /* ── Buttons ── */
+  .btn-primary {
+    width: 100%; max-width: 300px;
+    padding: 14px;
+    border: none; border-radius: 12px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    font-size: 16px; font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 15px rgba(99,102,241,0.3);
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+  }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled {
+    opacity: 0.4; cursor: not-allowed; transform: none;
+    box-shadow: none;
+  }
+
+  /* ── Progress Dots ── */
+  .progress {
+    position: fixed; bottom: 40px;
+    display: flex; gap: 8px;
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #334155;
+    transition: all 0.3s;
+  }
+  .dot.active {
+    background: #6366f1;
+    width: 24px; border-radius: 4px;
+  }
+
+  /* ── Particles (背景装飾) ── */
+  .particles {
+    position: fixed; inset: 0; pointer-events: none; z-index: -1;
+    overflow: hidden;
+  }
+  .particle {
+    position: absolute;
+    width: 4px; height: 4px;
+    background: rgba(99,102,241,0.3);
+    border-radius: 50%;
+    animation: particleDrift linear infinite;
+  }
+  @keyframes particleDrift {
+    0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 背景パーティクル -->
+<div class="particles" id="particles"></div>
+
+<!-- Step 1: Welcome -->
+<div class="screen active" id="step1">
+  <div class="welcome-logo">Ai</div>
+  <div class="welcome-title">Ai-Ba へようこそ</div>
+  <div class="welcome-subtitle">あなただけの AI の相棒と出会おう</div>
+  <button class="btn-primary" onclick="goTo(2)">はじめる</button>
+</div>
+
+<!-- Step 2: Avatar Select -->
+<div class="screen" id="step2">
+  <div class="step-label">STEP 1 / 2</div>
+  <div class="step-title">相棒を選ぼう</div>
+  <div class="step-desc">いつでも変更できるから、<br>まずは直感で選んでね！</div>
+  <div class="avatar-grid" id="avatarGrid">
+    <div class="avatar-card" data-id="mao" onclick="selectAvatar(this)">
+      <div class="avatar-preview">👧</div>
+      <div class="avatar-name">マオ</div>
+      <div class="avatar-desc">元気で天然な女の子</div>
+    </div>
+    <div class="avatar-card" data-id="kuro" onclick="selectAvatar(this)">
+      <div class="avatar-preview">🐱</div>
+      <div class="avatar-name">クロ</div>
+      <div class="avatar-desc">クールな黒猫</div>
+    </div>
+    <div class="avatar-card" data-id="haru" onclick="selectAvatar(this)">
+      <div class="avatar-preview">👦</div>
+      <div class="avatar-name">ハル</div>
+      <div class="avatar-desc">穏やかな青年</div>
+    </div>
+    <div class="avatar-card" data-id="robot" onclick="selectAvatar(this)">
+      <div class="avatar-preview">🤖</div>
+      <div class="avatar-name">ロボ</div>
+      <div class="avatar-desc">まじめなロボット</div>
+    </div>
+  </div>
+  <button class="btn-primary" id="btnStep2" disabled onclick="goTo(3)">この子にする</button>
+</div>
+
+<!-- Step 3: Name Input -->
+<div class="screen" id="step3">
+  <div class="step-label">STEP 2 / 2</div>
+  <div class="step-title">あなたのことを教えて</div>
+  <div class="step-desc">なんて呼べばいい？</div>
+  <div class="name-input-wrap">
+    <input type="text" class="name-input" id="nameInput" placeholder="ニックネーム" maxlength="10" oninput="onNameInput()">
+  </div>
+  <div class="name-skip" onclick="goTo(4)">あとで設定する</div>
+  <button class="btn-primary" id="btnStep3" disabled onclick="goTo(4)">OK！</button>
+</div>
+
+<!-- Step 4: Ready -->
+<div class="screen" id="step4">
+  <div class="ready-avatar" id="readyAvatar">👧</div>
+  <div class="ready-greeting" id="readyGreeting">よろしくね！</div>
+  <div class="ready-message" id="readyMessage">
+    一緒にいろんな話をしよう。<br>困ったことがあったらいつでも頼ってね！
+  </div>
+  <button class="btn-primary" onclick="finish()">会話をはじめる</button>
+</div>
+
+<!-- Progress Dots -->
+<div class="progress" id="progress">
+  <div class="dot active"></div>
+  <div class="dot"></div>
+  <div class="dot"></div>
+  <div class="dot"></div>
+</div>
+
+<script>
+  // パーティクル生成
+  const particlesEl = document.getElementById('particles');
+  for (let i = 0; i < 20; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.animationDuration = (8 + Math.random() * 12) + 's';
+    p.style.animationDelay = Math.random() * 10 + 's';
+    p.style.width = p.style.height = (2 + Math.random() * 4) + 'px';
+    particlesEl.appendChild(p);
+  }
+
+  let currentStep = 1;
+  let selectedAvatarId = null;
+  let userName = '';
+
+  const avatars = {
+    mao:   { emoji: '👧', name: 'マオ' },
+    kuro:  { emoji: '🐱', name: 'クロ' },
+    haru:  { emoji: '👦', name: 'ハル' },
+    robot: { emoji: '🤖', name: 'ロボ' },
+  };
+
+  function goTo(step) {
+    const prev = document.getElementById('step' + currentStep);
+    prev.classList.remove('active');
+    prev.classList.add('exit');
+
+    currentStep = step;
+
+    setTimeout(() => {
+      const next = document.getElementById('step' + step);
+      next.classList.add('active');
+      next.classList.remove('exit');
+
+      // Update progress dots
+      const dots = document.querySelectorAll('.dot');
+      dots.forEach((d, i) => {
+        d.classList.toggle('active', i === step - 1);
+      });
+
+      // Step 4: パーソナライズ
+      if (step === 4) {
+        const avatar = avatars[selectedAvatarId] || avatars.mao;
+        document.getElementById('readyAvatar').textContent = avatar.emoji;
+        if (userName) {
+          document.getElementById('readyGreeting').textContent =
+            `${userName}、よろしくね！`;
+          document.getElementById('readyMessage').innerHTML =
+            `${avatar.name}が${userName}の相棒になるよ。<br>一緒にいろんな話をしよう！`;
+        } else {
+          document.getElementById('readyGreeting').textContent =
+            `${avatar.name}だよ、よろしくね！`;
+        }
+      }
+    }, 300);
+  }
+
+  function selectAvatar(el) {
+    document.querySelectorAll('.avatar-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedAvatarId = el.dataset.id;
+    document.getElementById('btnStep2').disabled = false;
+  }
+
+  function onNameInput() {
+    userName = document.getElementById('nameInput').value.trim();
+    document.getElementById('btnStep3').disabled = !userName;
+  }
+
+  function finish() {
+    // 実装時: onboardingCompleted=true を保存 → メイン画面へ遷移
+    alert('オンボーディング完了！\n\n選択アバター: ' + (avatars[selectedAvatarId]?.name || '未選択') + '\n名前: ' + (userName || '未設定') + '\n\n→ メイン画面へ遷移');
+  }
+</script>
+</body>
+</html>

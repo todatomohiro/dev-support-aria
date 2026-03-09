@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ai-Ba Background Animations</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #111;
+    color: #fff;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Selector ── */
+  .selector {
+    display: flex;
+    gap: 6px;
+    padding: 12px;
+    flex-wrap: wrap;
+    background: #1a1a2e;
+    border-bottom: 1px solid #333;
+    z-index: 100;
+  }
+  .selector button {
+    padding: 8px 14px;
+    border: 1px solid #444;
+    border-radius: 8px;
+    background: #222;
+    color: #ccc;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .selector button:hover { border-color: #6366f1; color: #fff; }
+  .selector button.active {
+    background: #6366f1;
+    border-color: #6366f1;
+    color: #fff;
+  }
+
+  /* ── Stage ── */
+  .stage {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(180deg, #1e293b, #0f172a);
+  }
+  .character {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 120px;
+    z-index: 10;
+    filter: drop-shadow(0 0 20px rgba(99,102,241,0.3));
+  }
+  .label {
+    position: absolute;
+    bottom: 16px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: #64748b;
+    z-index: 20;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  /* ── Animation Layers ── */
+  .anim-layer {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    display: none;
+  }
+  .anim-layer.active { display: block; }
+
+  /* === 1. Particles (現在) === */
+  .particle {
+    position: absolute;
+    bottom: 0;
+    border-radius: 50%;
+    background: rgba(129, 140, 248, 0.3);
+    animation: particle-drift linear infinite;
+  }
+  @keyframes particle-drift {
+    0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
+  }
+
+  /* === 2. Aurora === */
+  .aurora-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.25;
+    animation: aurora-move ease-in-out infinite alternate;
+  }
+  .aurora-blob:nth-child(1) {
+    width: 300px; height: 200px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    top: 10%; left: -10%;
+    animation-duration: 8s;
+  }
+  .aurora-blob:nth-child(2) {
+    width: 250px; height: 250px;
+    background: linear-gradient(135deg, #06b6d4, #3b82f6);
+    top: 30%; right: -15%;
+    animation-duration: 10s;
+    animation-delay: -3s;
+  }
+  .aurora-blob:nth-child(3) {
+    width: 350px; height: 180px;
+    background: linear-gradient(135deg, #a78bfa, #ec4899);
+    bottom: 10%; left: 20%;
+    animation-duration: 12s;
+    animation-delay: -6s;
+  }
+  @keyframes aurora-move {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(40px, -30px) scale(1.2); }
+  }
+
+  /* === 3. Stars === */
+  .star {
+    position: absolute;
+    border-radius: 50%;
+    background: #fff;
+    animation: star-twinkle ease-in-out infinite;
+  }
+  @keyframes star-twinkle {
+    0%, 100% { opacity: 0.1; transform: scale(0.8); }
+    50% { opacity: 0.9; transform: scale(1.2); }
+  }
+
+  /* === 4. Ripple === */
+  .ripple-ring {
+    position: absolute;
+    bottom: -50%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 1px solid rgba(129, 140, 248, 0.3);
+    border-radius: 50%;
+    animation: ripple-expand linear infinite;
+  }
+  @keyframes ripple-expand {
+    0% { width: 20px; height: 20px; opacity: 0.6; margin-left: -10px; }
+    100% { width: 600px; height: 600px; opacity: 0; margin-left: -300px; }
+  }
+
+  /* === 5. Sakura === */
+  .sakura {
+    position: absolute;
+    top: -20px;
+    font-size: 16px;
+    animation: sakura-fall linear infinite;
+  }
+  @keyframes sakura-fall {
+    0% { transform: translateY(0) rotate(0deg) translateX(0); opacity: 0; }
+    10% { opacity: 0.8; }
+    90% { opacity: 0.8; }
+    100% { transform: translateY(100vh) rotate(720deg) translateX(80px); opacity: 0; }
+  }
+
+  /* === 6. Firefly === */
+  .firefly {
+    position: absolute;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #fbbf24;
+    box-shadow: 0 0 8px #fbbf24, 0 0 20px rgba(251,191,36,0.4);
+    animation: firefly-glow ease-in-out infinite;
+  }
+  @keyframes firefly-glow {
+    0% { opacity: 0; transform: translate(0, 0); }
+    20% { opacity: 0.9; }
+    50% { opacity: 0.3; transform: translate(30px, -20px); }
+    80% { opacity: 0.8; transform: translate(-10px, -40px); }
+    100% { opacity: 0; transform: translate(20px, -60px); }
+  }
+
+  /* === 7. Glow / Breathing === */
+  .glow-circle {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    animation: glow-breathe ease-in-out infinite;
+  }
+  .glow-circle:nth-child(1) {
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(99,102,241,0.2), transparent 70%);
+    animation-duration: 4s;
+  }
+  .glow-circle:nth-child(2) {
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(139,92,246,0.12), transparent 70%);
+    animation-duration: 5s;
+    animation-delay: -1.5s;
+  }
+  .glow-circle:nth-child(3) {
+    width: 450px; height: 450px;
+    background: radial-gradient(circle, rgba(99,102,241,0.08), transparent 70%);
+    animation-duration: 6s;
+    animation-delay: -3s;
+  }
+  @keyframes glow-breathe {
+    0%, 100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.3; }
+    50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="selector" id="selector">
+  <button class="active" onclick="switchAnim('particles')">💫 パーティクル</button>
+  <button onclick="switchAnim('aurora')">🌈 オーロラ</button>
+  <button onclick="switchAnim('stars')">✨ 星空</button>
+  <button onclick="switchAnim('ripple')">💧 波紋</button>
+  <button onclick="switchAnim('sakura')">🌸 桜吹雪</button>
+  <button onclick="switchAnim('firefly')">🔥 ホタル</button>
+  <button onclick="switchAnim('glow')">💜 グロー</button>
+  <button onclick="switchAnim('combo1')">🎨 パーティクル+オーロラ</button>
+  <button onclick="switchAnim('combo2')">🎆 星空+グロー</button>
+</div>
+
+<div class="stage">
+  <div class="character">👧</div>
+
+  <!-- 1. Particles -->
+  <div class="anim-layer active" id="anim-particles"></div>
+
+  <!-- 2. Aurora -->
+  <div class="anim-layer" id="anim-aurora">
+    <div class="aurora-blob"></div>
+    <div class="aurora-blob"></div>
+    <div class="aurora-blob"></div>
+  </div>
+
+  <!-- 3. Stars -->
+  <div class="anim-layer" id="anim-stars"></div>
+
+  <!-- 4. Ripple -->
+  <div class="anim-layer" id="anim-ripple"></div>
+
+  <!-- 5. Sakura -->
+  <div class="anim-layer" id="anim-sakura"></div>
+
+  <!-- 6. Firefly -->
+  <div class="anim-layer" id="anim-firefly"></div>
+
+  <!-- 7. Glow -->
+  <div class="anim-layer" id="anim-glow">
+    <div class="glow-circle"></div>
+    <div class="glow-circle"></div>
+    <div class="glow-circle"></div>
+  </div>
+
+  <div class="label" id="label">💫 パーティクル — 光の粒が下から上へ浮遊</div>
+</div>
+
+<script>
+  const descriptions = {
+    particles: '💫 パーティクル — 光の粒が下から上へ浮遊',
+    aurora: '🌈 オーロラ — グラデーションが揺らめく',
+    stars: '✨ 星空 — 小さな星が明滅する',
+    ripple: '💧 波紋 — 水面のような波紋が広がる',
+    sakura: '🌸 桜吹雪 — 花びらが舞い落ちる',
+    firefly: '🔥 ホタル — ランダムに光って消える',
+    glow: '💜 グロー — キャラ周辺がゆっくり明滅',
+    combo1: '🎨 パーティクル + オーロラの組み合わせ',
+    combo2: '🎆 星空 + グローの組み合わせ',
+  };
+
+  // Generate particles
+  const particlesEl = document.getElementById('anim-particles');
+  for (let i = 0; i < 18; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.width = p.style.height = (2 + Math.random() * 4) + 'px';
+    p.style.animationDuration = (10 + Math.random() * 15) + 's';
+    p.style.animationDelay = Math.random() * 12 + 's';
+    p.style.opacity = 0.15 + Math.random() * 0.25;
+    particlesEl.appendChild(p);
+  }
+
+  // Generate stars
+  const starsEl = document.getElementById('anim-stars');
+  for (let i = 0; i < 50; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 100 + '%';
+    s.style.width = s.style.height = (1 + Math.random() * 3) + 'px';
+    s.style.animationDuration = (2 + Math.random() * 4) + 's';
+    s.style.animationDelay = Math.random() * 4 + 's';
+    starsEl.appendChild(s);
+  }
+
+  // Generate ripples
+  const rippleEl = document.getElementById('anim-ripple');
+  for (let i = 0; i < 5; i++) {
+    const r = document.createElement('div');
+    r.className = 'ripple-ring';
+    r.style.animationDuration = (4 + i) + 's';
+    r.style.animationDelay = (i * 1.2) + 's';
+    rippleEl.appendChild(r);
+  }
+
+  // Generate sakura
+  const sakuraEl = document.getElementById('anim-sakura');
+  const petals = ['🌸', '🩷', '✿'];
+  for (let i = 0; i < 15; i++) {
+    const s = document.createElement('div');
+    s.className = 'sakura';
+    s.textContent = petals[Math.floor(Math.random() * petals.length)];
+    s.style.left = Math.random() * 100 + '%';
+    s.style.fontSize = (12 + Math.random() * 10) + 'px';
+    s.style.animationDuration = (6 + Math.random() * 8) + 's';
+    s.style.animationDelay = Math.random() * 10 + 's';
+    sakuraEl.appendChild(s);
+  }
+
+  // Generate fireflies
+  const fireflyEl = document.getElementById('anim-firefly');
+  for (let i = 0; i < 12; i++) {
+    const f = document.createElement('div');
+    f.className = 'firefly';
+    f.style.left = (10 + Math.random() * 80) + '%';
+    f.style.top = (10 + Math.random() * 80) + '%';
+    f.style.width = f.style.height = (3 + Math.random() * 5) + 'px';
+    f.style.animationDuration = (3 + Math.random() * 5) + 's';
+    f.style.animationDelay = Math.random() * 5 + 's';
+    fireflyEl.appendChild(f);
+  }
+
+  function switchAnim(name) {
+    // Hide all
+    document.querySelectorAll('.anim-layer').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.selector button').forEach(b => b.classList.remove('active'));
+
+    // Combo handling
+    if (name === 'combo1') {
+      document.getElementById('anim-particles').classList.add('active');
+      document.getElementById('anim-aurora').classList.add('active');
+    } else if (name === 'combo2') {
+      document.getElementById('anim-stars').classList.add('active');
+      document.getElementById('anim-glow').classList.add('active');
+    } else {
+      document.getElementById('anim-' + name).classList.add('active');
+    }
+
+    // Update button
+    event.target.classList.add('active');
+
+    // Update label
+    document.getElementById('label').textContent = descriptions[name] || name;
+  }
+</script>
+</body>
+</html>

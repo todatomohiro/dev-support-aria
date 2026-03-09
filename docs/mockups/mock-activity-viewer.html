@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Activity Viewer Mock - Ai-Ba Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .cell { transition: all 0.15s ease; }
+  .cell:hover { transform: scale(1.8); z-index: 10; border: 2px solid #3b82f6; }
+  .tooltip { pointer-events: none; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- ヘッダー -->
+<div class="flex h-screen">
+  <!-- サイドバー（管理画面と同じ幅） -->
+  <aside class="w-60 bg-gray-900 text-white flex flex-col shrink-0">
+    <div class="p-4 border-b border-gray-700">
+      <h1 class="text-lg font-bold">Ai-Ba Admin</h1>
+    </div>
+    <nav class="flex-1 p-3 space-y-1">
+      <a href="#" class="block px-3 py-2 rounded text-sm text-gray-300 hover:bg-gray-800">Users</a>
+      <a href="#" class="block px-3 py-2 rounded text-sm text-gray-300 hover:bg-gray-800">Models</a>
+      <a href="#" class="block px-3 py-2 rounded text-sm bg-gray-800 text-white font-medium">Activity Viewer</a>
+    </nav>
+  </aside>
+
+  <!-- メインコンテンツ -->
+  <main class="flex-1 overflow-auto p-6">
+    <!-- パンくず + ユーザー選択 -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <button class="text-sm text-blue-600 hover:underline mb-1">&larr; ユーザー一覧に戻る</button>
+        <h2 class="text-2xl font-bold text-gray-900">アクティビティログ</h2>
+        <p class="text-sm text-gray-500 mt-1">toda@example.com のライフスタイルデータ（直近30日）</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-gray-400">期間</span>
+        <select id="periodSelect" class="px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
+          <option value="14">直近14日</option>
+          <option value="30" selected>直近30日</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- サマリーカード -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-wide">データ日数</p>
+        <p class="text-2xl font-bold text-gray-900 mt-1" id="totalDays">23</p>
+        <p class="text-xs text-gray-400 mt-1">/ 30日中</p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-wide">1日あたり平均</p>
+        <p class="text-2xl font-bold text-blue-600 mt-1" id="avgMinutes">47</p>
+        <p class="text-xs text-gray-400 mt-1">アクティブ分</p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-wide">最頻活動時間帯</p>
+        <p class="text-2xl font-bold text-green-600 mt-1" id="peakHour">21:00</p>
+        <p class="text-xs text-gray-400 mt-1">〜 22:00</p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-wide">深夜活動 (0-4時)</p>
+        <p class="text-2xl font-bold mt-1" id="lateNight">3</p>
+        <p class="text-xs text-gray-400 mt-1" id="lateNightLabel">日 / 直近7日中 2日</p>
+      </div>
+    </div>
+
+    <!-- ヒートマップ -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-900">時間帯別アクティビティ</h3>
+        <div class="flex items-center gap-2 text-xs text-gray-500">
+          <span>少</span>
+          <div class="flex gap-0.5">
+            <div class="w-3 h-3 rounded-sm bg-gray-100 border border-gray-200"></div>
+            <div class="w-3 h-3 rounded-sm bg-blue-100"></div>
+            <div class="w-3 h-3 rounded-sm bg-blue-300"></div>
+            <div class="w-3 h-3 rounded-sm bg-blue-500"></div>
+            <div class="w-3 h-3 rounded-sm bg-blue-700"></div>
+          </div>
+          <span>多</span>
+          <span class="ml-2 text-gray-400">（1セル = 1時間 / 最大60分）</span>
+        </div>
+      </div>
+
+      <!-- ヒートマップグリッド -->
+      <div class="overflow-x-auto">
+        <div class="min-w-[800px]">
+          <!-- 時間ラベル（上部） -->
+          <div class="flex mb-1">
+            <div class="w-20 shrink-0"></div>
+            <div class="flex-1 grid grid-cols-24 gap-0.5" id="hourLabels"></div>
+          </div>
+          <!-- データ行 -->
+          <div id="heatmapBody" class="space-y-0.5"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 日別詳細（クリックで展開） -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-4">日別タイムライン</h3>
+      <p class="text-sm text-gray-500 mb-4">ヒートマップの行をクリックすると、その日の分単位アクティビティが表示されます</p>
+      <div id="dailyDetail" class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="text-center text-gray-400 text-sm py-4">日付を選択してください</div>
+      </div>
+    </div>
+
+    <!-- インサイト（将来Phase 2用） -->
+    <div class="bg-white rounded-lg shadow p-6 border-l-4 border-amber-400">
+      <div class="flex items-start gap-3">
+        <span class="text-amber-500 text-xl mt-0.5">&#9888;</span>
+        <div>
+          <h3 class="text-sm font-semibold text-gray-900">検出されたパターン変化（Phase 2 プレビュー）</h3>
+          <ul class="mt-2 space-y-1 text-sm text-gray-600">
+            <li>&#8226; <span class="font-medium">深夜活動の増加:</span> 直近3日間、0:00〜2:00の活動が検出されています（ベースライン期間では0日）</li>
+            <li>&#8226; <span class="font-medium">活動開始時刻の変化:</span> 通常 8:00〜9:00 に開始 → 直近3日は 10:30〜11:00 に遅延</li>
+          </ul>
+          <p class="mt-2 text-xs text-gray-400">※ この情報は将来的にブリーフィングのシステムプロンプトに注入されます</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ツールチップ -->
+<div id="tooltip" class="tooltip fixed hidden bg-gray-900 text-white text-xs rounded px-2 py-1 shadow-lg z-50"></div>
+
+<script>
+// モックデータ生成
+function generateMockData(days) {
+  const data = []
+  const today = new Date()
+
+  for (let d = days - 1; d >= 0; d--) {
+    const date = new Date(today)
+    date.setDate(date.getDate() - d)
+    const dateStr = date.toISOString().slice(0, 10)
+    const dayOfWeek = date.getDay()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+
+    // 時間帯ごとのアクティビティ分数（0-60）
+    const hours = new Array(24).fill(0)
+    const minutes = []
+
+    // 生活パターンシミュレーション
+    // 朝（7-9時）: 軽い活動
+    if (Math.random() > 0.3) {
+      const start = isWeekend ? 9 : 7
+      for (let h = start; h < start + 2; h++) {
+        hours[h] = Math.floor(Math.random() * 15) + 5
+        for (let m = 0; m < hours[h]; m++) {
+          minutes.push(`${dateStr}T${String(h).padStart(2,'0')}:${String(Math.floor(Math.random()*60)).padStart(2,'0')}`)
+        }
+      }
+    }
+
+    // 昼（12-13時）: ランチ時間
+    if (Math.random() > 0.4) {
+      hours[12] = Math.floor(Math.random() * 20) + 10
+      for (let m = 0; m < hours[12]; m++) {
+        minutes.push(`${dateStr}T12:${String(Math.floor(Math.random()*60)).padStart(2,'0')}`)
+      }
+    }
+
+    // 夕方〜夜（18-23時）: メイン活動
+    for (let h = 18; h <= 22; h++) {
+      if (Math.random() > 0.2) {
+        const intensity = h >= 20 && h <= 21 ? 40 : 20
+        hours[h] = Math.floor(Math.random() * intensity) + 5
+        for (let m = 0; m < hours[h]; m++) {
+          minutes.push(`${dateStr}T${String(h).padStart(2,'0')}:${String(Math.floor(Math.random()*60)).padStart(2,'0')}`)
+        }
+      }
+    }
+
+    // 直近3日は深夜活動を追加（パターン変化シミュレーション）
+    if (d <= 2) {
+      for (let h = 0; h <= 2; h++) {
+        if (Math.random() > 0.3) {
+          hours[h] = Math.floor(Math.random() * 25) + 5
+          for (let m = 0; m < hours[h]; m++) {
+            minutes.push(`${dateStr}T${String(h).padStart(2,'0')}:${String(Math.floor(Math.random()*60)).padStart(2,'0')}`)
+          }
+        }
+      }
+    }
+
+    // ランダムにデータなしの日も作る
+    if (Math.random() > 0.15 || d <= 3) {
+      data.push({ date: dateStr, dayOfWeek, hours, minutes: [...new Set(minutes)].sort() })
+    }
+  }
+
+  return data
+}
+
+// ヒートマップ色の決定
+function getColor(value) {
+  if (value === 0) return 'bg-gray-100 border border-gray-200'
+  if (value <= 5) return 'bg-blue-100'
+  if (value <= 15) return 'bg-blue-200'
+  if (value <= 30) return 'bg-blue-400'
+  return 'bg-blue-600'
+}
+
+// 曜日ラベル
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+
+// ヒートマップ描画
+function renderHeatmap(data) {
+  // 時間ラベル
+  const hourLabels = document.getElementById('hourLabels')
+  hourLabels.innerHTML = ''
+  for (let h = 0; h < 24; h++) {
+    const el = document.createElement('div')
+    el.className = 'text-center text-xs text-gray-400'
+    el.textContent = h % 3 === 0 ? `${h}` : ''
+    hourLabels.appendChild(el)
+  }
+
+  // データ行
+  const body = document.getElementById('heatmapBody')
+  body.innerHTML = ''
+
+  data.forEach((day, idx) => {
+    const row = document.createElement('div')
+    row.className = 'flex items-center cursor-pointer hover:bg-blue-50 rounded'
+    row.onclick = () => showDailyDetail(day)
+
+    // 日付ラベル
+    const label = document.createElement('div')
+    const weekdayColor = day.dayOfWeek === 0 ? 'text-red-500' : day.dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-600'
+    label.className = `w-20 shrink-0 text-xs ${weekdayColor} pr-2 text-right`
+    const m = day.date.slice(5, 7)
+    const d = day.date.slice(8, 10)
+    label.textContent = `${m}/${d} (${WEEKDAYS[day.dayOfWeek]})`
+
+    // セルグリッド
+    const grid = document.createElement('div')
+    grid.className = 'flex-1 grid grid-cols-24 gap-0.5'
+
+    for (let h = 0; h < 24; h++) {
+      const cell = document.createElement('div')
+      const v = day.hours[h]
+      cell.className = `cell h-4 rounded-sm ${getColor(v)} relative`
+      cell.dataset.date = day.date
+      cell.dataset.hour = h
+      cell.dataset.value = v
+
+      cell.addEventListener('mouseenter', (e) => {
+        const tooltip = document.getElementById('tooltip')
+        tooltip.textContent = `${day.date} ${String(h).padStart(2,'0')}:00〜${String(h).padStart(2,'0')}:59 — ${v}分アクティブ`
+        tooltip.classList.remove('hidden')
+        const rect = e.target.getBoundingClientRect()
+        tooltip.style.left = `${rect.left}px`
+        tooltip.style.top = `${rect.top - 28}px`
+      })
+
+      cell.addEventListener('mouseleave', () => {
+        document.getElementById('tooltip').classList.add('hidden')
+      })
+
+      grid.appendChild(cell)
+    }
+
+    row.appendChild(label)
+    row.appendChild(grid)
+    body.appendChild(row)
+  })
+}
+
+// 日別詳細表示
+function showDailyDetail(day) {
+  const container = document.getElementById('dailyDetail')
+
+  // 分単位の活動をタイムラインバーで表示
+  const activeSet = new Set(day.minutes.map(m => m.slice(11))) // "HH:mm"
+  const totalMinutes = activeSet.size
+
+  let html = `
+    <div class="flex items-center justify-between mb-3">
+      <h4 class="font-semibold text-gray-900">${day.date} (${WEEKDAYS[day.dayOfWeek]})</h4>
+      <span class="text-sm text-gray-500">合計 ${totalMinutes} 分アクティブ</span>
+    </div>
+    <div class="space-y-1">
+  `
+
+  // 24時間をバーで表示
+  for (let h = 0; h < 24; h++) {
+    const hourMinutes = []
+    for (let m = 0; m < 60; m++) {
+      const key = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`
+      hourMinutes.push(activeSet.has(key))
+    }
+
+    const activeCount = hourMinutes.filter(Boolean).length
+    if (activeCount === 0) continue
+
+    html += `
+      <div class="flex items-center gap-2">
+        <span class="w-12 text-xs text-gray-500 text-right shrink-0">${String(h).padStart(2,'0')}:00</span>
+        <div class="flex-1 flex gap-px">
+    `
+
+    for (let m = 0; m < 60; m++) {
+      const active = hourMinutes[m]
+      html += `<div class="h-3 flex-1 rounded-sm ${active ? 'bg-blue-500' : 'bg-gray-100'}" title="${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}"></div>`
+    }
+
+    html += `
+        </div>
+        <span class="w-10 text-xs text-gray-400 text-right shrink-0">${activeCount}分</span>
+      </div>
+    `
+  }
+
+  html += '</div>'
+  container.innerHTML = html
+  container.classList.remove('bg-gray-50')
+  container.classList.add('bg-white')
+}
+
+// 初期化
+const mockData = generateMockData(30)
+renderHeatmap(mockData)
+
+// サマリー更新
+document.getElementById('totalDays').textContent = mockData.length
+
+const totalActive = mockData.reduce((sum, d) => sum + d.minutes.length, 0)
+document.getElementById('avgMinutes').textContent = Math.round(totalActive / mockData.length)
+
+// 最頻時間帯
+const hourTotals = new Array(24).fill(0)
+mockData.forEach(d => d.hours.forEach((v, h) => hourTotals[h] += v))
+const peakH = hourTotals.indexOf(Math.max(...hourTotals))
+document.getElementById('peakHour').textContent = `${String(peakH).padStart(2,'0')}:00`
+
+// 深夜活動
+const lateNightDays = mockData.filter(d => d.hours[0] + d.hours[1] + d.hours[2] + d.hours[3] > 0).length
+document.getElementById('lateNight').textContent = lateNightDays
+const recent7 = mockData.slice(-7)
+const recentLate = recent7.filter(d => d.hours[0] + d.hours[1] + d.hours[2] + d.hours[3] > 0).length
+document.getElementById('lateNightLabel').textContent = `日 / 直近7日中 ${recentLate}日`
+document.getElementById('lateNight').className = `text-2xl font-bold mt-1 ${recentLate >= 3 ? 'text-red-600' : 'text-gray-900'}`
+
+// 期間切り替え
+document.getElementById('periodSelect').addEventListener('change', (e) => {
+  const days = parseInt(e.target.value)
+  const newData = generateMockData(days)
+  renderHeatmap(newData)
+})
+
+// grid-cols-24 を定義（Tailwindにないため）
+const style = document.createElement('style')
+style.textContent = '.grid-cols-24 { grid-template-columns: repeat(24, minmax(0, 1fr)); }'
+document.head.appendChild(style)
+</script>
+
+</body>
+</html>

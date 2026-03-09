@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>スキル画面 Mock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: #d1d5db;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-switch.active { background: #3b82f6; }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle-switch.active::after { transform: translateX(20px); }
+  </style>
+</head>
+<body class="bg-gray-900 flex items-center justify-center min-h-screen p-4">
+
+  <!-- オーバーレイ -->
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden" style="background: #1f2937;">
+
+      <!-- ヘッダー -->
+      <div class="flex items-center justify-between p-4 border-b border-gray-700">
+        <h2 class="text-xl font-semibold text-gray-100">スキル</h2>
+        <button class="p-2 rounded-full hover:bg-gray-700">
+          <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- コンテンツ -->
+      <div class="p-5 overflow-y-auto max-h-[70vh]">
+
+        <!-- サービス連携セクション -->
+        <div class="mb-6">
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">サービス連携</h3>
+          <div class="space-y-2">
+            <!-- Google カレンダー -->
+            <div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
+              <div class="flex items-center gap-3">
+                <span class="text-xl">📅</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-200">Google カレンダー</span>
+                  <p class="text-xs text-gray-400">チャットで予定の確認・作成ができます</p>
+                </div>
+              </div>
+              <span class="px-2 py-0.5 text-xs font-medium text-green-300 bg-green-900/50 rounded">接続済み</span>
+            </div>
+
+            <!-- 将来のサービス例（薄く表示） -->
+            <div class="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg opacity-50">
+              <div class="flex items-center gap-3">
+                <span class="text-xl">📧</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-300">Gmail</span>
+                  <p class="text-xs text-gray-500">Coming soon</p>
+                </div>
+              </div>
+              <span class="px-2 py-0.5 text-xs text-gray-500 border border-gray-600 rounded">準備中</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 機能セクション -->
+        <div>
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">機能</h3>
+          <div class="space-y-2">
+
+            <!-- 位置情報 -->
+            <div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
+              <div class="flex items-center gap-3">
+                <span class="text-xl">📍</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-200">位置情報</span>
+                  <p class="text-xs text-gray-400">現在地を共有して近くの場所を検索</p>
+                </div>
+              </div>
+              <div class="toggle-switch active" onclick="this.classList.toggle('active')"></div>
+            </div>
+
+            <!-- 入力中の表情変化 -->
+            <div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
+              <div class="flex items-center gap-3">
+                <span class="text-xl">😊</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-200">入力中の表情変化</span>
+                  <p class="text-xs text-gray-400">テキスト入力中に表情がリアルタイム変化</p>
+                </div>
+              </div>
+              <div class="toggle-switch active" onclick="this.classList.toggle('active')"></div>
+            </div>
+
+            <!-- 生活リズム学習 -->
+            <div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
+              <div class="flex items-center gap-3">
+                <span class="text-xl">🕐</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-200">生活リズム学習</span>
+                  <p class="text-xs text-gray-400">生活リズムを学習して最適なタイミングで話しかける</p>
+                </div>
+              </div>
+              <div class="toggle-switch" onclick="this.classList.toggle('active')"></div>
+            </div>
+
+            <!-- 将来の機能例（薄く表示） -->
+            <div class="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg opacity-50">
+              <div class="flex items-center gap-3">
+                <span class="text-xl">🎤</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-300">音声入力</span>
+                  <p class="text-xs text-gray-500">Coming soon</p>
+                </div>
+              </div>
+              <span class="px-2 py-0.5 text-xs text-gray-500 border border-gray-600 rounded">準備中</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- フッター（保存ボタン） -->
+      <div class="flex justify-end gap-3 p-4 border-t border-gray-700">
+        <button class="px-4 py-2 text-gray-300 bg-gray-700 rounded-lg hover:bg-gray-600 text-sm">
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

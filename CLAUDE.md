@@ -82,6 +82,8 @@ infra/
     ├── admin/              # 管理機能（me, usersList, usersDetail, usersRole, models/*）
     ├── meeting-noter/      # ミーティングノート
     └── transcribe/         # 音声ストリームURL
+docs/
+└── mockups/                   # UIモックアップHTML（モック作成時は必ずここに配置）
 ```
 
 ## コーディング規約
@@ -116,6 +118,7 @@ export const responseParser = new ResponseParserImpl()
 | サービス | camelCase.ts | `llmClient.ts`, `ttsService.ts` |
 | 型定義 | camelCase.ts | `config.ts`, `errors.ts` |
 | テスト | *.test.ts(x) | 同階層の `__tests__/` 内に配置 |
+| モックアップ | mock-*.html | `docs/mockups/` に配置 |
 
 ### コメント・JSDoc
 

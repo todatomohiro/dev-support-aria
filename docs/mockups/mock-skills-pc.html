@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>マイSkills タブ Mock（PC版 - AibaScreen内）</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: #4b5563;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    .toggle-switch.active { background: #3b82f6; }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle-switch.active::after { transform: translateX(20px); }
+  </style>
+</head>
+<body style="background: #111827;">
+
+  <!-- AibaScreen 全体レイアウト -->
+  <div class="flex flex-col h-screen">
+
+    <!-- タブバー -->
+    <div class="flex bg-gray-800 border-b border-gray-700 shrink-0">
+      <button class="flex-none px-6 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold border-b-2 text-gray-400 border-transparent hover:text-gray-300">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+        </svg>
+        <span>マイAi-Ba</span>
+      </button>
+      <button class="flex-none px-6 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold border-b-2 text-blue-400 border-blue-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+        </svg>
+        <span>マイSkills</span>
+      </button>
+      <button class="flex-none px-6 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold border-b-2 text-gray-400 border-transparent hover:text-gray-300">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/>
+        </svg>
+        <span>ショップ</span>
+      </button>
+      <button class="flex-none px-6 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold border-b-2 text-gray-400 border-transparent hover:text-gray-300">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+        <span>スタジオ</span>
+      </button>
+    </div>
+
+    <!-- タブコンテンツ -->
+    <div class="flex-1 overflow-y-auto p-6">
+      <div class="max-w-3xl">
+
+        <!-- サービス連携セクション -->
+        <div class="mb-8">
+          <div class="flex items-center gap-2 mb-1">
+            <h3 class="text-sm font-semibold text-gray-300">サービス連携</h3>
+          </div>
+          <p class="text-xs text-gray-500 mb-4">外部サービスを連携すると、チャットからサービスを操作できます。</p>
+
+          <div class="space-y-2">
+            <!-- Google カレンダー（接続済み） -->
+            <div class="flex items-center justify-between p-4 bg-gray-700/50 rounded-xl border border-gray-600/50 hover:border-gray-500/50 transition-colors">
+              <div class="flex items-center gap-4">
+                <span class="text-2xl">📅</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-100">Google カレンダー</span>
+                  <p class="text-xs text-gray-400 mt-0.5">チャットで予定の確認・作成ができます</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="px-2 py-0.5 text-xs font-medium text-green-300 bg-green-900/50 rounded">接続済み</span>
+                <button class="px-3 py-1 text-xs text-red-400 border border-red-700 rounded hover:bg-red-900/30 transition-colors">解除</button>
+              </div>
+            </div>
+
+            <!-- Google マップ（未接続）-->
+            <div class="flex items-center justify-between p-4 bg-gray-700/30 rounded-xl border border-gray-700 hover:border-gray-600 transition-colors">
+              <div class="flex items-center gap-4">
+                <span class="text-2xl">🗺️</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-300">Google マップ</span>
+                  <p class="text-xs text-gray-500 mt-0.5">近くの場所やルート検索ができます</p>
+                </div>
+              </div>
+              <button class="px-3 py-1.5 text-xs font-medium text-blue-400 border border-blue-700 rounded-lg hover:bg-blue-900/30 transition-colors">接続する</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 機能セクション -->
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <h3 class="text-sm font-semibold text-gray-300">機能</h3>
+          </div>
+          <p class="text-xs text-gray-500 mb-4">各機能のON/OFFを切り替えられます。変更は即時反映されます。</p>
+
+          <div class="space-y-2">
+            <!-- 位置情報 -->
+            <div class="flex items-center justify-between p-4 bg-gray-700/50 rounded-xl border border-gray-600/50 hover:border-gray-500/50 transition-colors">
+              <div class="flex items-center gap-4">
+                <span class="text-2xl">📍</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-100">位置情報</span>
+                  <p class="text-xs text-gray-400 mt-0.5">現在地を共有して近くの場所を検索できます</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="text-xs text-green-400">取得済み</span>
+                <div class="toggle-switch active" onclick="this.classList.toggle('active'); updateLocationStatus(this)"></div>
+              </div>
+            </div>
+
+            <!-- 入力中の表情変化 -->
+            <div class="flex items-center justify-between p-4 bg-gray-700/50 rounded-xl border border-gray-600/50 hover:border-gray-500/50 transition-colors">
+              <div class="flex items-center gap-4">
+                <span class="text-2xl">😊</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-100">入力中の表情変化</span>
+                  <p class="text-xs text-gray-400 mt-0.5">テキスト入力中にキャラクターの表情がリアルタイムで変化します</p>
+                </div>
+              </div>
+              <div class="toggle-switch active" onclick="this.classList.toggle('active')"></div>
+            </div>
+
+            <!-- 生活リズム学習 -->
+            <div class="flex items-center justify-between p-4 bg-gray-700/50 rounded-xl border border-gray-600/50 hover:border-gray-500/50 transition-colors">
+              <div class="flex items-center gap-4">
+                <span class="text-2xl">🕐</span>
+                <div>
+                  <span class="text-sm font-medium text-gray-100">生活リズム学習</span>
+                  <p class="text-xs text-gray-400 mt-0.5">生活リズムを学習して最適なタイミングで話しかける準備を行います</p>
+                </div>
+              </div>
+              <div class="toggle-switch" onclick="this.classList.toggle('active')"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    function updateLocationStatus(el) {
+      const status = el.previousElementSibling;
+      if (el.classList.contains('active')) {
+        status.textContent = '取得済み';
+        status.className = 'text-xs text-green-400';
+      } else {
+        status.textContent = '';
+      }
+    }
+  </script>
+</body>
+</html>
