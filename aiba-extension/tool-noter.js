@@ -26,7 +26,11 @@
   // ──────────────────────────────────────────
   let micRecognition = null
   let isMicListening = false
-  let isTabCapturing = false
+  let isTranscribing = false     // 文字起こし全体の ON/OFF
+  let isMicMuted = false
+  let isCaptionMuted = false
+  let captionEnabled = true      // 参加者字幕を受信するか（isTranscribing と連動）
+  let captionDataActive = false  // 実際に字幕データが流れているか
   const transcripts = []
 
   // セッション管理
@@ -188,15 +192,27 @@
       <div class="an-transcript" id="anTranscript">
         <div class="an-empty" id="anEmpty">
           <div class="an-empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div>
-          <p>録音ボタンを押すと<br>文字起こしが始まります</p>
+          <p>「文字起こし開始」を押すと<br>録音が始まります</p>
         </div>
       </div>
       <div class="an-toolbar" id="anToolbar">
-        <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
-          <button class="an-rec-btn" id="anRecBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>録音開始</button>
-          <div class="an-source-status" id="anSourceStatus">
-            <span class="an-source-item" id="anMicStatus">マイク: 停止</span>
-            <span class="an-source-item" id="anTabStatus">参加者音声: <a href="#" id="anTabSetupLink">拡張アイコンをクリック</a></span>
+        <div style="display:flex;flex-direction:column;gap:6px;flex:1;">
+          <div class="an-main-controls">
+            <button class="an-main-toggle" id="anMainToggle">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              <span id="anMainToggleLabel">文字起こし開始</span>
+            </button>
+            <span class="an-main-status" id="anMainStatus"></span>
+          </div>
+          <div class="an-sub-controls" id="anSubControls" style="display:none;">
+            <button class="an-sub-mute" id="anMicMute" title="自分のマイクをミュート">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+              <span>自分</span>
+            </button>
+            <button class="an-sub-mute" id="anCaptionMute" title="参加者の字幕をミュート">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span>参加者</span>
+            </button>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <span class="an-count" id="anCount">0 件</span>
@@ -261,13 +277,15 @@
       })
     })
 
-    panel.querySelector('#anRecBtn').addEventListener('click', toggleMicRecording)
+    panel.querySelector('#anMainToggle').addEventListener('click', toggleTranscription)
+    panel.querySelector('#anMicMute').addEventListener('click', toggleMicMute)
+    panel.querySelector('#anCaptionMute').addEventListener('click', toggleCaptionMute)
 
     // 起動時にタブキャプチャ状態を確認
     chrome.runtime.sendMessage({ type: 'get-capture-status' }, (res) => {
       void chrome.runtime.lastError
       if (res?.isCapturing) {
-        isTabCapturing = true
+        captionDataActive = true
         updateRecUI()
       }
     })
@@ -327,16 +345,33 @@
   }
 
   // ──────────────────────────────────────────
-  // マイク音声認識 (Web Speech API — 自分の声)
+  // 文字起こし統合トグル
   // ──────────────────────────────────────────
-  async function toggleMicRecording() {
-    if (isMicListening) {
+  async function toggleTranscription() {
+    if (isTranscribing) {
+      // 停止
+      isTranscribing = false
+      captionEnabled = false
+      isMicMuted = false
+      isCaptionMuted = false
       stopMicRecording()
+      LOG('文字起こし終了')
     } else {
+      // 開始
+      isTranscribing = true
+      captionEnabled = true
+      isMicMuted = false
+      isCaptionMuted = false
       await ensureSession()
       startMicRecording()
+      updateRecUI()
+      LOG('文字起こし開始')
     }
   }
+
+  // ──────────────────────────────────────────
+  // マイク音声認識 (Web Speech API — 自分の声)
+  // ──────────────────────────────────────────
 
   async function startMicRecording() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -358,6 +393,7 @@
     }
 
     micRecognition.onresult = (event) => {
+      if (isMicMuted) return
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i]
         const text = result[0].transcript.trim()
@@ -416,12 +452,28 @@
   }
 
   // ──────────────────────────────────────────
+  // ミュートトグル（サブコントロール）
+  // ──────────────────────────────────────────
+  function toggleMicMute() {
+    isMicMuted = !isMicMuted
+    updateRecUI()
+    LOG(`マイク ${isMicMuted ? 'ミュート' : 'ミュート解除'}`)
+  }
+
+  function toggleCaptionMute() {
+    isCaptionMuted = !isCaptionMuted
+    updateRecUI()
+    LOG(`参加者字幕 ${isCaptionMuted ? 'ミュート' : 'ミュート解除'}`)
+  }
+
+  // ──────────────────────────────────────────
   // 参加者音声（Google Meet 字幕 DOM スクレイピング）
   // ──────────────────────────────────────────
   // meet-captions.js が字幕 DOM を監視し、CustomEvent で転送してくる。
   // tabCapture/desktopCapture は不要。
 
   document.addEventListener('aiba-caption', (e) => {
+    if (!captionEnabled || isCaptionMuted) return
     const { speaker, text, isFinal, timestamp } = e.detail
     if (isFinal) {
       addTranscript(speaker, text, timestamp, 'caption')
@@ -434,12 +486,11 @@
   document.addEventListener('aiba-captions-status', (e) => {
     const { status } = e.detail
     if (status === 'active') {
-      isTabCapturing = true
+      captionDataActive = true
       ensureSession()
       updateRecUI()
-      LOG('RTC 字幕受信開始')
+      LOG('字幕受信開始')
     } else if (status === 'unavailable' || status === 'waiting') {
-      // waiting: RTC フック済みだがまだデータ未受信
       updateRecUI()
     }
   })
@@ -447,6 +498,7 @@
   // background → content script へのメッセージ受信（tabCapture フォールバック）
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'tab-transcript') {
+      if (!captionEnabled || isCaptionMuted) return
       if (message.isFinal) {
         addTranscript('参加者', message.text, message.timestamp, 'tab-audio')
         removeInterim('tab')
@@ -457,15 +509,15 @@
 
     if (message.type === 'tab-capture-status') {
       if (message.status === 'active') {
-        isTabCapturing = true
+        captionDataActive = true
         ensureSession()
         updateRecUI()
       } else if (message.status === 'error') {
         tools.toast(`参加者音声: ${message.error}`)
-        isTabCapturing = false
+        captionDataActive = false
         updateRecUI()
       } else if (message.status === 'stopped') {
-        isTabCapturing = false
+        captionDataActive = false
         updateRecUI()
       }
     }
@@ -475,41 +527,72 @@
   // UI 更新
   // ──────────────────────────────────────────
   function updateRecUI() {
-    const recBtn = document.querySelector('#anRecBtn')
     const dot = document.querySelector('#anStatusDot')
-    const micStatus = document.querySelector('#anMicStatus')
-    const tabStatus = document.querySelector('#anTabStatus')
-    const active = isMicListening || isTabCapturing
+    const mainToggle = document.querySelector('#anMainToggle')
+    const mainLabel = document.querySelector('#anMainToggleLabel')
+    const mainStatus = document.querySelector('#anMainStatus')
+    const subControls = document.querySelector('#anSubControls')
+    const micMuteBtn = document.querySelector('#anMicMute')
+    const captionMuteBtn = document.querySelector('#anCaptionMute')
+    const active = isMicListening || (captionEnabled && captionDataActive)
 
-    if (recBtn) {
-      const micSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
-      const stopSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:4px;"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>'
-      if (isMicListening) {
-        recBtn.innerHTML = stopSvg + '録音停止'
-        recBtn.classList.add('recording')
+    // メインボタン
+    if (mainToggle) {
+      if (isTranscribing) {
+        mainToggle.classList.add('active')
+        mainToggle.title = '文字起こし終了'
       } else {
-        recBtn.innerHTML = micSvg + '録音開始'
-        recBtn.classList.remove('recording')
+        mainToggle.classList.remove('active')
+        mainToggle.title = '文字起こし開始'
+      }
+    }
+    if (mainLabel) {
+      mainLabel.textContent = isTranscribing ? '文字起こし終了' : '文字起こし開始'
+    }
+
+    // ステータス
+    if (mainStatus) {
+      if (!isTranscribing) {
+        mainStatus.textContent = ''
+      } else {
+        const parts = []
+        if (isMicListening && !isMicMuted) parts.push('マイク録音中')
+        else if (isMicMuted) parts.push('マイクミュート')
+        if (captionDataActive && !isCaptionMuted) parts.push('参加者受信中')
+        else if (isCaptionMuted) parts.push('参加者ミュート')
+        else if (!captionDataActive) parts.push('参加者待機中')
+        mainStatus.textContent = parts.join(' / ')
       }
     }
 
-    // マイク状態
-    if (micStatus) {
-      micStatus.textContent = isMicListening ? 'マイク: 録音中' : 'マイク: 停止'
-      micStatus.className = 'an-source-item' + (isMicListening ? ' active' : '')
+    // サブコントロール（文字起こし中のみ表示）
+    if (subControls) {
+      subControls.style.display = isTranscribing ? '' : 'none'
     }
 
-    // 参加者音声状態（RTC データチャネル）
-    if (tabStatus) {
-      if (isTabCapturing) {
-        tabStatus.innerHTML = '参加者: <span class="an-source-active">RTC 受信中</span>'
-        tabStatus.className = 'an-source-item active'
+    // マイクミュートボタン
+    if (micMuteBtn) {
+      if (isMicMuted) {
+        micMuteBtn.classList.add('muted')
+        micMuteBtn.title = '自分のミュート解除'
       } else {
-        tabStatus.innerHTML = '参加者: <span style="color:#64748b;">待機中...</span>'
-        tabStatus.className = 'an-source-item'
+        micMuteBtn.classList.remove('muted')
+        micMuteBtn.title = '自分のマイクをミュート'
       }
     }
 
+    // 参加者ミュートボタン
+    if (captionMuteBtn) {
+      if (isCaptionMuted) {
+        captionMuteBtn.classList.add('muted')
+        captionMuteBtn.title = '参加者のミュート解除'
+      } else {
+        captionMuteBtn.classList.remove('muted')
+        captionMuteBtn.title = '参加者の字幕をミュート'
+      }
+    }
+
+    // ヘッダーのステータスドット
     if (dot) {
       if (active) {
         dot.classList.add('connected')

@@ -101,32 +101,52 @@
   }
 
   // ──────────────────────────────────────────
-  // BTranscriptMessage のパース
+  // 字幕メッセージのパース
   //
-  // 構造（Tactiq 解析より）:
-  //   field 1: deviceId (string) — 話者の端末 ID
-  //   field 2: messageId (int64)
-  //   field 3: messageVersion (int64) — テキスト更新ごとに増加
-  //   field 4: text (string) — 字幕テキスト
-  //   field 5: langId (int64)
+  // captions チャネルの構造（実データ解析 2026-03-09）:
+  //   field 1: outer message（1件の字幕エントリ）
+  //     field 1: deviceId (string) — "spaces/xxx/devices/500"
+  //     field 2: participantId (varint)
+  //     field 3: sequenceNumber (varint) — 増加する
+  //     field 6: text (string) — 字幕テキスト ★
+  //     field 8: langId (varint) — 9=ja?
+  //     field 12: startTimestamp (nested)
+  //     field 13: endTimestamp (nested)
+  //
+  // collections チャネル（旧 Tactiq 方式）:
+  //   field 1: deviceId, field 4: text
   // ──────────────────────────────────────────
 
   function parseTranscriptMessage(data) {
     const fields = decodeFields(data)
 
-    // field 4 (text) が文字列でなければ字幕メッセージではない
-    const textData = fields[4]
-    if (!textData) return null
+    // パターン1: captions チャネル — テキストは field 6
+    const textField6 = fields[6]
+    if (textField6) {
+      const text = tryDecodeString(textField6)
+      if (text && text.length >= 1) {
+        const deviceId = fields[1] ? tryDecodeString(fields[1]) : null
+        const messageId = fields[2] || 0
+        const messageVersion = fields[3] || 0
+        const langId = fields[8] || 0
+        return { deviceId, messageId, messageVersion, text, langId }
+      }
+    }
 
-    const text = tryDecodeString(textData)
-    if (!text || text.length < 1) return null
+    // パターン2: collections チャネル（旧形式）— テキストは field 4
+    const textField4 = fields[4]
+    if (textField4) {
+      const text = tryDecodeString(textField4)
+      if (text && text.length >= 1) {
+        const deviceId = fields[1] ? tryDecodeString(fields[1]) : null
+        const messageId = fields[2] || 0
+        const messageVersion = fields[3] || 0
+        const langId = fields[5] || 0
+        return { deviceId, messageId, messageVersion, text, langId }
+      }
+    }
 
-    const deviceId = fields[1] ? tryDecodeString(fields[1]) : null
-    const messageId = fields[2] || 0
-    const messageVersion = fields[3] || 0
-    const langId = fields[5] || 0
-
-    return { deviceId, messageId, messageVersion, text, langId }
+    return null
   }
 
   // ──────────────────────────────────────────
@@ -218,12 +238,45 @@
     const label = channel.label
     LOG(`データチャネル検出: "${label}"`)
 
-    // "collections" または "meet_messages" チャネルを監視
-    if (label === 'collections' || label === 'meet_messages') {
+    // 字幕関連チャネルを監視
+    if (label === 'collections' || label === 'meet_messages' || label === 'captions' || label === 'copresent' || label === 'coannotations') {
       LOG(`★ 字幕チャネル "${label}" を傍受開始`)
 
+      let msgCount = 0
       channel.addEventListener('message', (event) => {
-        const transcripts = processChannelMessage(event.data)
+        msgCount++
+        const data = event.data
+        const size = data instanceof ArrayBuffer ? data.byteLength : (data?.byteLength || data?.length || 0)
+        if (msgCount <= 5 || msgCount % 50 === 0) {
+          LOG(`[${label}] メッセージ #${msgCount} (${size} bytes)`)
+        }
+        // captions チャネルの生データをデバッグ出力（最初の5メッセージ）
+        if (label === 'captions' && msgCount <= 5) {
+          try {
+            const buf = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer || data)
+            // hex ダンプ
+            const hex = Array.from(buf.slice(0, 80)).map(b => b.toString(16).padStart(2, '0')).join(' ')
+            LOG(`[captions] hex: ${hex}${buf.length > 80 ? '...' : ''}`)
+            // テキストとして試行
+            try {
+              const text = new TextDecoder('utf-8', { fatal: false }).decode(buf)
+              LOG(`[captions] utf8: ${text.slice(0, 200)}`)
+            } catch {}
+            // Protobuf フィールドダンプ
+            const fields = decodeFields(buf)
+            LOG(`[captions] fields:`, JSON.stringify(Object.keys(fields).reduce((acc, k) => {
+              const v = fields[k]
+              acc[k] = v instanceof Uint8Array ? `bytes(${v.length})` : v
+              return acc
+            }, {})))
+          } catch (e) {
+            LOG(`[captions] デバッグエラー:`, e.message)
+          }
+        }
+        const transcripts = processChannelMessage(data)
+        if (transcripts.length > 0) {
+          LOG(`[${label}] ★ 字幕パース成功: ${transcripts.length} 件`)
+        }
         for (const t of transcripts) {
           if (t.text) {
             dispatchTranscript(t)
@@ -234,12 +287,20 @@
   }
 
   // RTCPeerConnection を置き換え
+  let pcCount = 0
   window.RTCPeerConnection = function (config, constraints) {
+    pcCount++
+    LOG(`★ new RTCPeerConnection #${pcCount}`)
     const pc = new OrigRTC(config, constraints)
 
     // 受信データチャネルを傍受
     pc.addEventListener('datachannel', (event) => {
       hookDataChannel(event.channel)
+    })
+
+    // 接続状態のログ
+    pc.addEventListener('connectionstatechange', () => {
+      LOG(`PC #${pcCount} 状態: ${pc.connectionState}`)
     })
 
     return pc
@@ -249,6 +310,10 @@
   Object.keys(OrigRTC).forEach((key) => {
     try { window.RTCPeerConnection[key] = OrigRTC[key] } catch {}
   })
+  // webkitRTCPeerConnection もフック（一部ブラウザ互換）
+  if (window.webkitRTCPeerConnection) {
+    window.webkitRTCPeerConnection = window.RTCPeerConnection
+  }
 
   // 既存の createDataChannel もフック（自分で作成したチャネルも傍受）
   const origCreateDC = OrigRTC.prototype.createDataChannel
@@ -260,5 +325,5 @@
     return channel
   }
 
-  LOG('RTCPeerConnection フック完了')
+  LOG('RTCPeerConnection フック完了（world:MAIN 直接注入）')
 })()
