@@ -25,6 +25,11 @@
       "js": ["toolbar.js", "tool-camera.js", "tool-noter.js"],
       "css": ["toolbar.css"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["meet-captions.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {

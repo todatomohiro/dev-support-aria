@@ -283,7 +283,7 @@
       const text = transcripts
         .map((t) => {
           const time = fmtTime(t.timestamp)
-          const src = t.source === 'tab-audio' ? '[参加者]' : '[自分]'
+          const src = t.source === 'mic' ? '[自分]' : `[${t.speaker}]`
           return `[${time}] ${src} ${t.text}`
         })
         .join('\n')
@@ -416,12 +416,36 @@
   }
 
   // ──────────────────────────────────────────
-  // タブ音声キャプチャ（参加者の声 — popup の tabCapture 経由）
+  // 参加者音声（Google Meet 字幕 DOM スクレイピング）
   // ──────────────────────────────────────────
-  // タブ音声キャプチャは popup コンテキストからのみ開始可能（Chrome 仕様）。
-  // content script は状態の受信と文字起こし結果の表示のみ行う。
+  // meet-captions.js が字幕 DOM を監視し、CustomEvent で転送してくる。
+  // tabCapture/desktopCapture は不要。
 
-  // background → content script へのメッセージ受信
+  document.addEventListener('aiba-caption', (e) => {
+    const { speaker, text, isFinal, timestamp } = e.detail
+    if (isFinal) {
+      addTranscript(speaker, text, timestamp, 'caption')
+      removeInterim('caption')
+    } else {
+      updateInterim(`${speaker}: ${text}`, 'caption')
+    }
+  })
+
+  document.addEventListener('aiba-captions-status', (e) => {
+    const { status } = e.detail
+    if (status === 'active') {
+      isTabCapturing = true
+      ensureSession()
+      updateRecUI()
+      LOG('字幕キャプチャ開始')
+    } else if (status === 'unavailable') {
+      isTabCapturing = false
+      updateRecUI()
+      LOG('字幕キャプチャ利用不可')
+    }
+  })
+
+  // background → content script へのメッセージ受信（tabCapture フォールバック）
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'tab-transcript') {
       if (message.isFinal) {
@@ -435,7 +459,7 @@
     if (message.type === 'tab-capture-status') {
       if (message.status === 'active') {
         isTabCapturing = true
-        ensureSession() // 参加者音声開始時にセッションも作成
+        ensureSession()
         updateRecUI()
       } else if (message.status === 'error') {
         tools.toast(`参加者音声: ${message.error}`)
@@ -476,13 +500,13 @@
       micStatus.className = 'an-source-item' + (isMicListening ? ' active' : '')
     }
 
-    // 参加者音声状態
+    // 参加者音声状態（字幕スクレイピング）
     if (tabStatus) {
       if (isTabCapturing) {
-        tabStatus.innerHTML = '参加者音声: <span class="an-source-active">受信中</span>'
+        tabStatus.innerHTML = '参加者: <span class="an-source-active">字幕取得中</span>'
         tabStatus.className = 'an-source-item active'
       } else {
-        tabStatus.innerHTML = '参加者音声: <a href="#" id="anTabSetupLink">拡張アイコンをクリック</a>'
+        tabStatus.innerHTML = '参加者: <span style="color:#64748b;">字幕 ON で自動開始</span>'
         tabStatus.className = 'an-source-item'
       }
     }
@@ -513,8 +537,8 @@
       tp.appendChild(interim)
     }
 
-    const label = source === 'tab' ? '参加者' : '自分'
-    const color = source === 'tab' ? '#4f46e5' : '#7c3aed'
+    const label = source === 'mic' ? '自分' : ''
+    const color = source === 'mic' ? '#a78bfa' : '#60a5fa'
     interim.innerHTML = `<div class="an-entry-speaker" style="color:${color}">${label}</div>`
       + `<div class="an-entry-text" style="color:#9ca3af;font-style:italic;">${tools.escHtml(text)}</div>`
     tp.scrollTop = tp.scrollHeight
@@ -558,7 +582,7 @@
   }
 
   function entryHTML(entry) {
-    const color = entry.source === 'tab-audio' ? '#4f46e5' : '#7c3aed'
+    const color = entry.source === 'mic' ? '#a78bfa' : '#60a5fa'
     return `<span class="an-entry-time">${fmtTime(entry.timestamp)}</span>`
       + `<div class="an-entry-speaker" style="color:${color}">${tools.escHtml(entry.speaker)}</div>`
       + `<div class="an-entry-text">${tools.escHtml(entry.text)}</div>`
@@ -688,8 +712,8 @@
       const transcriptText = transcripts
         .map((t) => {
           const time = fmtTime(t.timestamp)
-          const src = t.source === 'tab-audio' ? '[参加者]' : '[自分]'
-          return `[${time}] ${src} ${t.speaker}: ${t.text}`
+          const src = t.source === 'mic' ? '[自分]' : `[${t.speaker}]`
+          return `[${time}] ${src} ${t.text}`
         })
         .join('\n')
 
