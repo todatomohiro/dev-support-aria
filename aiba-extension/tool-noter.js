@@ -39,6 +39,9 @@
   let pendingEntries = [] // 未送信の文字起こし
   let flushTimer = null
 
+  // Ai-Ba トピック連携
+  let linkedThemeId = null  // 自動作成されたトピック ID
+
   // Ai-Ba 認証
   let aibaToken = null
   let aibaUserId = null
@@ -355,7 +358,11 @@
       isMicMuted = false
       isCaptionMuted = false
       stopMicRecording()
+      updateRecUI()
       LOG('文字起こし終了')
+
+      // Ai-Ba トピックに自動保存
+      autoSaveToTopic()
     } else {
       // 開始
       isTranscribing = true
@@ -366,6 +373,101 @@
       startMicRecording()
       updateRecUI()
       LOG('文字起こし開始')
+
+      // Ai-Ba にプライベートトピックを自動作成
+      autoCreateTopic()
+    }
+  }
+
+  /**
+   * 文字起こし開始時にプライベートトピックを自動作成する。
+   * トークンがなければスキップ（手動のトピック保存ボタンで後から可能）。
+   */
+  async function autoCreateTopic() {
+    if (!aibaToken || !aibaApiUrl) {
+      LOG('Ai-Ba 未連携 — トピック自動作成スキップ')
+      return
+    }
+
+    // 既にこの会議用のトピックがある場合はスキップ
+    if (linkedThemeId) return
+
+    const now = new Date()
+    const dateStr = `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    const meetingTitle = currentSessionTitle || `Meeting`
+    const themeName = `${meetingTitle} — ${dateStr}`
+
+    try {
+      const res = await fetch(`${aibaApiUrl}/themes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${aibaToken}`,
+        },
+        body: JSON.stringify({ themeName, isPrivate: true }),
+      })
+
+      if (!res.ok) {
+        LOG('トピック自動作成失敗:', res.status)
+        return
+      }
+
+      const data = await res.json()
+      linkedThemeId = data.themeId
+      LOG('トピック自動作成完了:', themeName, linkedThemeId)
+      updateSaveTopicBtn()
+    } catch (err) {
+      LOG('トピック自動作成エラー:', err.message)
+    }
+  }
+
+  /**
+   * 文字起こし終了時にトピックへ自動保存する。
+   * linkedThemeId がない場合は何もしない。
+   */
+  async function autoSaveToTopic() {
+    if (!linkedThemeId || !aibaToken || !aibaApiUrl) return
+    if (transcripts.length === 0) return
+
+    const themeId = linkedThemeId
+
+    try {
+      await flushPendingEntries()
+
+      const transcriptText = transcripts
+        .map((t) => {
+          const time = fmtTime(t.timestamp)
+          const src = t.source === 'mic' ? '[自分]' : `[${t.speaker}]`
+          return `[${time}] ${src} ${t.text}`
+        })
+        .join('\n')
+
+      const themeName = currentSessionTitle || 'Meeting'
+      LOG('トピック自動保存:', themeId, `${transcripts.length}件`)
+
+      const res = await fetch(`${aibaApiUrl}/llm/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${aibaToken}`,
+        },
+        body: JSON.stringify({
+          message: `以下は会議「${themeName}」の文字起こしです。内容を確認して、要約・要点・決定事項・TODOをまとめてください。\n\n${transcriptText}`,
+          sessionId: themeId,
+          themeId,
+        }),
+      })
+
+      if (res.ok) {
+        tools.toast('会議メモをトピックに保存しました')
+        LOG('トピック自動保存完了')
+      } else {
+        LOG('トピック自動保存: AI要約エラー (トピックは作成済み)', res.status)
+        tools.toast('会議メモを保存しました（要約は後で実行してください）')
+      }
+    } catch (err) {
+      LOG('トピック自動保存エラー:', err.message)
+      tools.toast('自動保存に失敗しました。手動で「トピック保存」してください')
     }
   }
 
@@ -767,14 +869,36 @@
   // ──────────────────────────────────────────
   function updateSaveTopicBtn() {
     const btn = document.querySelector('#anSaveTopicBtn')
-    if (btn) {
-      btn.style.display = aibaToken ? '' : 'none'
+    if (!btn) return
+
+    if (!aibaToken) {
+      btn.style.display = 'none'
+      return
     }
+
+    // 自動作成済みトピックがある場合はボタンを非表示（自動保存で処理済み）
+    if (linkedThemeId) {
+      btn.style.display = ''
+      btn.textContent = '連携中'
+      btn.disabled = true
+      btn.style.background = '#475569'
+      return
+    }
+
+    btn.style.display = ''
+    btn.textContent = 'トピック保存'
+    btn.disabled = false
+    btn.style.background = '#059669'
   }
 
+  /**
+   * 手動トピック保存。
+   * linkedThemeId がある場合はそのトピックに送信。
+   * ない場合は新規トピック作成。
+   */
   async function saveToTopic() {
     if (!aibaToken || !aibaApiUrl) {
-      tools.toast('先にポップアップから Ai-Ba 連携を行ってください')
+      tools.toast('Ai-Ba アプリにログインしてページを開いてください')
       return
     }
     if (transcripts.length === 0) {
@@ -783,14 +907,14 @@
     }
 
     const btn = document.querySelector('#anSaveTopicBtn')
-    btn.disabled = true
-    btn.textContent = '保存中...'
+    if (btn) {
+      btn.disabled = true
+      btn.textContent = '保存中...'
+    }
 
     try {
-      // 未送信分をフラッシュ
       await flushPendingEntries()
 
-      // 文字起こしテキストを作成
       const transcriptText = transcripts
         .map((t) => {
           const time = fmtTime(t.timestamp)
@@ -800,26 +924,29 @@
         .join('\n')
 
       const themeName = currentSessionTitle || `Meeting ${new Date().toLocaleString('ja-JP')}`
+      let themeId = linkedThemeId
 
-      // 1. テーマ作成
-      LOG('トピック作成:', themeName, 'API:', aibaApiUrl)
-      const createRes = await fetch(`${aibaApiUrl}/themes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${aibaToken}`,
-        },
-        body: JSON.stringify({ themeName }),
-      })
+      // トピック未作成の場合は新規作成
+      if (!themeId) {
+        const createRes = await fetch(`${aibaApiUrl}/themes`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${aibaToken}`,
+          },
+          body: JSON.stringify({ themeName, isPrivate: true }),
+        })
 
-      if (!createRes.ok) {
-        const errBody = await createRes.text()
-        throw new Error(`テーマ作成失敗 (${createRes.status}): ${errBody}`)
+        if (!createRes.ok) {
+          throw new Error(`テーマ作成失敗 (${createRes.status})`)
+        }
+
+        const data = await createRes.json()
+        themeId = data.themeId
+        linkedThemeId = themeId
       }
 
-      const { themeId } = await createRes.json()
-
-      // 2. 文字起こしを最初のメッセージとして送信
+      // 文字起こしを送信 + AI要約リクエスト
       const chatRes = await fetch(`${aibaApiUrl}/llm/chat`, {
         method: 'POST',
         headers: {
@@ -834,23 +961,24 @@
       })
 
       if (!chatRes.ok) {
-        // テーマは作成済みなのでエラーでもトピック自体は保存されている
         LOG('チャット送信エラー:', chatRes.status)
-        tools.toast(`トピック作成完了（AI要約は後で実行してください）`)
+        tools.toast('トピック作成完了（AI要約は後で実行してください）')
       } else {
         tools.toast(`トピック「${themeName}」に保存しました`)
       }
 
-      btn.textContent = '保存完了'
-      setTimeout(() => {
-        btn.textContent = 'トピック保存'
-        btn.disabled = false
-      }, 3000)
+      if (btn) {
+        btn.textContent = '保存完了'
+        btn.disabled = true
+        setTimeout(() => updateSaveTopicBtn(), 3000)
+      }
     } catch (err) {
       LOG('トピック保存エラー:', err)
       tools.toast(`保存エラー: ${err.message}`)
-      btn.textContent = 'トピック保存'
-      btn.disabled = false
+      if (btn) {
+        btn.textContent = 'トピック保存'
+        btn.disabled = false
+      }
     }
   }
 

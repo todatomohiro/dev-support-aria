@@ -119,6 +119,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ isCapturing: captureActive })
     return true
   }
+
+  // app-bridge からトークン同期通知 → 会議ページの content script に中継
+  if (message.type === 'aiba-token-synced') {
+    LOG('トークン同期通知を受信、会議ページに中継')
+    forwardToContentScripts({
+      type: 'aiba-auth-updated',
+      token: message.token,
+      userId: message.userId,
+      apiUrl: message.apiUrl,
+    })
+    sendResponse({ ok: true })
+    return true
+  }
 })
 
 async function handleStartWithStream(streamId, tabId) {

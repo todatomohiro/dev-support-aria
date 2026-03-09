@@ -28,6 +28,12 @@
     },
     {
       "matches": ["https://meet.google.com/*"],
+      "js": ["meet-rtc-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://meet.google.com/*"],
       "js": ["meet-captions.js"],
       "run_at": "document_start"
     },
@@ -40,6 +46,11 @@
       "matches": ["https://*.zoom.us/*"],
       "js": ["zoom-captions.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["http://localhost:5173/*"],
+      "js": ["app-bridge.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {
