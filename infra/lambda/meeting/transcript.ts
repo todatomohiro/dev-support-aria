@@ -57,6 +57,25 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) }
     }
 
+    // 会議終了通知（WebSocket push のみ）
+    if (body.action === 'meeting_ended') {
+      const { themeId, totalEntries } = body as { themeId: string; totalEntries?: number }
+      if (!themeId) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'themeId is required' }) }
+      }
+
+      if (WS_ENDPOINT) {
+        await pushToUser(userId, JSON.stringify({
+          type: 'meeting_ended',
+          themeId,
+          totalEntries: totalEntries ?? 0,
+        }))
+      }
+
+      console.log(`[Meeting] meeting_ended notification sent for theme ${themeId} (${totalEntries ?? 0} entries)`)
+      return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) }
+    }
+
     // 字幕バッチ処理
     const { themeId, entries } = body as { themeId: string; entries: TranscriptEntry[] }
 

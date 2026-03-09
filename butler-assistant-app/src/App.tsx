@@ -113,6 +113,26 @@ function App() {
     return () => window.removeEventListener('aiba-meeting-started', handler)
   }, [navigate])
 
+  // 会議終了通知でメッセージを追加
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { themeId, totalEntries } = (e as CustomEvent).detail as { themeId: string; totalEntries: number }
+      console.log(`[App] 会議終了通知: ${themeId} (${totalEntries}件)`)
+      const store = useThemeStore.getState()
+      // アクティブなテーマに会議終了メッセージを追加
+      if (store.activeThemeId === themeId) {
+        store.addMessage({
+          id: `meeting-ended-${Date.now()}`,
+          role: 'assistant',
+          content: `会議が終了しました（${totalEntries}件の発言を記録）。AI が要約を作成しています...`,
+          timestamp: Date.now(),
+        })
+      }
+    }
+    window.addEventListener('aiba-meeting-ended', handler)
+    return () => window.removeEventListener('aiba-meeting-ended', handler)
+  }, [])
+
   // 現在のセッション名を判定（設計書: ヘッダーにはセッション名のみ表示）
   const currentSessionName = location.pathname.startsWith('/aiba')
     ? 'Ai-Ba'

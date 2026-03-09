@@ -365,8 +365,8 @@
       updateRecUI()
       LOG('文字起こし終了')
 
-      // 残りのバッチをフラッシュしてから自動保存
-      flushStreamBatch().then(() => autoSaveToTopic())
+      // 残りのバッチをフラッシュしてから自動保存 → 会議終了通知
+      flushStreamBatch().then(() => autoSaveToTopic()).then(() => notifyMeetingEnded())
     } else {
       // 開始
       isTranscribing = true
@@ -448,6 +448,30 @@
       LOG('会議開始通知送信完了')
     } catch (err) {
       LOG('会議開始通知エラー:', err.message)
+    }
+  }
+
+  /**
+   * アプリに会議終了を通知する（WebSocket 経由で UI 更新）。
+   */
+  async function notifyMeetingEnded() {
+    if (!linkedThemeId || !aibaToken || !aibaApiUrl) return
+    try {
+      await fetch(`${aibaApiUrl}/meeting/transcript`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${aibaToken}`,
+        },
+        body: JSON.stringify({
+          action: 'meeting_ended',
+          themeId: linkedThemeId,
+          totalEntries: transcripts.length,
+        }),
+      })
+      LOG('会議終了通知送信完了')
+    } catch (err) {
+      LOG('会議終了通知エラー:', err.message)
     }
   }
 
@@ -1074,8 +1098,33 @@
   }
 
   // ──────────────────────────────────────────
+  // ページ離脱時の自動停止
+  // ──────────────────────────────────────────
+  window.addEventListener('beforeunload', () => {
+    if (!isTranscribing) return
+    stopMicRecording()
+    stopStreamBatch()
+
+    // keepalive: true で認証付きリクエストを送信（ページ離脱後も完了する）
+    if (linkedThemeId && aibaToken && aibaApiUrl) {
+      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${aibaToken}` }
+      if (streamBatchEntries.length > 0) {
+        fetch(`${aibaApiUrl}/meeting/transcript`, {
+          method: 'POST', headers, keepalive: true,
+          body: JSON.stringify({ themeId: linkedThemeId, entries: streamBatchEntries }),
+        }).catch(() => {})
+      }
+      fetch(`${aibaApiUrl}/meeting/transcript`, {
+        method: 'POST', headers, keepalive: true,
+        body: JSON.stringify({ action: 'meeting_ended', themeId: linkedThemeId, totalEntries: transcripts.length }),
+      }).catch(() => {})
+    }
+    LOG('ページ離脱 — 文字起こし自動停止')
+  })
+
+  // ──────────────────────────────────────────
   // 初期化
   // ──────────────────────────────────────────
-  LOG('ノーターツール読み込み完了 (v10: セッション管理 + AI + トピック保存)')
+  LOG('ノーターツール読み込み完了 (v11: セッション管理 + AI + リアルタイム連携)')
   createNoterPanel()
 })()

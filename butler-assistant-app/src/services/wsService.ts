@@ -216,6 +216,14 @@ export class WsServiceImpl implements WsServiceType {
       return
     }
 
+    // 会議終了通知
+    if (data.type === 'meeting_ended' && data.themeId) {
+      window.dispatchEvent(new CustomEvent('aiba-meeting-ended', {
+        detail: { themeId: data.themeId, totalEntries: (data as { totalEntries?: number }).totalEntries ?? 0 },
+      }))
+      return
+    }
+
     // 会議トランスクリプトチャンク（拡張機能からのリアルタイム字幕）
     if (data.type === 'transcript_chunk' && data.themeId && Array.isArray(data.entries)) {
       const store = useThemeStore.getState()
