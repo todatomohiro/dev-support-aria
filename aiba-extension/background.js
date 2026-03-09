@@ -120,6 +120,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true
   }
 
+  // content script からの API プロキシ（CORS 回避）
+  if (message.type === 'aiba-api-proxy') {
+    ;(async () => {
+      try {
+        LOG(`API proxy: ${message.options?.method || 'GET'} ${message.url}`)
+        const res = await fetch(message.url, message.options)
+        const body = await res.text()
+        LOG(`API proxy: ${res.status} ${res.ok ? 'OK' : 'FAIL'} (${body.length} bytes)`)
+        if (!res.ok) LOG(`API proxy body:`, body.slice(0, 200))
+        sendResponse({ ok: res.ok, status: res.status, body })
+      } catch (err) {
+        sendResponse({ ok: false, status: 0, body: '', error: err.message })
+      }
+    })()
+    return true
+  }
+
   // app-bridge からトークン同期通知 → 会議ページの content script に中継
   if (message.type === 'aiba-token-synced') {
     LOG('トークン同期通知を受信、会議ページに中継')

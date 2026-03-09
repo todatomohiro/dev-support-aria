@@ -1,11 +1,11 @@
 /**
- * Ai-Ba Tools — Meeting Noter ツール（v9: セッション管理 + AI チャット）
+ * Ai-Ba Tools — Meeting Noter ツール（v14: collections チャネルから話者名取得）
  *
- * - 自分の音声: Web Speech API（マイク）で直接認識
- * - 参加者の音声: tabCapture → offscreen → Amazon Transcribe Streaming
+ * - 自分・参加者の音声: Meet RTC データチャネルの字幕で統一取得
+ * - 話者名: collections チャネルの Protobuf から deviceId → deviceName を取得
  * - 録音開始時にミーティングセッションを自動作成（DynamoDB 保存）
  * - URL 変更で新しいセッション作成
- * - AI チャットは Bedrock Claude Haiku で回答
+ * - Ai-Ba アプリ連携: トピック自動作成 + リアルタイムストリーミング
  */
 ;(function () {
   'use strict'
@@ -24,12 +24,8 @@
   // ──────────────────────────────────────────
   // 状態
   // ──────────────────────────────────────────
-  let micRecognition = null
-  let isMicListening = false
   let isTranscribing = false     // 文字起こし全体の ON/OFF
-  let isMicMuted = false
-  let isCaptionMuted = false
-  let captionEnabled = true      // 参加者字幕を受信するか（isTranscribing と連動）
+  let captionEnabled = true      // RTC 字幕を受信するか（isTranscribing と連動）
   let captionDataActive = false  // 実際に字幕データが流れているか
   const transcripts = []
 
@@ -71,6 +67,26 @@
       updateSaveTopicBtn()
     }
   })
+
+  /**
+   * background service worker 経由で fetch する（CORS 回避）。
+   * content script からの直接 fetch はページオリジンで送信されるため CORS エラーになる。
+   */
+  async function apiFetch(url, options) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: 'aiba-api-proxy', url, options }, (res) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message))
+          return
+        }
+        if (!res || res.error) {
+          reject(new Error(res?.error || 'API proxy error'))
+          return
+        }
+        resolve(res)
+      })
+    })
+  }
 
   // ──────────────────────────────────────────
   // ミーティング ID 抽出
@@ -191,14 +207,10 @@
         </div>
         <button class="ap-close" id="aibaNoterClose">&times;</button>
       </div>
-      <div class="an-tabs">
-        <button class="an-tab active" data-tab="transcript">文字起こし</button>
-        <button class="an-tab" data-tab="chat">AI チャット</button>
-      </div>
       <div class="an-transcript" id="anTranscript">
         <div class="an-empty" id="anEmpty">
           <div class="an-empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div>
-          <p>「文字起こし開始」を押すと<br>録音が始まります</p>
+          <p>「文字起こし開始」を押すと<br>Meet の字幕を取得します</p>
         </div>
       </div>
       <div class="an-toolbar" id="anToolbar">
@@ -210,16 +222,6 @@
             </button>
             <span class="an-main-status" id="anMainStatus"></span>
           </div>
-          <div class="an-sub-controls" id="anSubControls" style="display:none;">
-            <button class="an-sub-mute" id="anMicMute" title="自分のマイクをミュート">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-              <span>自分</span>
-            </button>
-            <button class="an-sub-mute" id="anCaptionMute" title="参加者の字幕をミュート">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              <span>参加者</span>
-            </button>
-          </div>
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <span class="an-count" id="anCount">0 件</span>
             <div style="display:flex;gap:4px;">
@@ -228,24 +230,6 @@
               <button class="an-small-btn" id="anClearBtn">クリア</button>
             </div>
           </div>
-        </div>
-      </div>
-      <div class="an-chat" id="anChat">
-        <div class="an-chat-messages" id="anChatMessages">
-          <div class="an-chat-msg system">
-            文字起こしを元に要約や質問ができます。<br>
-            マイクまたはタブ音声を録音してください。
-          </div>
-        </div>
-        <div class="an-quick">
-          <button class="an-quick-btn" data-prompt="ここまでの会話を要約してください">要約</button>
-          <button class="an-quick-btn" data-prompt="要点を箇条書きにしてください">要点整理</button>
-          <button class="an-quick-btn" data-prompt="決定事項とTODOをまとめてください">決定/TODO</button>
-          <button class="an-quick-btn" data-prompt="最後の質問に対する回答案を考えてください">回答案</button>
-        </div>
-        <div class="an-input-area">
-          <input type="text" class="an-input" id="anInput" placeholder="質問や指示を入力..." />
-          <button class="an-send-btn" id="anSendBtn">送信</button>
         </div>
       </div>
     `
@@ -270,22 +254,7 @@
       tools.togglePanel('aiba-noter-panel', 'aiba-btn-noter')
     })
 
-    // タブ切り替え
-    panel.querySelectorAll('.an-tab').forEach((tab) => {
-      tab.addEventListener('click', () => {
-        panel.querySelectorAll('.an-tab').forEach((t) => t.classList.remove('active'))
-        tab.classList.add('active')
-        const isTranscript = tab.dataset.tab === 'transcript'
-        panel.querySelector('#anTranscript').style.display = isTranscript ? '' : 'none'
-        panel.querySelector('#anToolbar').style.display = isTranscript ? '' : 'none'
-        const chat = panel.querySelector('#anChat')
-        if (isTranscript) { chat.classList.remove('active') } else { chat.classList.add('active') }
-      })
-    })
-
     panel.querySelector('#anMainToggle').addEventListener('click', toggleTranscription)
-    panel.querySelector('#anMicMute').addEventListener('click', toggleMicMute)
-    panel.querySelector('#anCaptionMute').addEventListener('click', toggleCaptionMute)
 
     // 起動時にタブキャプチャ状態を確認
     chrome.runtime.sendMessage({ type: 'get-capture-status' }, (res) => {
@@ -307,8 +276,7 @@
       const text = transcripts
         .map((t) => {
           const time = fmtTime(t.timestamp)
-          const src = t.source === 'mic' ? '[自分]' : `[${t.speaker}]`
-          return `[${time}] ${src} ${t.text}`
+          return `[${time}] [${t.speaker}] ${t.text}`
         })
         .join('\n')
       navigator.clipboard.writeText(text).then(() => {
@@ -324,30 +292,11 @@
       if (!confirm('文字起こしをクリアしますか？')) return
       transcripts.length = 0
       const tp = panel.querySelector('#anTranscript')
-      tp.innerHTML = '<div class="an-empty" id="anEmpty"><div class="an-empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div><p>録音ボタンを押すと<br>文字起こしが始まります</p></div>'
+      tp.innerHTML = '<div class="an-empty" id="anEmpty"><div class="an-empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div><p>「文字起こし開始」を押すと<br>Meet の字幕を取得します</p></div>'
       panel.querySelector('#anCount').textContent = '0 件'
       updateNoterBadge()
     })
 
-    // クイックアクション
-    panel.querySelectorAll('.an-quick-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (btn.dataset.prompt) sendMessage(btn.dataset.prompt)
-      })
-    })
-
-    // 送信
-    panel.querySelector('#anSendBtn').addEventListener('click', () => {
-      const text = panel.querySelector('#anInput').value.trim()
-      if (text) sendMessage(text)
-    })
-    panel.querySelector('#anInput').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.isComposing) {
-        e.preventDefault()
-        const text = panel.querySelector('#anInput').value.trim()
-        if (text) sendMessage(text)
-      }
-    })
   }
 
   // ──────────────────────────────────────────
@@ -358,9 +307,6 @@
       // 停止
       isTranscribing = false
       captionEnabled = false
-      isMicMuted = false
-      isCaptionMuted = false
-      stopMicRecording()
       stopStreamBatch()
       updateRecUI()
       LOG('文字起こし終了')
@@ -371,10 +317,7 @@
       // 開始
       isTranscribing = true
       captionEnabled = true
-      isMicMuted = false
-      isCaptionMuted = false
       await ensureSession()
-      startMicRecording()
       updateRecUI()
       LOG('文字起こし開始')
 
@@ -384,6 +327,14 @@
       })
     }
   }
+
+  // デバイス情報受信（collections チャネルから話者名取得）
+  document.addEventListener('aiba-deviceinfo', (e) => {
+    const { deviceId, deviceName } = e.detail || {}
+    if (deviceId && deviceName) {
+      LOG(`話者名取得: ${deviceId} → "${deviceName}"`)
+    }
+  })
 
   /**
    * 文字起こし開始時にプライベートトピックを自動作成する。
@@ -404,7 +355,7 @@
     const themeName = `${meetingTitle} — ${dateStr}`
 
     try {
-      const res = await fetch(`${aibaApiUrl}/themes`, {
+      const res = await apiFetch(`${aibaApiUrl}/themes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -414,11 +365,11 @@
       })
 
       if (!res.ok) {
-        LOG('トピック自動作成失敗:', res.status)
+        LOG('トピック自動作成失敗:', res.status, res.body)
         return
       }
 
-      const data = await res.json()
+      const data = JSON.parse(res.body)
       linkedThemeId = data.themeId
       LOG('トピック自動作成完了:', themeName, linkedThemeId)
       updateSaveTopicBtn()
@@ -437,7 +388,7 @@
   async function notifyMeetingStarted(themeId, themeName) {
     if (!aibaToken || !aibaApiUrl) return
     try {
-      await fetch(`${aibaApiUrl}/meeting/transcript`, {
+      await apiFetch(`${aibaApiUrl}/meeting/transcript`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -457,7 +408,7 @@
   async function notifyMeetingEnded() {
     if (!linkedThemeId || !aibaToken || !aibaApiUrl) return
     try {
-      await fetch(`${aibaApiUrl}/meeting/transcript`, {
+      await apiFetch(`${aibaApiUrl}/meeting/transcript`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -491,15 +442,14 @@
       const transcriptText = transcripts
         .map((t) => {
           const time = fmtTime(t.timestamp)
-          const src = t.source === 'mic' ? '[自分]' : `[${t.speaker}]`
-          return `[${time}] ${src} ${t.text}`
+          return `[${time}] [${t.speaker}] ${t.text}`
         })
         .join('\n')
 
       const themeName = currentSessionTitle || 'Meeting'
       LOG('トピック自動保存:', themeId, `${transcripts.length}件`)
 
-      const res = await fetch(`${aibaApiUrl}/llm/chat`, {
+      const res = await apiFetch(`${aibaApiUrl}/llm/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -526,111 +476,16 @@
   }
 
   // ──────────────────────────────────────────
-  // マイク音声認識 (Web Speech API — 自分の声)
   // ──────────────────────────────────────────
-
-  async function startMicRecording() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      tools.toast('このブラウザは音声認識に対応していません')
-      return
-    }
-
-    micRecognition = new SpeechRecognition()
-    micRecognition.lang = 'ja-JP'
-    micRecognition.continuous = true
-    micRecognition.interimResults = true
-    micRecognition.maxAlternatives = 1
-
-    micRecognition.onstart = () => {
-      LOG('マイク音声認識を開始')
-      isMicListening = true
-      updateRecUI()
-    }
-
-    micRecognition.onresult = (event) => {
-      if (isMicMuted) return
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i]
-        const text = result[0].transcript.trim()
-        if (!text) continue
-
-        if (result.isFinal) {
-          addTranscript('自分', text, Date.now(), 'mic')
-          removeInterim('mic')
-        } else {
-          updateInterim(text, 'mic')
-        }
-      }
-    }
-
-    micRecognition.onerror = (event) => {
-      LOG('マイク音声認識エラー:', event.error)
-      if (event.error === 'not-allowed') {
-        tools.toast('マイクへのアクセスが拒否されました')
-      } else if (event.error !== 'no-speech') {
-        tools.toast(`マイクエラー: ${event.error}`)
-      }
-    }
-
-    micRecognition.onend = () => {
-      if (isMicListening) {
-        LOG('マイク音声認識 自動再開')
-        try { micRecognition.start() } catch (e) {
-          LOG('マイク再開失敗:', e)
-          isMicListening = false
-          updateRecUI()
-        }
-      }
-    }
-
-    try {
-      micRecognition.start()
-    } catch (e) {
-      LOG('マイク開始失敗:', e)
-      tools.toast('マイク音声認識の開始に失敗しました')
-    }
-  }
-
-  function stopMicRecording() {
-    isMicListening = false
-    if (micRecognition) {
-      // onend を除去してから stop — 古いインスタンスの onend が新セッションを妨害するのを防止
-      micRecognition.onend = null
-      micRecognition.stop()
-      micRecognition = null
-    }
-    removeInterim('mic')
-    updateRecUI()
-    // 停止時に未送信分をフラッシュ
-    flushPendingEntries()
-    LOG('マイク音声認識を停止')
-  }
-
+  // RTC キャプション受信
   // ──────────────────────────────────────────
-  // ミュートトグル（サブコントロール）
-  // ──────────────────────────────────────────
-  function toggleMicMute() {
-    isMicMuted = !isMicMuted
-    updateRecUI()
-    LOG(`マイク ${isMicMuted ? 'ミュート' : 'ミュート解除'}`)
-  }
-
-  function toggleCaptionMute() {
-    isCaptionMuted = !isCaptionMuted
-    updateRecUI()
-    LOG(`参加者字幕 ${isCaptionMuted ? 'ミュート' : 'ミュート解除'}`)
-  }
-
-  // ──────────────────────────────────────────
-  // 参加者音声（Google Meet 字幕 DOM スクレイピング）
-  // ──────────────────────────────────────────
-  // meet-captions.js が字幕 DOM を監視し、CustomEvent で転送してくる。
-  // tabCapture/desktopCapture は不要。
+  // meet-captions.js が RTC データチャネルを監視し、
+  // speaker=実名 or "参加者" で CustomEvent を転送してくる。
 
   document.addEventListener('aiba-caption', (e) => {
-    if (!captionEnabled || isCaptionMuted) return
+    if (!captionEnabled) return
     const { speaker, text, isFinal, timestamp } = e.detail
+
     if (isFinal) {
       addTranscript(speaker, text, timestamp, 'caption')
       removeInterim('caption')
@@ -654,7 +509,7 @@
   // background → content script へのメッセージ受信（tabCapture フォールバック）
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'tab-transcript') {
-      if (!captionEnabled || isCaptionMuted) return
+      if (!captionEnabled) return
       if (message.isFinal) {
         addTranscript('参加者', message.text, message.timestamp, 'tab-audio')
         removeInterim('tab')
@@ -687,10 +542,7 @@
     const mainToggle = document.querySelector('#anMainToggle')
     const mainLabel = document.querySelector('#anMainToggleLabel')
     const mainStatus = document.querySelector('#anMainStatus')
-    const subControls = document.querySelector('#anSubControls')
-    const micMuteBtn = document.querySelector('#anMicMute')
-    const captionMuteBtn = document.querySelector('#anCaptionMute')
-    const active = isMicListening || (captionEnabled && captionDataActive)
+    const active = isTranscribing && captionDataActive
 
     // メインボタン
     if (mainToggle) {
@@ -710,41 +562,10 @@
     if (mainStatus) {
       if (!isTranscribing) {
         mainStatus.textContent = ''
+      } else if (!captionDataActive) {
+        mainStatus.textContent = '字幕待機中'
       } else {
-        const parts = []
-        if (isMicListening && !isMicMuted) parts.push('マイク録音中')
-        else if (isMicMuted) parts.push('マイクミュート')
-        if (captionDataActive && !isCaptionMuted) parts.push('参加者受信中')
-        else if (isCaptionMuted) parts.push('参加者ミュート')
-        else if (!captionDataActive) parts.push('参加者待機中')
-        mainStatus.textContent = parts.join(' / ')
-      }
-    }
-
-    // サブコントロール（文字起こし中のみ表示）
-    if (subControls) {
-      subControls.style.display = isTranscribing ? '' : 'none'
-    }
-
-    // マイクミュートボタン
-    if (micMuteBtn) {
-      if (isMicMuted) {
-        micMuteBtn.classList.add('muted')
-        micMuteBtn.title = '自分のミュート解除'
-      } else {
-        micMuteBtn.classList.remove('muted')
-        micMuteBtn.title = '自分のマイクをミュート'
-      }
-    }
-
-    // 参加者ミュートボタン
-    if (captionMuteBtn) {
-      if (isCaptionMuted) {
-        captionMuteBtn.classList.add('muted')
-        captionMuteBtn.title = '参加者のミュート解除'
-      } else {
-        captionMuteBtn.classList.remove('muted')
-        captionMuteBtn.title = '参加者の字幕をミュート'
+        mainStatus.textContent = '字幕受信中'
       }
     }
 
@@ -775,9 +596,7 @@
       tp.appendChild(interim)
     }
 
-    const label = source === 'mic' ? '自分' : ''
-    const color = source === 'mic' ? '#a78bfa' : '#60a5fa'
-    interim.innerHTML = `<div class="an-entry-speaker" style="color:${color}">${label}</div>`
+    interim.innerHTML = `<div class="an-entry-speaker" style="color:#60a5fa"></div>`
       + `<div class="an-entry-text" style="color:#9ca3af;font-style:italic;">${tools.escHtml(text)}</div>`
     tp.scrollTop = tp.scrollHeight
   }
@@ -824,8 +643,20 @@
     }
   }
 
+  /** 話者名からユニークな色を生成（HSL ベース） */
+  const speakerColors = new Map()
+  const COLOR_PALETTE = ['#a78bfa', '#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#fb923c', '#a3e635', '#38bdf8']
+  let colorIndex = 0
+  function getSpeakerColor(name) {
+    if (!speakerColors.has(name)) {
+      speakerColors.set(name, COLOR_PALETTE[colorIndex % COLOR_PALETTE.length])
+      colorIndex++
+    }
+    return speakerColors.get(name)
+  }
+
   function entryHTML(entry) {
-    const color = entry.source === 'mic' ? '#a78bfa' : '#60a5fa'
+    const color = getSpeakerColor(entry.speaker)
     return `<span class="an-entry-time">${fmtTime(entry.timestamp)}</span>`
       + `<div class="an-entry-speaker" style="color:${color}">${tools.escHtml(entry.speaker)}</div>`
       + `<div class="an-entry-text">${tools.escHtml(entry.text)}</div>`
@@ -844,83 +675,6 @@
     } else if (badge) {
       badge.remove()
     }
-  }
-
-  // ──────────────────────────────────────────
-  // AI チャット
-  // ──────────────────────────────────────────
-  async function sendMessage(userMessage) {
-    const panel = document.getElementById('aiba-noter-panel')
-    if (!panel) return
-    const input = panel.querySelector('#anInput')
-    const sendBtn = panel.querySelector('#anSendBtn')
-    const messages = panel.querySelector('#anChatMessages')
-
-    input.value = ''
-    sendBtn.disabled = true
-    appendChat(messages, 'user', userMessage)
-
-    if (transcripts.length === 0) {
-      appendChat(messages, 'system', 'まだ文字起こしがありません。録音を開始してください。')
-      sendBtn.disabled = false
-      return
-    }
-
-    // 未送信分をフラッシュしてからAIに問い合わせ
-    await flushPendingEntries()
-
-    try {
-      const response = await callAI(userMessage)
-      appendChat(messages, 'assistant', response)
-    } catch (err) {
-      appendChat(messages, 'system', `エラー: ${err.message}`)
-    }
-    sendBtn.disabled = false
-  }
-
-  function appendChat(container, role, text) {
-    const el = document.createElement('div')
-    el.className = `an-chat-msg ${role}`
-    el.textContent = text
-    container.appendChild(el)
-    container.scrollTop = container.scrollHeight
-  }
-
-  async function callAI(userMessage) {
-    if (!NOTER_API_URL || !currentMeetingId) {
-      return mockAI(userMessage)
-    }
-
-    const res = await fetch(NOTER_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'ask',
-        meetingId: currentMeetingId,
-        question: userMessage,
-      }),
-    })
-
-    if (!res.ok) throw new Error(`API エラー (${res.status})`)
-    const data = await res.json()
-    return data.answer || 'AI からの応答がありません'
-  }
-
-  function mockAI(userMessage) {
-    const lines = transcripts.map((t) => t.text)
-    if (userMessage.includes('要約')) {
-      return `[PoC モック応答]\n\n会議の要約（${lines.length}件の発言）:\n\n`
-        + lines.slice(0, 5).map((c, i) => `${i + 1}. ${c}`).join('\n')
-        + (lines.length > 5 ? `\n... 他 ${lines.length - 5} 件` : '')
-        + '\n\n※ API URL 設定後は実際の AI 要約が生成されます。'
-    }
-    if (userMessage.includes('要点') || userMessage.includes('箇条書き')) {
-      return `[PoC モック応答]\n\n要点:\n${lines.slice(0, 8).map((c) => `- ${c}`).join('\n')}\n\n※ モック応答です。`
-    }
-    if (userMessage.includes('TODO') || userMessage.includes('決定')) {
-      return `[PoC モック応答]\n\n決定事項・TODO:\n- (API 連携時に自動抽出)\n\n発言数: ${lines.length}件`
-    }
-    return `[PoC モック応答]\n\n文字起こし ${lines.length} 件\n質問: 「${userMessage}」\n\n※ NOTER_API_URL を設定すると AI 回答が表示されます。`
   }
 
   // ──────────────────────────────────────────
@@ -977,8 +731,7 @@
       const transcriptText = transcripts
         .map((t) => {
           const time = fmtTime(t.timestamp)
-          const src = t.source === 'mic' ? '[自分]' : `[${t.speaker}]`
-          return `[${time}] ${src} ${t.text}`
+          return `[${time}] [${t.speaker}] ${t.text}`
         })
         .join('\n')
 
@@ -987,7 +740,7 @@
 
       // トピック未作成の場合は新規作成
       if (!themeId) {
-        const createRes = await fetch(`${aibaApiUrl}/themes`, {
+        const createRes = await apiFetch(`${aibaApiUrl}/themes`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1000,13 +753,13 @@
           throw new Error(`テーマ作成失敗 (${createRes.status})`)
         }
 
-        const data = await createRes.json()
+        const data = JSON.parse(createRes.body)
         themeId = data.themeId
         linkedThemeId = themeId
       }
 
       // 文字起こしを送信 + AI要約リクエスト
-      const chatRes = await fetch(`${aibaApiUrl}/llm/chat`, {
+      const chatRes = await apiFetch(`${aibaApiUrl}/llm/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1071,7 +824,7 @@
     streamBatchEntries = []
 
     try {
-      const res = await fetch(`${aibaApiUrl}/meeting/transcript`, {
+      const res = await apiFetch(`${aibaApiUrl}/meeting/transcript`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1102,7 +855,6 @@
   // ──────────────────────────────────────────
   window.addEventListener('beforeunload', () => {
     if (!isTranscribing) return
-    stopMicRecording()
     stopStreamBatch()
 
     // keepalive: true で認証付きリクエストを送信（ページ離脱後も完了する）
@@ -1125,6 +877,6 @@
   // ──────────────────────────────────────────
   // 初期化
   // ──────────────────────────────────────────
-  LOG('ノーターツール読み込み完了 (v11: セッション管理 + AI + リアルタイム連携)')
+  LOG('ノーターツール読み込み完了 (v14: collections チャネルから話者名取得)')
   createNoterPanel()
 })()
