@@ -1,11 +1,11 @@
 /**
- * Ai-Ba Tools — Google Meet 字幕スクレイパー
+ * Ai-Ba Tools — Google Meet 字幕スクレイパー (v2)
  *
- * Google Meet の字幕（Captions）DOM を MutationObserver で監視し、
- * 話者名 + テキストを抽出して tool-noter.js に転送する。
+ * Google Meet の字幕（Captions）をリアルタイムで取得する。
  *
- * 字幕が OFF の場合は自動で ON にする。
- * tabCapture/desktopCapture は不要。
+ * 方式: document.body 全体を MutationObserver で監視し、
+ * 字幕テキストの変更（characterData）を検出する。
+ * 字幕 OFF の場合は自動で ON にする。
  */
 ;(function () {
   'use strict'
@@ -16,30 +16,23 @@
   const LOG = (...args) => console.log('[Ai-Ba Captions]', ...args)
 
   // ──────────────────────────────────────────
-  // 字幕コンテナの検出（複数セレクタでフォールバック）
-  // ──────────────────────────────────────────
-  const CAPTION_SELECTORS = [
-    'div[role="region"][tabindex="0"]',        // aria ベース（最も安定）
-    '[role="region"][aria-label*="aption"]',    // aria-label に "Caption" を含む
-  ]
-
-  // 話者名の抽出セレクタ
-  const SPEAKER_CLASS = '.jxFHg'
-
-  // ──────────────────────────────────────────
   // 状態
   // ──────────────────────────────────────────
-  let captionObserver = null
   let isObserving = false
-  let lastSpeaker = ''
-  let lastText = ''
-  let debounceTimer = null
+  let bodyObserver = null
+
+  // 字幕の蓄積（話者ごと）
+  let currentSpeaker = ''
+  let currentText = ''
+  let finalizeTimer = null
+
+  // 拡張機能自身のUI要素を除外するための ID リスト
+  const AIBA_IDS = ['aiba-toolbar', 'aiba-noter-panel', 'aiba-camera-panel']
 
   // ──────────────────────────────────────────
   // 字幕の自動有効化
   // ──────────────────────────────────────────
   function enableCaptions() {
-    // 方法1: aria-label で CC ボタンを探す
     const ccBtn = document.querySelector('button[aria-label*="Turn on captions"]')
       || document.querySelector('button[aria-label*="字幕をオン"]')
       || document.querySelector('button[aria-label*="字幕を表示"]')
@@ -49,7 +42,6 @@
       return true
     }
 
-    // 方法2: アイコンテキストで探す
     const icons = document.querySelectorAll('.google-symbols, .material-icons-extended')
     for (const icon of icons) {
       if (/closed_caption_off/.test(icon.textContent)) {
@@ -61,7 +53,6 @@
         }
       }
     }
-
     return false
   }
 
@@ -74,219 +65,346 @@
   }
 
   // ──────────────────────────────────────────
-  // 字幕コンテナの検出
+  // 字幕要素の判定
   // ──────────────────────────────────────────
-  function findCaptionContainer() {
-    for (const sel of CAPTION_SELECTORS) {
-      const el = document.querySelector(sel)
-      if (el) return el
+
+  /**
+   * 要素が拡張機能自身の UI かどうか
+   */
+  function isOwnUI(el) {
+    for (const id of AIBA_IDS) {
+      if (el.closest(`#${id}`)) return true
+    }
+    return false
+  }
+
+  /**
+   * 要素が字幕表示エリアの一部かどうかを判定する。
+   *
+   * Google Meet の字幕は以下の特徴を持つ:
+   * - 画面下部に表示される
+   * - position: absolute/fixed で重ねて表示
+   * - 背景が暗い（半透明黒）
+   * - フォントが比較的大きい
+   * - 短い行（1〜2行）
+   */
+  function isCaptionElement(el) {
+    if (!el || !el.parentElement) return false
+
+    // 拡張機能自身のUIは除外
+    if (isOwnUI(el)) return false
+
+    // 字幕テキストは通常 span 内にある
+    // 親要素のスタイルをチェック
+    const container = findCaptionAncestor(el)
+    return container !== null
+  }
+
+  /**
+   * 字幕コンテナ（字幕エントリの親）を探す。
+   * 字幕は通常 2〜3 段のネストで表示される。
+   */
+  function findCaptionAncestor(el) {
+    let node = el
+    // 最大 8 段まで遡る
+    for (let i = 0; i < 8; i++) {
+      if (!node || node === document.body) break
+
+      const style = window.getComputedStyle(node)
+
+      // 字幕コンテナの特徴: 画面下部に固定/絶対配置
+      const pos = style.position
+      if ((pos === 'absolute' || pos === 'fixed') && node.offsetHeight > 0) {
+        const rect = node.getBoundingClientRect()
+        const viewportHeight = window.innerHeight
+
+        // 画面下半分にある
+        if (rect.top > viewportHeight * 0.5) {
+          // 背景色チェック（暗い背景）
+          const bg = style.backgroundColor
+          if (isDarkBackground(bg)) {
+            return node
+          }
+        }
+      }
+      node = node.parentElement
     }
     return null
   }
 
-  // ──────────────────────────────────────────
-  // 字幕テキストの抽出
-  // ──────────────────────────────────────────
-  function extractCaptions(container) {
-    if (!container) return []
+  /**
+   * 背景色が暗い（字幕背景の半透明黒等）かを判定
+   */
+  function isDarkBackground(bg) {
+    if (!bg || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)') return false
+    // rgba(0, 0, 0, 0.x) パターン
+    const rgba = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+    if (rgba) {
+      const r = parseInt(rgba[1])
+      const g = parseInt(rgba[2])
+      const b = parseInt(rgba[3])
+      // 暗い色（R+G+B < 150）
+      return (r + g + b) < 150
+    }
+    return false
+  }
 
-    const results = []
-    // 字幕コンテナ内の各エントリを走査
-    const children = container.children
-    for (const child of children) {
-      // 話者名を取得
-      let speaker = ''
-      const speakerEl = child.querySelector(SPEAKER_CLASS)
-      if (speakerEl) {
-        speaker = speakerEl.textContent.trim()
-      }
-      if (!speaker) {
-        // フォールバック: 最初のテキストノードが話者名の場合
-        const firstChild = child.firstElementChild
-        if (firstChild && firstChild.children.length === 0) {
-          speaker = firstChild.textContent.trim()
+  // ──────────────────────────────────────────
+  // 話者名の抽出
+  // ──────────────────────────────────────────
+  function extractSpeakerFromCaption(el) {
+    if (!el) return ''
+
+    // 字幕エントリを遡って話者名を探す
+    let node = el
+    for (let i = 0; i < 6; i++) {
+      if (!node || node === document.body) break
+
+      // 兄弟要素として話者名がある場合
+      const prev = node.previousElementSibling
+      if (prev) {
+        const text = prev.textContent.trim()
+        // 話者名の特徴: 短い文字列（20文字以内）、改行なし
+        if (text && text.length <= 30 && !text.includes('\n')) {
+          // Google のマテリアルアイコン名は除外
+          if (!/^(arrow_|more_|close|check|search|menu|add)/.test(text)) {
+            return text
+          }
         }
       }
 
-      // テキスト部分を取得（話者名以外のテキスト）
-      let text = ''
+      // 子要素に .jxFHg クラスがある場合
+      const speakerEl = node.querySelector('.jxFHg')
       if (speakerEl) {
-        // 話者名要素以降のテキストを収集
-        const allText = child.textContent.trim()
-        const speakerText = speakerEl.textContent.trim()
-        text = allText.replace(speakerText, '').trim()
-      } else {
-        text = child.textContent.trim()
+        return speakerEl.textContent.trim()
       }
 
-      if (text) {
-        results.push({ speaker: speaker || '参加者', text })
+      node = node.parentElement
+    }
+
+    return ''
+  }
+
+  // ──────────────────────────────────────────
+  // MutationObserver: body 全体の変更を監視
+  // ──────────────────────────────────────────
+  function onMutation(mutations) {
+    for (const mutation of mutations) {
+      // characterData: テキストの変更（字幕のリアルタイム更新）
+      if (mutation.type === 'characterData') {
+        const textNode = mutation.target
+        const parentEl = textNode.parentElement
+        if (parentEl && isCaptionElement(parentEl)) {
+          handleCaptionUpdate(parentEl)
+        }
+        continue
+      }
+
+      // childList: 新しい字幕ノードの追加
+      if (mutation.type === 'childList') {
+        for (const added of mutation.addedNodes) {
+          if (added instanceof HTMLElement && isCaptionElement(added)) {
+            handleCaptionUpdate(added)
+          }
+        }
       }
     }
-    return results
   }
 
-  // ──────────────────────────────────────────
-  // MutationObserver コールバック
-  // ──────────────────────────────────────────
-  function onCaptionMutation() {
-    // 字幕はリアルタイム更新されるためデバウンス
-    if (debounceTimer) clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => {
-      const container = findCaptionContainer()
-      if (!container) return
+  /**
+   * 字幕更新を処理する
+   */
+  function handleCaptionUpdate(el) {
+    // 字幕コンテナを見つけてテキスト全体を取得
+    const container = findCaptionAncestor(el)
+    if (!container) return
 
-      const captions = extractCaptions(container)
-      if (captions.length === 0) return
+    // コンテナ内の全テキストを取得
+    const fullText = container.textContent.trim()
+    if (!fullText) return
 
-      // 最新の字幕を取得（通常は最後のエントリが最新）
-      const latest = captions[captions.length - 1]
+    // 話者名を抽出
+    const speaker = extractSpeaker(container) || '参加者'
+    const text = removeSpeakerPrefix(fullText, speaker)
 
-      // 重複排除: 同じ話者・同じテキストはスキップ
-      if (latest.speaker === lastSpeaker && latest.text === lastText) return
+    if (!text) return
 
-      // テキストが前回の延長の場合は暫定結果として扱う
-      const isExtension = latest.speaker === lastSpeaker
-        && lastText
-        && latest.text.startsWith(lastText)
+    // ノイズフィルタ: UIテキストを除外
+    if (isUIText(text)) return
 
-      if (isExtension) {
-        // 暫定結果（テキストが伸びている最中）
-        dispatchCaption(latest.speaker, latest.text, false)
-      } else {
-        // 前回の結果が確定（新しい話者 or 完全に異なるテキスト）
-        if (lastText) {
-          dispatchCaption(lastSpeaker, lastText, true)
+    // 前回と同じなら無視
+    if (speaker === currentSpeaker && text === currentText) return
+
+    const isNewSpeaker = speaker !== currentSpeaker
+    const isExtension = !isNewSpeaker && currentText && text.startsWith(currentText)
+
+    if (isNewSpeaker && currentText) {
+      // 前回の字幕を確定
+      dispatchCaption(currentSpeaker, currentText, true)
+    }
+
+    currentSpeaker = speaker
+    currentText = text
+
+    // 暫定結果を送信
+    dispatchCaption(speaker, text, false)
+
+    // 確定タイマーリセット
+    resetFinalizeTimer()
+  }
+
+  /**
+   * コンテナから話者名を抽出する
+   */
+  function extractSpeaker(container) {
+    // 方法1: .jxFHg クラス
+    const jx = container.querySelector('.jxFHg')
+    if (jx) return jx.textContent.trim()
+
+    // 方法2: コンテナ内の最初の短いテキスト要素
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT)
+    let node
+    while ((node = walker.nextNode())) {
+      if (node.children.length === 0) {
+        const text = node.textContent.trim()
+        // 話者名の特徴: 短く、直後にテキストが続く
+        if (text && text.length <= 30 && node.nextElementSibling) {
+          const style = window.getComputedStyle(node)
+          // 話者名は通常太字
+          if (style.fontWeight >= 500 || style.fontWeight === 'bold') {
+            return text
+          }
         }
-        // 新しい暫定結果
-        dispatchCaption(latest.speaker, latest.text, false)
       }
+    }
 
-      lastSpeaker = latest.speaker
-      lastText = latest.text
-    }, 200)
+    return ''
   }
 
-  // 字幕が消えた時（確定）を検出するタイマー
-  let clearTimer = null
-  function resetClearTimer() {
-    if (clearTimer) clearTimeout(clearTimer)
-    clearTimer = setTimeout(() => {
-      // 2秒間更新がなければ最後の字幕を確定
-      if (lastText) {
-        dispatchCaption(lastSpeaker, lastText, true)
-        lastSpeaker = ''
-        lastText = ''
+  /**
+   * テキストから話者名プレフィックスを除去
+   */
+  function removeSpeakerPrefix(text, speaker) {
+    if (speaker && text.startsWith(speaker)) {
+      return text.substring(speaker.length).trim()
+    }
+    return text
+  }
+
+  /**
+   * UIテキスト（ボタン、ラベル等）を除外
+   */
+  function isUIText(text) {
+    const uiPatterns = [
+      /^arrow_/,
+      /^一番下に移動/,
+      /^close$/,
+      /^more_/,
+      /^check$/,
+      /^search$/,
+      /^menu$/,
+      /^send$/,
+      /^mic/,
+      /^videocam/,
+      /^present_to_all/,
+      /^pan_tool/,
+      /^emoji/,
+    ]
+    return uiPatterns.some((p) => p.test(text.trim()))
+  }
+
+  // ──────────────────────────────────────────
+  // 確定タイマー
+  // ──────────────────────────────────────────
+  function resetFinalizeTimer() {
+    if (finalizeTimer) clearTimeout(finalizeTimer)
+    finalizeTimer = setTimeout(() => {
+      if (currentText) {
+        dispatchCaption(currentSpeaker, currentText, true)
+        currentSpeaker = ''
+        currentText = ''
       }
-    }, 2000)
+    }, 3000)
   }
 
   // ──────────────────────────────────────────
   // tool-noter.js への転送
   // ──────────────────────────────────────────
   function dispatchCaption(speaker, text, isFinal) {
-    resetClearTimer()
     document.dispatchEvent(new CustomEvent('aiba-caption', {
       detail: { speaker, text, isFinal, timestamp: Date.now() },
     }))
   }
 
   // ──────────────────────────────────────────
-  // 監視の開始
+  // 監視の開始/停止
   // ──────────────────────────────────────────
   function startObserving() {
     if (isObserving) return
 
-    const container = findCaptionContainer()
-    if (!container) return false
-
-    captionObserver = new MutationObserver(onCaptionMutation)
-    captionObserver.observe(container, {
+    bodyObserver = new MutationObserver(onMutation)
+    bodyObserver.observe(document.body, {
       childList: true,
       subtree: true,
       characterData: true,
     })
 
     isObserving = true
-    LOG('字幕 DOM 監視を開始')
+    LOG('body 全体の字幕監視を開始')
     document.dispatchEvent(new CustomEvent('aiba-captions-status', {
       detail: { status: 'active' },
     }))
-    return true
   }
 
   function stopObserving() {
-    if (captionObserver) {
-      captionObserver.disconnect()
-      captionObserver = null
+    if (bodyObserver) {
+      bodyObserver.disconnect()
+      bodyObserver = null
     }
     isObserving = false
-    lastSpeaker = ''
-    lastText = ''
-    LOG('字幕 DOM 監視を停止')
+    currentSpeaker = ''
+    currentText = ''
+    LOG('字幕監視を停止')
   }
 
   // ──────────────────────────────────────────
-  // 初期化: 字幕コンテナが出現するまでポーリング
+  // 初期化
   // ──────────────────────────────────────────
   function init() {
-    LOG('初期化開始')
+    LOG('初期化開始 (v2: body 全体監視)')
 
-    // 字幕コンテナが見つかるまで body を監視
-    const bodyObserver = new MutationObserver(() => {
-      // 字幕が OFF なら ON にする
-      if (!isCaptionsOn()) {
-        enableCaptions()
+    // 会議画面が準備できるまで待つ
+    const waitAndStart = () => {
+      if (!document.body) {
+        requestAnimationFrame(waitAndStart)
+        return
       }
 
-      // 字幕コンテナが出現したら監視開始
-      if (!isObserving && findCaptionContainer()) {
-        if (startObserving()) {
-          bodyObserver.disconnect()
+      // 字幕が OFF なら ON にする（3秒後、UI安定後に）
+      setTimeout(() => {
+        if (!isCaptionsOn()) {
+          enableCaptions()
+          // ON にした後、少し待ってから再チェック
+          setTimeout(() => {
+            if (!isCaptionsOn()) {
+              LOG('字幕を自動 ON にできませんでした。手動で ON にしてください。')
+            }
+          }, 2000)
         }
-      }
-    })
+      }, 3000)
 
-    // 会議画面が完全に読み込まれるのを待つ
-    const waitForMeeting = () => {
-      if (document.body) {
-        bodyObserver.observe(document.body, { childList: true, subtree: true })
-
-        // 既に字幕が ON で コンテナがある場合
-        if (findCaptionContainer()) {
-          startObserving()
-          bodyObserver.disconnect()
-        }
-      } else {
-        requestAnimationFrame(waitForMeeting)
-      }
+      // 字幕の有無に関わらず body 監視を開始
+      startObserving()
     }
-    waitForMeeting()
 
-    // 安全装置: 60秒後に bodyObserver を停止
-    setTimeout(() => {
-      if (!isObserving) {
-        bodyObserver.disconnect()
-        LOG('字幕コンテナが見つかりませんでした（タイムアウト）')
-        document.dispatchEvent(new CustomEvent('aiba-captions-status', {
-          detail: { status: 'unavailable' },
-        }))
-      }
-    }, 60000)
+    waitAndStart()
   }
 
   // ── 外部からの制御 ──
   document.addEventListener('aiba-captions-control', (e) => {
     if (e.detail?.action === 'start') {
       if (!isCaptionsOn()) enableCaptions()
-      // 少し待ってからコンテナを探す
-      setTimeout(() => {
-        if (!isObserving) {
-          if (!startObserving()) {
-            LOG('字幕コンテナが見つかりません。字幕を手動で ON にしてください。')
-          }
-        }
-      }, 1000)
+      if (!isObserving) startObserving()
     }
     if (e.detail?.action === 'stop') {
       stopObserving()
@@ -294,5 +412,5 @@
   })
 
   init()
-  LOG('Google Meet 字幕スクレイパー読み込み完了')
+  LOG('Google Meet 字幕スクレイパー v2 読み込み完了')
 })()
