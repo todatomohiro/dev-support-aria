@@ -447,21 +447,31 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
             </button>
           </div>
         )}
-        {messages.map((message) => (
-          <div key={message.id}>
-            {message.role === 'transcript' ? (
-              <TranscriptBlock message={message} />
-            ) : (
-              <MessageBubble message={message} developerMode={developerMode} />
-            )}
-            {message.suggestedTheme && onCreateTheme && (
-              <ThemeSuggestionCard
-                themeName={message.suggestedTheme.themeName}
-                onCreateTheme={onCreateTheme}
-              />
-            )}
-          </div>
-        ))}
+        {messages.map((message, idx) => {
+          // 最後の transcript ブロック連続の末尾にアクションボタンを表示
+          const isTranscript = message.role === 'transcript'
+          const nextMsg = messages[idx + 1]
+          const showTranscriptActions = isTranscript && (!nextMsg || nextMsg.role !== 'transcript')
+
+          return (
+            <div key={message.id}>
+              {isTranscript ? (
+                <TranscriptBlock message={message} />
+              ) : (
+                <MessageBubble message={message} developerMode={developerMode} />
+              )}
+              {showTranscriptActions && !isLoading && (
+                <TranscriptActions onSendMessage={onSendMessage} />
+              )}
+              {message.suggestedTheme && onCreateTheme && (
+                <ThemeSuggestionCard
+                  themeName={message.suggestedTheme.themeName}
+                  onCreateTheme={onCreateTheme}
+                />
+              )}
+            </div>
+          )
+        })}
 
         {/* ストリーミングテキスト（タイプライター表示） */}
         {streamingText != null && streamingText.length > 0 && (
@@ -752,6 +762,31 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 /**
  * トランスクリプトブロック（会議文字起こし表示）
  */
+/**
+ * トランスクリプト後のアクションボタン（要約・まとめ）
+ */
+function TranscriptActions({ onSendMessage }: { onSendMessage: (text: string) => void }) {
+  const actions = [
+    { label: '要約', prompt: 'ここまでの会議の文字起こしを要約してください' },
+    { label: '要点整理', prompt: '会議の要点を箇条書きにしてください' },
+    { label: '決定/TODO', prompt: '会議の決定事項とTODOをまとめてください' },
+  ]
+
+  return (
+    <div className="flex gap-2 pl-2 py-1" data-testid="transcript-actions">
+      {actions.map((action) => (
+        <button
+          key={action.label}
+          onClick={() => onSendMessage(action.prompt)}
+          className="px-3 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-full hover:bg-blue-100 dark:hover:bg-blue-800/40 transition-colors"
+        >
+          {action.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function TranscriptBlock({ message }: { message: Message }) {
   const [expanded, setExpanded] = useState(false)
   const entries = message.transcriptEntries ?? []
