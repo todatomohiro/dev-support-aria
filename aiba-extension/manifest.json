@@ -3,7 +3,7 @@
   "name": "Ai-Ba Tools",
   "version": "0.3.0",
   "description": "Ai-Ba 会議ツール — 仮想カメラ + リアルタイム文字起こし + AI要約",
-  "permissions": ["tabCapture", "offscreen", "scripting", "storage"],
+  "permissions": ["tabCapture", "desktopCapture", "offscreen", "scripting", "storage"],
   "host_permissions": [
     "https://meet.google.com/*",
     "https://*.zoom.us/*",

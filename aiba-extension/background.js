@@ -1,8 +1,12 @@
 /**
  * Ai-Ba Tools — Service Worker (Background)
  *
- * popup から受け取った streamId を offscreen document に渡して
- * Amazon Transcribe Streaming で参加者の音声を文字起こしする。
+ * タブ音声キャプチャ → offscreen document → Amazon Transcribe Streaming で
+ * 参加者の音声を文字起こしする。
+ *
+ * キャプチャ方式:
+ *   - content script から: desktopCapture（タブ共有ダイアログ表示）
+ *   - popup から: tabCapture（ダイアログなしで即開始）
  *
  * offscreen との通信は Port ベース（sendMessage は不安定なため）。
  */
@@ -106,10 +110,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true
   }
 
-  // content script から: popup 経由でないと失敗する旨を通知
+  // content script から: desktopCapture でタブ音声キャプチャ開始
   if (message.type === 'start-tab-capture') {
-    sendResponse({
-      error: '拡張機能アイコンをクリックして「タブ音声キャプチャを開始」ボタンを押してください',
+    const tab = _sender.tab
+    if (!tab?.id) {
+      sendResponse({ error: '対象タブが見つかりません' })
+      return true
+    }
+    // 既にキャプチャ中なら成功を返す
+    if (captureActive) {
+      sendResponse({ ok: true, alreadyCapturing: true })
+      return true
+    }
+    LOG('desktopCapture ダイアログ表示: tab=', tab.id)
+    chrome.desktopCapture.chooseDesktopMedia(['tab', 'audio'], tab, (streamId) => {
+      if (!streamId) {
+        // ユーザーがキャンセル
+        sendResponse({ cancelled: true })
+        return
+      }
+      handleStartWithStream(streamId, tab.id)
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ error: err.message }))
     })
     return true
   }

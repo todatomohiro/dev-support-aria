@@ -187,15 +187,16 @@
       </div>
       <div class="an-transcript" id="anTranscript">
         <div class="an-empty" id="anEmpty">
-          <div class="an-empty-icon">&#x1F399;</div>
+          <div class="an-empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div>
           <p>録音ボタンを押すと<br>文字起こしが始まります</p>
         </div>
       </div>
       <div class="an-toolbar" id="anToolbar">
         <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
-          <div style="display:flex;gap:6px;align-items:center;">
-            <button class="an-rec-btn" id="anMicBtn" style="flex:1;">&#x1F3A4; マイク開始</button>
-            <button class="an-rec-btn" id="anTabBtn" style="flex:1;background:#4f46e5;">&#x1F50A; タブ音声</button>
+          <button class="an-rec-btn" id="anRecBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>録音開始</button>
+          <div class="an-source-toggles" id="anSourceToggles" style="display:none;">
+            <label class="an-toggle-label"><input type="checkbox" id="anMicToggle" checked> マイク（自分）</label>
+            <label class="an-toggle-label"><input type="checkbox" id="anTabToggle" checked> タブ音声（参加者）</label>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <span class="an-count" id="anCount">0 件</span>
@@ -260,8 +261,19 @@
       })
     })
 
-    panel.querySelector('#anMicBtn').addEventListener('click', toggleMicRecording)
-    panel.querySelector('#anTabBtn').addEventListener('click', toggleTabCapture)
+    panel.querySelector('#anRecBtn').addEventListener('click', toggleRecording)
+    panel.querySelector('#anMicToggle').addEventListener('change', (e) => {
+      if (isRecording()) {
+        if (e.target.checked) startMicRecording()
+        else stopMicRecording()
+      }
+    })
+    panel.querySelector('#anTabToggle').addEventListener('change', (e) => {
+      if (isRecording()) {
+        if (e.target.checked) startTabCapture()
+        else stopTabCapture()
+      }
+    })
 
     // 認証済みなら「トピック保存」ボタンを表示
     updateSaveTopicBtn()
@@ -291,7 +303,7 @@
       if (!confirm('文字起こしをクリアしますか？')) return
       transcripts.length = 0
       const tp = panel.querySelector('#anTranscript')
-      tp.innerHTML = '<div class="an-empty" id="anEmpty"><div class="an-empty-icon">&#x1F399;</div><p>録音ボタンを押すと<br>文字起こしが始まります</p></div>'
+      tp.innerHTML = '<div class="an-empty" id="anEmpty"><div class="an-empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div><p>録音ボタンを押すと<br>文字起こしが始まります</p></div>'
       panel.querySelector('#anCount').textContent = '0 件'
       updateNoterBadge()
     })
@@ -318,15 +330,31 @@
   }
 
   // ──────────────────────────────────────────
-  // マイク音声認識 (Web Speech API — 自分の声)
+  // 統合録音制御
   // ──────────────────────────────────────────
-  function toggleMicRecording() {
-    if (isMicListening) {
-      stopMicRecording()
+  function isRecording() {
+    return isMicListening || isTabCapturing
+  }
+
+  async function toggleRecording() {
+    if (isRecording()) {
+      // 両方停止
+      if (isMicListening) stopMicRecording()
+      if (isTabCapturing) stopTabCapture()
     } else {
-      startMicRecording()
+      // セッション作成（1回だけ）
+      await ensureSession()
+      // チェックボックスの状態に従って開始
+      const micToggle = document.querySelector('#anMicToggle')
+      const tabToggle = document.querySelector('#anTabToggle')
+      if (micToggle?.checked) startMicRecording()
+      if (tabToggle?.checked) startTabCapture()
     }
   }
+
+  // ──────────────────────────────────────────
+  // マイク音声認識 (Web Speech API — 自分の声)
+  // ──────────────────────────────────────────
 
   async function startMicRecording() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -334,9 +362,6 @@
       tools.toast('このブラウザは音声認識に対応していません')
       return
     }
-
-    // セッション作成
-    await ensureSession()
 
     micRecognition = new SpeechRecognition()
     micRecognition.lang = 'ja-JP'
@@ -396,6 +421,8 @@
   function stopMicRecording() {
     isMicListening = false
     if (micRecognition) {
+      // onend を除去してから stop — 古いインスタンスの onend が新セッションを妨害するのを防止
+      micRecognition.onend = null
       micRecognition.stop()
       micRecognition = null
     }
@@ -409,23 +436,28 @@
   // ──────────────────────────────────────────
   // タブ音声キャプチャ（参加者の声）
   // ──────────────────────────────────────────
-  function toggleTabCapture() {
-    if (isTabCapturing) {
-      stopTabCapture()
-    } else {
-      startTabCapture()
-    }
-  }
-
   async function startTabCapture() {
     LOG('タブ音声キャプチャを要求')
 
-    // セッション作成
-    await ensureSession()
-
-    // タブキャプチャは popup コンテキストが必要
-    // → 拡張アイコンクリックを案内
-    tools.toast('拡張アイコン（Ai-Ba Tools）をクリックしてください — 自動でキャプチャが開始されます')
+    chrome.runtime.sendMessage({ type: 'start-tab-capture' }, (response) => {
+      void chrome.runtime.lastError
+      if (response?.cancelled) {
+        // ユーザーがダイアログでキャンセル
+        LOG('タブ音声キャプチャ: ユーザーキャンセル')
+        const tabToggle = document.querySelector('#anTabToggle')
+        if (tabToggle) tabToggle.checked = false
+        updateRecUI()
+        return
+      }
+      if (response?.error) {
+        LOG('タブキャプチャエラー:', response.error)
+        tools.toast(`タブ音声エラー: ${response.error}`)
+        return
+      }
+      isTabCapturing = true
+      updateRecUI()
+      LOG('タブ音声キャプチャ開始')
+    })
   }
 
   function stopTabCapture() {
@@ -469,34 +501,38 @@
   // UI 更新
   // ──────────────────────────────────────────
   function updateRecUI() {
-    const micBtn = document.querySelector('#anMicBtn')
-    const tabBtn = document.querySelector('#anTabBtn')
+    const recBtn = document.querySelector('#anRecBtn')
     const dot = document.querySelector('#anStatusDot')
+    const toggles = document.querySelector('#anSourceToggles')
+    const micToggle = document.querySelector('#anMicToggle')
+    const tabToggle = document.querySelector('#anTabToggle')
+    const recording = isRecording()
 
-    if (micBtn) {
-      if (isMicListening) {
-        micBtn.innerHTML = '&#x1F3A4; マイク停止'
-        micBtn.classList.add('recording')
+    if (recBtn) {
+      const micSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
+      const stopSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:4px;"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>'
+      if (recording) {
+        recBtn.innerHTML = stopSvg + '録音停止'
+        recBtn.classList.add('recording')
       } else {
-        micBtn.innerHTML = '&#x1F3A4; マイク開始'
-        micBtn.classList.remove('recording')
+        recBtn.innerHTML = micSvg + '録音開始'
+        recBtn.classList.remove('recording')
       }
     }
 
-    if (tabBtn) {
-      if (isTabCapturing) {
-        tabBtn.innerHTML = '&#x1F50A; タブ停止'
-        tabBtn.classList.add('recording')
-        tabBtn.style.background = ''
-      } else {
-        tabBtn.innerHTML = '&#x1F50A; タブ音声'
-        tabBtn.classList.remove('recording')
-        tabBtn.style.background = '#4f46e5'
-      }
+    // 録音中のみ個別トグルを表示
+    if (toggles) {
+      toggles.style.display = recording ? '' : 'none'
+    }
+
+    // 録音中のみチェックボックスを実際の状態と同期（停止時はユーザー設定を維持）
+    if (recording) {
+      if (micToggle) micToggle.checked = isMicListening
+      if (tabToggle) tabToggle.checked = isTabCapturing
     }
 
     if (dot) {
-      if (isMicListening || isTabCapturing) {
+      if (recording) {
         dot.classList.add('connected')
       } else {
         dot.classList.remove('connected')

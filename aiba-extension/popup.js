@@ -1,9 +1,12 @@
 /**
- * Ai-Ba Tools — Popup Script (v2: 自動セットアップ)
+ * Ai-Ba Tools — Popup Script (v3: 自動セットアップ)
  *
  * ポップアップを開いた瞬間に以下を自動実行:
  * 1. タブ音声キャプチャ開始（会議ページの場合）
  * 2. Ai-Ba 認証トークン取得
+ *
+ * Chrome 仕様上 tabCapture.getMediaStreamId() は popup コンテキストが必須。
+ * 初回は拡張アイコンクリックが必要だが、開始後は content script から制御可能。
  */
 'use strict'
 
@@ -52,7 +55,7 @@ async function autoSetup() {
 
   const isMeetingPage = MEETING_PATTERNS.some((p) => p.test(tab.url || ''))
 
-  // 並列実行: タブキャプチャ + 認証トークン取得
+  // タブキャプチャ + 認証トークン取得を並列実行
   await Promise.all([
     isMeetingPage ? setupCapture(tab) : skipCapture(),
     setupAuth(tab),
@@ -83,13 +86,12 @@ async function setupCapture(tab) {
   setStatus(dotCapture, textCapture, 'loading', '開始中...')
 
   try {
-    // popup コンテキストから tabCapture
+    // popup コンテキストから tabCapture（Chrome 仕様上ここでのみ取得可能）
     let streamId
     try {
       streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id })
     } catch (e) {
       if (e.message?.includes('active stream')) {
-        // 既にキャプチャ中
         isCapturing = true
         setStatus(dotCapture, textCapture, 'ok', 'キャプチャ中')
         btnStop.disabled = false

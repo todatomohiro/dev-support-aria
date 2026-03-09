@@ -23,14 +23,13 @@
 /* ドラッグハンドル */
 #aiba-toolbar .aiba-drag-handle {
   width: 40px;
-  height: 20px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: grab;
-  color: rgba(255, 255, 255, 0.35);
-  font-size: 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding-bottom: 4px;
   margin-bottom: 2px;
   user-select: none;
@@ -59,6 +58,10 @@
   justify-content: center;
   transition: all 0.15s ease;
   position: relative;
+}
+
+#aiba-toolbar .aiba-tool-btn svg {
+  flex-shrink: 0;
 }
 
 #aiba-toolbar .aiba-tool-btn:hover {
@@ -114,14 +117,15 @@
   width: 360px;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   display: none;
   flex-direction: column;
-  background: #f9fafb;
-  color: #1f2937;
+  background: #1a1a2e;
+  color: #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
   line-height: 1.5;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .aiba-panel.visible {
@@ -137,13 +141,14 @@
 /* パネルヘッダー */
 .aiba-panel .ap-header {
   padding: 10px 14px;
-  color: #fff;
+  color: #e2e8f0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
   user-select: none;
   cursor: grab;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .aiba-panel .ap-header:active {
@@ -162,9 +167,9 @@
 }
 
 .aiba-panel .ap-close {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
   border: none;
-  color: #fff;
+  color: #94a3b8;
   width: 24px;
   height: 24px;
   border-radius: 6px;
@@ -173,30 +178,28 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.15s;
 }
 
 .aiba-panel .ap-close:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
 }
 
 /* ── カメラパネル ── */
-#aiba-camera-panel .ap-header {
-  background: linear-gradient(135deg, #4f46e5, #6366f1);
-}
-
 #aiba-camera-panel .ap-body {
   padding: 16px;
 }
 
 #aiba-camera-panel .ap-status {
   font-size: 12px;
-  color: #6b7280;
+  color: #64748b;
   margin-bottom: 12px;
   text-align: center;
 }
 
 #aiba-camera-panel .ap-status.active {
-  color: #16a34a;
+  color: #4ade80;
   font-weight: 600;
 }
 
@@ -211,15 +214,15 @@
   cursor: pointer;
   transition: all 0.2s;
   color: #fff;
-  background: #4f46e5;
+  background: #6366f1;
 }
 
 #aiba-camera-panel .ap-action-btn:hover {
-  background: #4338ca;
+  background: #4f46e5;
 }
 
 #aiba-camera-panel .ap-action-btn.active {
-  background: #16a34a;
+  background: #22c55e;
 }
 
 #aiba-camera-panel .ap-action-btn.active:hover {
@@ -229,26 +232,23 @@
 #aiba-camera-panel .ap-hint {
   margin-top: 10px;
   font-size: 11px;
-  color: #9ca3af;
+  color: #475569;
   text-align: center;
   line-height: 1.6;
 }
 
 /* ── ノーターパネル ── */
-#aiba-noter-panel .ap-header {
-  background: linear-gradient(135deg, #7c3aed, #a855f7);
-}
-
 #aiba-noter-panel .an-status-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #fbbf24;
+  background: #475569;
   flex-shrink: 0;
 }
 
 #aiba-noter-panel .an-status-dot.connected {
-  background: #34d399;
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
   animation: aiba-pulse 2s infinite;
 }
 
@@ -260,8 +260,8 @@
 /* タブ */
 #aiba-noter-panel .an-tabs {
   display: flex;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -275,13 +275,17 @@
   border: none;
   background: none;
   border-bottom: 2px solid transparent;
-  color: #6b7280;
+  color: #64748b;
   transition: all 0.2s;
 }
 
+#aiba-noter-panel .an-tab:hover {
+  color: #94a3b8;
+}
+
 #aiba-noter-panel .an-tab.active {
-  color: #7c3aed;
-  border-bottom-color: #7c3aed;
+  color: #a78bfa;
+  border-bottom-color: #a78bfa;
 }
 
 /* 文字起こしエリア */
@@ -295,26 +299,26 @@
 #aiba-noter-panel .an-entry {
   margin-bottom: 6px;
   padding: 6px 8px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.04);
   border-radius: 6px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 12px;
 }
 
 #aiba-noter-panel .an-entry-speaker {
   font-weight: 600;
-  color: #7c3aed;
+  color: #a78bfa;
   font-size: 10px;
 }
 
 #aiba-noter-panel .an-entry-time {
   font-size: 9px;
-  color: #9ca3af;
+  color: #475569;
   float: right;
 }
 
 #aiba-noter-panel .an-entry-text {
-  color: #374151;
+  color: #cbd5e1;
 }
 
 #aiba-noter-panel .an-empty {
@@ -323,47 +327,48 @@
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #9ca3af;
+  color: #475569;
   text-align: center;
   font-size: 12px;
 }
 
 #aiba-noter-panel .an-empty-icon {
-  font-size: 32px;
+  font-size: 28px;
   margin-bottom: 8px;
+  color: #64748b;
 }
 
 /* ツールバー */
 #aiba-noter-panel .an-toolbar {
-  padding: 6px 10px;
+  padding: 8px 10px;
   display: flex;
   gap: 6px;
   justify-content: space-between;
   align-items: center;
-  border-top: 1px solid #e5e7eb;
-  background: #fff;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
   flex-shrink: 0;
 }
 
 /* 録音ボタン */
 #aiba-noter-panel .an-rec-btn {
-  padding: 5px 12px;
-  font-size: 11px;
+  padding: 8px 12px;
+  font-size: 12px;
   font-weight: 600;
   border: none;
-  border-radius: 6px;
-  background: #7c3aed;
+  border-radius: 8px;
+  background: #6366f1;
   color: #fff;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 #aiba-noter-panel .an-rec-btn:hover {
-  background: #6d28d9;
+  background: #4f46e5;
 }
 
 #aiba-noter-panel .an-rec-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -380,20 +385,47 @@
 #aiba-noter-panel .an-small-btn {
   padding: 4px 8px;
   font-size: 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background: #fff;
-  color: #374151;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
   cursor: pointer;
+  transition: all 0.15s;
 }
 
 #aiba-noter-panel .an-small-btn:hover {
-  background: #f3f4f6;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+#aiba-noter-panel .an-source-toggles {
+  display: flex;
+  gap: 12px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+}
+
+#aiba-noter-panel .an-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+  cursor: pointer;
+  user-select: none;
+}
+
+#aiba-noter-panel .an-toggle-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: #6366f1;
 }
 
 #aiba-noter-panel .an-count {
   font-size: 10px;
-  color: #9ca3af;
+  color: #475569;
 }
 
 /* AI チャット */
@@ -425,23 +457,24 @@
 }
 
 #aiba-noter-panel .an-chat-msg.user {
-  background: #7c3aed;
+  background: #6366f1;
   color: #fff;
   margin-left: auto;
   border-bottom-right-radius: 4px;
 }
 
 #aiba-noter-panel .an-chat-msg.assistant {
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
   border-bottom-left-radius: 4px;
 }
 
 #aiba-noter-panel .an-chat-msg.system {
-  background: #fef3c7;
-  border: 1px solid #fde68a;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.15);
   font-size: 10px;
-  color: #92400e;
+  color: #a5b4fc;
   max-width: 100%;
   text-align: center;
 }
@@ -452,34 +485,34 @@
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
-  border-top: 1px solid #e5e7eb;
-  background: #fff;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
   flex-shrink: 0;
 }
 
 #aiba-noter-panel .an-quick-btn {
   padding: 4px 8px;
   font-size: 10px;
-  border: 1px solid #d1d5db;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  background: #fff;
-  color: #374151;
+  background: transparent;
+  color: #94a3b8;
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
 }
 
 #aiba-noter-panel .an-quick-btn:hover {
-  background: #7c3aed;
+  background: #6366f1;
   color: #fff;
-  border-color: #7c3aed;
+  border-color: #6366f1;
 }
 
 /* 入力エリア */
 #aiba-noter-panel .an-input-area {
   padding: 8px 10px;
-  border-top: 1px solid #e5e7eb;
-  background: #fff;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
   display: flex;
   gap: 6px;
   flex-shrink: 0;
@@ -487,36 +520,44 @@
 
 #aiba-noter-panel .an-input {
   flex: 1;
-  padding: 6px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 16px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
   font-size: 12px;
   outline: none;
   font-family: inherit;
+  background: rgba(255, 255, 255, 0.04);
+  color: #e2e8f0;
+}
+
+#aiba-noter-panel .an-input::placeholder {
+  color: #475569;
 }
 
 #aiba-noter-panel .an-input:focus {
-  border-color: #7c3aed;
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
 }
 
 #aiba-noter-panel .an-send-btn {
-  padding: 6px 12px;
-  background: #7c3aed;
+  padding: 8px 14px;
+  background: #6366f1;
   color: #fff;
   border: none;
-  border-radius: 16px;
+  border-radius: 10px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s;
 }
 
 #aiba-noter-panel .an-send-btn:hover {
-  background: #6d28d9;
+  background: #4f46e5;
 }
 
 #aiba-noter-panel .an-send-btn:disabled {
-  background: #9ca3af;
+  background: #334155;
+  color: #475569;
   cursor: not-allowed;
 }
 
