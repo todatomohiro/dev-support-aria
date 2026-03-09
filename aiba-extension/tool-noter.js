@@ -422,8 +422,32 @@
       linkedThemeId = data.themeId
       LOG('トピック自動作成完了:', themeName, linkedThemeId)
       updateSaveTopicBtn()
+
+      // アプリに会議開始通知を送信（WebSocket 経由でトピック自動オープン）
+      notifyMeetingStarted(linkedThemeId, themeName)
     } catch (err) {
       LOG('トピック自動作成エラー:', err.message)
+    }
+  }
+
+  /**
+   * アプリに会議開始を通知する（POST /meeting/transcript に action='meeting_started'）。
+   * アプリ側で WebSocket 経由でトピックが自動オープンされる。
+   */
+  async function notifyMeetingStarted(themeId, themeName) {
+    if (!aibaToken || !aibaApiUrl) return
+    try {
+      await fetch(`${aibaApiUrl}/meeting/transcript`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${aibaToken}`,
+        },
+        body: JSON.stringify({ action: 'meeting_started', themeId, themeName }),
+      })
+      LOG('会議開始通知送信完了')
+    } catch (err) {
+      LOG('会議開始通知エラー:', err.message)
     }
   }
 

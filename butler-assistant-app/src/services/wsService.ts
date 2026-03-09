@@ -208,6 +208,14 @@ export class WsServiceImpl implements WsServiceType {
       return
     }
 
+    // 会議開始通知（拡張機能でトピック作成時 → アプリでトピック自動オープン）
+    if (data.type === 'meeting_started' && data.themeId) {
+      window.dispatchEvent(new CustomEvent('aiba-meeting-started', {
+        detail: { themeId: data.themeId, themeName: (data as { themeName?: string }).themeName },
+      }))
+      return
+    }
+
     // 会議トランスクリプトチャンク（拡張機能からのリアルタイム字幕）
     if (data.type === 'transcript_chunk' && data.themeId && Array.isArray(data.entries)) {
       const store = useThemeStore.getState()

@@ -96,6 +96,23 @@ function App() {
     ? themeThemes.find(t => t.themeId === activeThemeId)?.isPrivate === true
     : false
 
+  // 会議開始通知でトピックを自動オープン
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const { themeId, themeName } = (e as CustomEvent).detail as { themeId: string; themeName: string }
+      console.log(`[App] 会議開始通知: ${themeName} (${themeId})`)
+      // テーマ一覧を再取得してから遷移
+      try {
+        const themes = await themeService.listThemes()
+        useThemeStore.getState().setThemes(themes)
+      } catch { /* リスト取得失敗でも遷移は試みる */ }
+      useThemeStore.getState().setActiveTheme(themeId)
+      navigate(`/themes/${themeId}`)
+    }
+    window.addEventListener('aiba-meeting-started', handler)
+    return () => window.removeEventListener('aiba-meeting-started', handler)
+  }, [navigate])
+
   // 現在のセッション名を判定（設計書: ヘッダーにはセッション名のみ表示）
   const currentSessionName = location.pathname.startsWith('/aiba')
     ? 'Ai-Ba'

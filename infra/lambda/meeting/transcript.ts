@@ -16,10 +16,9 @@ interface TranscriptEntry {
 /**
  * POST /meeting/transcript
  *
- * 拡張機能から字幕バッチを受信し、テーマのメッセージとして保存。
- * WebSocket で Ai-Ba アプリにリアルタイム配信する。
- *
- * Body: { themeId: string, entries: TranscriptEntry[] }
+ * 拡張機能からの会議イベントを処理:
+ * 1. 字幕バッチ: { themeId, entries } → DynamoDB 保存 + WebSocket 配信
+ * 2. 会議開始通知: { action: 'meeting_started', themeId, themeName } → WebSocket のみ
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const headers = {
@@ -38,6 +37,27 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     const body = JSON.parse(event.body)
+
+    // 会議開始通知（WebSocket push のみ、DynamoDB 保存なし）
+    if (body.action === 'meeting_started') {
+      const { themeId, themeName } = body as { themeId: string; themeName: string }
+      if (!themeId) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'themeId is required' }) }
+      }
+
+      if (WS_ENDPOINT) {
+        await pushToUser(userId, JSON.stringify({
+          type: 'meeting_started',
+          themeId,
+          themeName: themeName || 'Meeting',
+        }))
+      }
+
+      console.log(`[Meeting] meeting_started notification sent for theme ${themeId}`)
+      return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) }
+    }
+
+    // 字幕バッチ処理
     const { themeId, entries } = body as { themeId: string; entries: TranscriptEntry[] }
 
     if (!themeId || !entries?.length) {
@@ -86,47 +106,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     // WebSocket でリアルタイム配信
     if (WS_ENDPOINT) {
-      try {
-        const connectionIds = await getUserConnectionIds(userId)
-        if (connectionIds.length > 0) {
-          const wsClient = new ApiGatewayManagementApiClient({ endpoint: WS_ENDPOINT })
-          const payload = JSON.stringify({
-            type: 'transcript_chunk',
-            themeId,
-            startTime,
-            endTime,
-            entries: validEntries,
-          })
-
-          await Promise.allSettled(
-            connectionIds.map(async (connId) => {
-              try {
-                await wsClient.send(new PostToConnectionCommand({
-                  ConnectionId: connId,
-                  Data: new TextEncoder().encode(payload),
-                }))
-              } catch (err: unknown) {
-                const error = err as { statusCode?: number; name?: string }
-                if (error.statusCode === 410 || error.name === 'GoneException') {
-                  // 切断済み接続を削除
-                  await db.send(new PutItemCommand({
-                    TableName: TABLE,
-                    Item: {
-                      PK: { S: `WS_CONN#${connId}` },
-                      SK: { S: 'META' },
-                      ttlExpiry: { N: '0' },
-                    },
-                  })).catch(() => {})
-                }
-              }
-            })
-          )
-          console.log(`[Meeting] Pushed transcript to ${connectionIds.length} connections`)
-        }
-      } catch (wsErr) {
-        console.error('[Meeting] WebSocket push error:', wsErr)
-        // WS エラーでもメイン処理は成功として返す
-      }
+      await pushToUser(userId, JSON.stringify({
+        type: 'transcript_chunk',
+        themeId,
+        startTime,
+        endTime,
+        entries: validEntries,
+      }))
     }
 
     return {
@@ -141,6 +127,41 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       headers,
       body: JSON.stringify({ error: (err as Error).message }),
     }
+  }
+}
+
+/** WebSocket でユーザーの全接続にメッセージを送信 */
+async function pushToUser(userId: string, payload: string): Promise<void> {
+  try {
+    const connectionIds = await getUserConnectionIds(userId)
+    if (connectionIds.length === 0) return
+
+    const wsClient = new ApiGatewayManagementApiClient({ endpoint: WS_ENDPOINT })
+    await Promise.allSettled(
+      connectionIds.map(async (connId) => {
+        try {
+          await wsClient.send(new PostToConnectionCommand({
+            ConnectionId: connId,
+            Data: new TextEncoder().encode(payload),
+          }))
+        } catch (err: unknown) {
+          const error = err as { statusCode?: number; name?: string }
+          if (error.statusCode === 410 || error.name === 'GoneException') {
+            await db.send(new PutItemCommand({
+              TableName: TABLE,
+              Item: {
+                PK: { S: `WS_CONN#${connId}` },
+                SK: { S: 'META' },
+                ttlExpiry: { N: '0' },
+              },
+            })).catch(() => {})
+          }
+        }
+      })
+    )
+    console.log(`[Meeting] Pushed to ${connectionIds.length} connections`)
+  } catch (wsErr) {
+    console.error('[Meeting] WebSocket push error:', wsErr)
   }
 }
 
