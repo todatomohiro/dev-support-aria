@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ai-Ba Tools",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Ai-Ba 会議ツール — 仮想カメラ + リアルタイム文字起こし + AI要約",
   "permissions": ["tabCapture", "offscreen", "scripting", "storage"],
   "host_permissions": [
@@ -30,6 +30,16 @@
       "matches": ["https://meet.google.com/*"],
       "js": ["meet-captions.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["https://teams.microsoft.com/*", "https://*.teams.microsoft.com/*", "https://teams.live.com/*"],
+      "js": ["teams-captions.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*.zoom.us/*"],
+      "js": ["zoom-captions.js"],
+      "run_at": "document_start"
     }
   ],
   "action": {
@@ -40,6 +50,14 @@
     {
       "matches": ["https://meet.google.com/*"],
       "resources": ["meet-rtc-hook.js"]
+    },
+    {
+      "matches": ["https://teams.microsoft.com/*", "https://*.teams.microsoft.com/*", "https://teams.live.com/*"],
+      "resources": ["teams-rtc-hook.js"]
+    },
+    {
+      "matches": ["https://*.zoom.us/*"],
+      "resources": ["zoom-hook.js"]
     }
   ],
   "icons": {}
