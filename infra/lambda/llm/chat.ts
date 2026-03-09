@@ -646,6 +646,11 @@ async function getSessionContext(userId: string, sessionId: string, overrides?: 
 
   const recentMessages = (messagesResult.Items ?? [])
     .reverse()
+    .filter((item) => {
+      // transcript ロールは LLM 会話履歴から除外（Bedrock は user/assistant のみ対応）
+      const role = item.role?.S
+      return role === 'user' || role === 'assistant'
+    })
     .map((item) => ({
       role: item.role?.S ?? 'user',
       content: item.content?.S ?? '',
