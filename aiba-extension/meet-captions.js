@@ -152,39 +152,6 @@
   // ──────────────────────────────────────────
   // 話者名の抽出
   // ──────────────────────────────────────────
-  function extractSpeakerFromCaption(el) {
-    if (!el) return ''
-
-    // 字幕エントリを遡って話者名を探す
-    let node = el
-    for (let i = 0; i < 6; i++) {
-      if (!node || node === document.body) break
-
-      // 兄弟要素として話者名がある場合
-      const prev = node.previousElementSibling
-      if (prev) {
-        const text = prev.textContent.trim()
-        // 話者名の特徴: 短い文字列（20文字以内）、改行なし
-        if (text && text.length <= 30 && !text.includes('\n')) {
-          // Google のマテリアルアイコン名は除外
-          if (!/^(arrow_|more_|close|check|search|menu|add)/.test(text)) {
-            return text
-          }
-        }
-      }
-
-      // 子要素に .jxFHg クラスがある場合
-      const speakerEl = node.querySelector('.jxFHg')
-      if (speakerEl) {
-        return speakerEl.textContent.trim()
-      }
-
-      node = node.parentElement
-    }
-
-    return ''
-  }
-
   // ──────────────────────────────────────────
   // MutationObserver: body 全体の変更を監視
   // ──────────────────────────────────────────
@@ -236,7 +203,6 @@
     if (speaker === currentSpeaker && text === currentText) return
 
     const isNewSpeaker = speaker !== currentSpeaker
-    const isExtension = !isNewSpeaker && currentText && text.startsWith(currentText)
 
     if (isNewSpeaker && currentText) {
       // 前回の字幕を確定
