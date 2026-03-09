@@ -646,16 +646,31 @@ async function getSessionContext(userId: string, sessionId: string, overrides?: 
 
   const recentMessages = (messagesResult.Items ?? [])
     .reverse()
-    .filter((item) => {
-      // transcript ロールは LLM 会話履歴から除外（Bedrock は user/assistant のみ対応）
-      const role = item.role?.S
-      return role === 'user' || role === 'assistant'
+    .map((item) => {
+      const role = item.role?.S ?? 'user'
+      const rawContent = item.content?.S ?? ''
+
+      // transcript ロールは user ロールに変換（Bedrock は user/assistant のみ対応）
+      if (role === 'transcript') {
+        try {
+          const parsed = JSON.parse(rawContent)
+          if (parsed.__type === 'transcript' && Array.isArray(parsed.entries)) {
+            const lines = parsed.entries.map((e: { speaker: string; text: string }) =>
+              `[${e.speaker}] ${e.text}`
+            ).join('\n')
+            return {
+              role: 'user',
+              content: `[会議の文字起こし]\n${lines}`,
+              createdAt: item.createdAt?.S,
+            }
+          }
+        } catch { /* JSON パース失敗 → スキップ */ }
+        return null
+      }
+
+      return { role, content: rawContent, createdAt: item.createdAt?.S }
     })
-    .map((item) => ({
-      role: item.role?.S ?? 'user',
-      content: item.content?.S ?? '',
-      createdAt: item.createdAt?.S,
-    }))
+    .filter((m): m is NonNullable<typeof m> => m !== null)
     // 同一タイムスタンプで保存された user/assistant の会話順を修正
     // DynamoDB SK 辞書順では #assistant < #user だが、会話順は user → assistant
     .sort((a, b) => {
