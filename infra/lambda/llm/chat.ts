@@ -34,6 +34,8 @@ const MEMORY_ID = process.env.MEMORY_ID ?? ''
 const TABLE_NAME = process.env.TABLE_NAME ?? ''
 const SUMMARIZE_FUNCTION_NAME = process.env.SUMMARIZE_FUNCTION_NAME ?? ''
 const WEBSOCKET_ENDPOINT = process.env.WEBSOCKET_ENDPOINT ?? ''
+const GUARDRAIL_ID = process.env.GUARDRAIL_ID ?? ''
+const GUARDRAIL_VERSION = process.env.GUARDRAIL_VERSION ?? ''
 const MAX_TOOL_USE_ITERATIONS = 5
 
 import { CHAT_MODEL_ID_MAP } from './models'
@@ -969,6 +971,14 @@ async function streamConverseIteration(
     system,
     inferenceConfig,
     toolConfig,
+    ...(GUARDRAIL_ID ? {
+      guardrailConfig: {
+        guardrailIdentifier: GUARDRAIL_ID,
+        guardrailVersion: GUARDRAIL_VERSION || 'DRAFT',
+        trace: 'enabled' as const,
+        streamProcessingMode: 'sync' as const,
+      },
+    } : {}),
   }))
 
   let fullText = ''
@@ -1895,6 +1905,19 @@ ${briefingParts.join('\n\n')}
 
           console.log(`[Stream] Iteration ${iteration}, stopReason: ${streamResult.stopReason}, text: ${streamResult.fullText.length} chars, tools: ${streamResult.toolUseBlocks.length}`)
 
+          // Guardrails によるブロック検出
+          if (streamResult.stopReason === 'guardrail_intervened') {
+            console.warn('[Guardrail] ストリーミング: コンテンツがブロックされました')
+            const blockedMessage = streamResult.fullText || 'この内容にはお答えできません。別の話題でお話ししましょう。'
+            await wsPushAll(wsClient, connectionIds, {
+              type: 'chat_complete',
+              requestId,
+              content: JSON.stringify({ text: blockedMessage, emotion: 'troubled' }),
+            })
+            // メッセージ保存・記憶なしで即座に返却
+            return response(200, { streamed: true, requestId })
+          }
+
           if (streamResult.stopReason === 'tool_use' && streamResult.toolUseBlocks.length > 0) {
             // アシスタントメッセージを会話に追加
             currentMessages.push({
@@ -2018,10 +2041,27 @@ ${briefingParts.join('\n\n')}
           temperature: 0.7,
         },
         toolConfig,
+        ...(GUARDRAIL_ID ? {
+          guardrailConfig: {
+            guardrailIdentifier: GUARDRAIL_ID,
+            guardrailVersion: GUARDRAIL_VERSION || 'DRAFT',
+            trace: 'enabled' as const,
+          },
+        } : {}),
       }))
 
       const stopReason = result.stopReason
       console.log(`[LLM] Iteration ${iteration}, stopReason: ${stopReason}`)
+
+      // Guardrails によるブロック検出
+      if (stopReason === 'guardrail_intervened') {
+        console.warn('[Guardrail] 非ストリーミング: コンテンツがブロックされました')
+        const blockedText = extractTextFromOutput(result.output ?? {}) || 'この内容にはお答えできません。別の話題でお話ししましょう。'
+        // メッセージ保存・記憶なしで返却
+        return response(200, {
+          content: JSON.stringify({ text: blockedText, emotion: 'troubled' }),
+        })
+      }
 
       if (stopReason === 'tool_use') {
         // ツール使用リクエストを処理

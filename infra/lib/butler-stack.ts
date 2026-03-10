@@ -509,6 +509,27 @@ export class ButlerStack extends cdk.Stack {
       targets: [new eventsTargets.LambdaFunction(sessionFinalizerFn)],
     })
 
+    // ── Bedrock Guardrails（コンテンツモデレーション）──
+    const guardrail = new cdk.aws_bedrock.CfnGuardrail(this, 'ContentGuardrail', {
+      name: 'butler-content-guardrail',
+      description: 'ユーザー入力・LLM出力の有害コンテンツフィルタ',
+      blockedInputMessaging: 'この内容にはお答えできません。別の話題でお話ししましょう。',
+      blockedOutputsMessaging: 'この内容は表示できません。別の話題でお話ししましょう。',
+      contentPolicyConfig: {
+        filtersConfig: [
+          { type: 'VIOLENCE', inputStrength: 'HIGH', outputStrength: 'HIGH' },
+          { type: 'HATE', inputStrength: 'HIGH', outputStrength: 'HIGH' },
+          { type: 'INSULTS', inputStrength: 'MEDIUM', outputStrength: 'MEDIUM' },
+          { type: 'SEXUAL', inputStrength: 'HIGH', outputStrength: 'HIGH' },
+          { type: 'MISCONDUCT', inputStrength: 'HIGH', outputStrength: 'HIGH' },
+          { type: 'PROMPT_ATTACK', inputStrength: 'HIGH', outputStrength: 'NONE' },
+        ],
+      },
+    })
+    const guardrailVersion = new cdk.aws_bedrock.CfnGuardrailVersion(this, 'ContentGuardrailVersion', {
+      guardrailIdentifier: guardrail.attrGuardrailId,
+    })
+
     // LLM Lambda（Bedrock Converse API + Tool Use + AgentCore Memory 検索）
     const llmChatFn = new lambdaNode.NodejsFunction(this, 'LlmChatFn', {
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -526,6 +547,8 @@ export class ButlerStack extends cdk.Stack {
         GOOGLE_PLACES_API_KEY: googlePlacesApiKey,
         BRAVE_SEARCH_API_KEY: braveSearchApiKey,
         SUMMARIZE_FUNCTION_NAME: llmSummarizeFn.functionName,
+        GUARDRAIL_ID: guardrail.attrGuardrailId,
+        GUARDRAIL_VERSION: guardrailVersion.attrVersion,
       },
       bundling: {
         minify: true,
@@ -541,6 +564,11 @@ export class ButlerStack extends cdk.Stack {
         'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
         `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
       ],
+    }))
+    // Bedrock Guardrails 権限
+    llmChatFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:ApplyGuardrail'],
+      resources: [guardrail.attrGuardrailArn],
     }))
 
     // LLM Lambda から DynamoDB への読み書き権限（トークン管理）
