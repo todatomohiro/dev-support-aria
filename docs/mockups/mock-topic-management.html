@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>トピック整理 + TODO連携 モックアップ</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  .nav { display: flex; justify-content: center; gap: 10px; padding: 14px; background: #1a1a2e; position: sticky; top: 0; z-index: 100; flex-wrap: wrap; }
+  .nav button { padding: 8px 18px; border: 2px solid #6c63ff; background: transparent; color: #fff; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+  .nav button.active { background: #6c63ff; }
+  .nav button:hover { background: #5a52d5; color: #fff; }
+
+  .section { display: none; max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .section.active { display: block; }
+  .section-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 13px; color: #666; margin-bottom: 20px; line-height: 1.7; }
+
+  /* アプリフレーム */
+  .app-frame { height: 700px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); background: #fff; display: flex; }
+
+  /* ========================================
+     サイドバー（トピック管理）
+     ======================================== */
+  .sidebar { width: 300px; background: #f8f9fa; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-top { padding: 12px 14px; border-bottom: 1px solid #e0e0e0; }
+  .sidebar-search { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; outline: none; background: #fff; }
+  .sidebar-search:focus { border-color: #6c63ff; }
+  .sidebar-tabs { display: flex; border-bottom: 1px solid #e0e0e0; }
+  .sidebar-tab { flex: 1; padding: 10px 0; text-align: center; font-size: 12px; font-weight: 600; cursor: pointer; color: #999; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .sidebar-tab.active { color: #6c63ff; border-bottom-color: #6c63ff; }
+  .sidebar-tab:hover { color: #6c63ff; }
+  .sidebar-list { flex: 1; overflow-y: auto; }
+
+  /* カテゴリヘッダー */
+  .category-header { padding: 8px 14px; font-size: 11px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: space-between; background: #f0f0f0; position: sticky; top: 0; }
+  .category-header .count { background: #e0e0e0; padding: 1px 7px; border-radius: 10px; font-size: 10px; }
+  .category-toggle { cursor: pointer; font-size: 10px; color: #aaa; }
+
+  /* トピックアイテム */
+  .topic-item { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.15s; display: flex; gap: 10px; align-items: flex-start; }
+  .topic-item:hover { background: #e8e8ff; }
+  .topic-item.active { background: #6c63ff; color: #fff; }
+  .topic-item.active .topic-meta { color: rgba(255,255,255,0.7); }
+  .topic-item.active .topic-tag { background: rgba(255,255,255,0.2); color: #fff; }
+  .topic-item.archived { opacity: 0.5; }
+  .topic-icon { font-size: 18px; flex-shrink: 0; margin-top: 2px; }
+  .topic-content { flex: 1; min-width: 0; }
+  .topic-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topic-meta { font-size: 11px; color: #999; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+  .topic-tag { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #e8e8ff; color: #6c63ff; font-weight: 600; }
+  .topic-tag.meeting { background: #fff3e0; color: #e65100; }
+  .topic-tag.todo { background: #e8f5e9; color: #2e7d32; }
+  .topic-pin { font-size: 12px; color: #f9a825; flex-shrink: 0; }
+
+  /* ========================================
+     メインエリア
+     ======================================== */
+  .main-area { flex: 1; display: flex; flex-direction: column; }
+  .main-header { padding: 12px 20px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+  .main-header h2 { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-live { background: #fee; color: #e53935; animation: pulse 2s infinite; }
+  .badge-done { background: #e8f5e9; color: #2e7d32; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+  .chat-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; }
+  .input-area { padding: 12px 16px; border-top: 1px solid #e0e0e0; display: flex; gap: 8px; }
+  .input-area input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; outline: none; }
+  .input-area input:focus { border-color: #6c63ff; }
+  .input-area button { padding: 10px 14px; background: #6c63ff; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; }
+
+  /* チャットメッセージ */
+  .msg { margin-bottom: 12px; }
+  .msg-user { display: flex; justify-content: flex-end; }
+  .msg-ai { display: flex; justify-content: flex-start; }
+  .bubble { max-width: 75%; padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.7; }
+  .bubble-user { background: #6c63ff; color: #fff; border-bottom-right-radius: 4px; }
+  .bubble-ai { background: #f0f0f0; border-bottom-left-radius: 4px; }
+
+  /* ========================================
+     TODO パネル
+     ======================================== */
+  .todo-panel { width: 320px; background: #fafafa; border-left: 1px solid #e0e0e0; display: flex; flex-direction: column; flex-shrink: 0; }
+  .todo-header { padding: 14px 16px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+  .todo-header h3 { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .todo-filters { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid #e0e0e0; overflow-x: auto; }
+  .todo-filter { padding: 4px 10px; border-radius: 12px; font-size: 11px; cursor: pointer; border: 1px solid #e0e0e0; background: #fff; white-space: nowrap; }
+  .todo-filter.active { background: #6c63ff; color: #fff; border-color: #6c63ff; }
+  .todo-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+
+  .todo-item { padding: 10px 16px; border-bottom: 1px solid #f0f0f0; display: flex; gap: 10px; align-items: flex-start; transition: background 0.15s; }
+  .todo-item:hover { background: #f0f0ff; }
+  .todo-item.done { opacity: 0.5; }
+  .todo-check { width: 18px; height: 18px; border: 2px solid #ccc; border-radius: 4px; flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .todo-check.checked { background: #6c63ff; border-color: #6c63ff; color: #fff; font-size: 11px; }
+  .todo-body { flex: 1; }
+  .todo-text { font-size: 13px; line-height: 1.5; }
+  .todo-item.done .todo-text { text-decoration: line-through; color: #999; }
+  .todo-info { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; align-items: center; }
+  .todo-assignee { font-size: 11px; color: #6c63ff; font-weight: 600; }
+  .todo-due { font-size: 11px; color: #999; }
+  .todo-due.overdue { color: #e53935; }
+  .todo-source { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #fff3e0; color: #e65100; cursor: pointer; }
+  .todo-priority { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
+  .todo-priority.high { background: #fee; color: #e53935; }
+  .todo-priority.mid { background: #fff8e1; color: #f57f17; }
+  .todo-priority.low { background: #e8f5e9; color: #2e7d32; }
+
+  .todo-add { padding: 12px 16px; border-top: 1px solid #e0e0e0; }
+  .todo-add input { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; outline: none; }
+  .todo-add input:focus { border-color: #6c63ff; }
+
+  /* ========================================
+     コンテキストメニュー
+     ======================================== */
+  .ctx-menu { background: #fff; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); padding: 6px 0; font-size: 13px; width: 200px; position: absolute; z-index: 50; }
+  .ctx-item { padding: 8px 16px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  .ctx-item:hover { background: #f0f0ff; }
+  .ctx-divider { height: 1px; background: #e0e0e0; margin: 4px 0; }
+
+  /* 要約カード */
+  .summary-card { background: linear-gradient(135deg, #f0f0ff, #e8f5e9); border: 1px solid #d0d0ff; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .summary-card h4 { font-size: 13px; font-weight: 700; color: #6c63ff; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .summary-card ul { font-size: 13px; line-height: 1.8; color: #333; padding-left: 20px; }
+
+  /* アクションアイテム（TODO連携付き） */
+  .action-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+  .action-item .link-btn { font-size: 11px; padding: 2px 8px; border: 1px solid #6c63ff; color: #6c63ff; border-radius: 4px; cursor: pointer; background: #fff; white-space: nowrap; }
+  .action-item .link-btn.linked { background: #6c63ff; color: #fff; border-color: #6c63ff; }
+  .action-item .link-btn:hover { background: #6c63ff; color: #fff; }
+
+  /* 字幕ブロック */
+  .transcript-block { background: #f8f9ff; border: 1px solid #e0e0ff; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; }
+  .transcript-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; color: #6c63ff; font-weight: 600; }
+
+  /* トピック統計 */
+  .stats-row { display: flex; gap: 16px; margin-bottom: 20px; }
+  .stat-card { flex: 1; background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); text-align: center; }
+  .stat-card .num { font-size: 28px; font-weight: 700; color: #6c63ff; }
+  .stat-card .label { font-size: 12px; color: #999; margin-top: 4px; }
+
+  /* フローチャート */
+  .flow-h { display: flex; align-items: center; gap: 0; justify-content: center; margin: 20px 0; flex-wrap: wrap; }
+  .flow-box { background: #fff; border: 2px solid #e0e0e0; border-radius: 10px; padding: 12px 16px; font-size: 12px; text-align: center; min-width: 140px; }
+  .flow-box.highlight { border-color: #6c63ff; background: #f8f8ff; }
+  .flow-box strong { display: block; font-size: 13px; margin-bottom: 4px; }
+  .flow-arr { font-size: 18px; color: #ccc; padding: 0 4px; }
+
+  /* 比較テーブル */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  .compare-table th { background: #f8f9fa; padding: 10px 14px; text-align: left; border-bottom: 2px solid #e0e0e0; }
+  .compare-table td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; }
+
+  /* モバイルフレーム */
+  .mobile-frame { width: 375px; height: 720px; margin: 0 auto; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.12); background: #fff; display: flex; flex-direction: column; border: 6px solid #1a1a2e; }
+  .mobile-status { background: #1a1a2e; color: #fff; padding: 6px 16px; font-size: 10px; display: flex; justify-content: space-between; }
+  .mobile-header { padding: 10px 14px; border-bottom: 1px solid #e0e0e0; display: flex; align-items: center; gap: 10px; }
+  .mobile-header .back { font-size: 18px; cursor: pointer; color: #6c63ff; }
+  .mobile-header h2 { font-size: 14px; font-weight: 700; flex: 1; }
+  .mobile-tabs { display: flex; border-bottom: 1px solid #e0e0e0; }
+  .mobile-tab { flex: 1; padding: 10px 0; text-align: center; font-size: 12px; font-weight: 600; cursor: pointer; color: #999; border-bottom: 2px solid transparent; }
+  .mobile-tab.active { color: #6c63ff; border-bottom-color: #6c63ff; }
+  .mobile-bottomnav { display: flex; border-top: 1px solid #e0e0e0; background: #fff; }
+  .mobile-bottomnav-item { flex: 1; padding: 8px 0; text-align: center; font-size: 10px; color: #999; cursor: pointer; }
+  .mobile-bottomnav-item.active { color: #6c63ff; }
+  .mobile-bottomnav-item .icon { font-size: 18px; display: block; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <button class="active" onclick="showSection('topic-org')">トピック整理</button>
+  <button onclick="showSection('todo-link')">TODO連携</button>
+  <button onclick="showSection('todo-view')">TODOビュー</button>
+  <button onclick="showSection('ctx-menu')">操作メニュー</button>
+  <button onclick="showSection('mobile-todo')">モバイル</button>
+  <button onclick="showSection('arch')">設計</button>
+</div>
+
+<!-- ===== トピック整理 ===== -->
+<div id="topic-org" class="section active">
+  <h1 class="section-title">トピック整理 — カテゴリ + 検索 + アーカイブ</h1>
+  <p class="section-desc">
+    トピックが増えても管理しやすいよう、自動カテゴリ分類・検索・ピン留め・アーカイブ機能を追加します。
+  </p>
+
+  <div class="app-frame">
+    <div class="sidebar">
+      <!-- 検索 -->
+      <div class="sidebar-top">
+        <input class="sidebar-search" type="text" placeholder="🔍 トピックを検索..." />
+      </div>
+
+      <!-- タブ -->
+      <div class="sidebar-tabs">
+        <div class="sidebar-tab active">すべて</div>
+        <div class="sidebar-tab">会議</div>
+        <div class="sidebar-tab">チャット</div>
+        <div class="sidebar-tab">アーカイブ</div>
+      </div>
+
+      <div class="sidebar-list">
+        <!-- ピン留め -->
+        <div class="category-header">
+          📌 ピン留め <span class="count">2</span>
+        </div>
+        <div class="topic-item">
+          <span class="topic-icon">📋</span>
+          <div class="topic-content">
+            <div class="topic-title">週次定例 — 03/09 10:00</div>
+            <div class="topic-meta">
+              <span class="topic-tag meeting">会議メモ</span>
+              <span>45分 — 42発言</span>
+            </div>
+          </div>
+          <span class="topic-pin">📌</span>
+        </div>
+        <div class="topic-item">
+          <span class="topic-icon">📋</span>
+          <div class="topic-content">
+            <div class="topic-title">プロジェクトKickoff</div>
+            <div class="topic-meta">
+              <span class="topic-tag meeting">会議メモ</span>
+              <span>3/5</span>
+            </div>
+          </div>
+          <span class="topic-pin">📌</span>
+        </div>
+
+        <!-- 今日 -->
+        <div class="category-header">
+          今日 <span class="count">3</span>
+        </div>
+        <div class="topic-item active">
+          <span class="topic-icon">💬</span>
+          <div class="topic-content">
+            <div class="topic-title">午後の作業相談</div>
+            <div class="topic-meta">5分前</div>
+          </div>
+        </div>
+        <div class="topic-item">
+          <span class="topic-icon">📋</span>
+          <div class="topic-content">
+            <div class="topic-title">デザインレビュー — 03/09 14:00</div>
+            <div class="topic-meta">
+              <span class="topic-tag meeting">会議メモ</span>
+              <span>🔴 会議中</span>
+            </div>
+          </div>
+        </div>
+        <div class="topic-item">
+          <span class="topic-icon">💬</span>
+          <div class="topic-content">
+            <div class="topic-title">天気と明日の予定</div>
+            <div class="topic-meta">今朝</div>
+          </div>
+        </div>
+
+        <!-- 今週 -->
+        <div class="category-header">
+          今週 <span class="count">4</span>
+          <span class="category-toggle">▼</span>
+        </div>
+        <div class="topic-item">
+          <span class="topic-icon">📋</span>
+          <div class="topic-content">
+            <div class="topic-title">スプリントレトロ — 03/07</div>
+            <div class="topic-meta">
+              <span class="topic-tag meeting">会議メモ</span>
+              <span class="topic-tag todo">TODO 2件</span>
+            </div>
+          </div>
+        </div>
+        <div class="topic-item">
+          <span class="topic-icon">💬</span>
+          <div class="topic-content">
+            <div class="topic-title">API設計の相談</div>
+            <div class="topic-meta">3/7</div>
+          </div>
+        </div>
+        <div class="topic-item">
+          <span class="topic-icon">💬</span>
+          <div class="topic-content">
+            <div class="topic-title">ランチのおすすめ</div>
+            <div class="topic-meta">3/6</div>
+          </div>
+        </div>
+        <div class="topic-item">
+          <span class="topic-icon">📋</span>
+          <div class="topic-content">
+            <div class="topic-title">プロジェクトレビュー — 03/05</div>
+            <div class="topic-meta">
+              <span class="topic-tag meeting">会議メモ</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 先月 -->
+        <div class="category-header">
+          先月 <span class="count">12</span>
+          <span class="category-toggle">▶</span>
+        </div>
+
+        <!-- アーカイブ済み（非表示例） -->
+      </div>
+    </div>
+
+    <!-- メイン -->
+    <div class="main-area">
+      <div class="main-header">
+        <h2>💬 午後の作業相談</h2>
+      </div>
+      <div class="chat-scroll">
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">午後からダッシュボードの色味変更に取りかかります</div>
+        </div>
+        <div class="msg msg-ai">
+          <div class="bubble bubble-ai">
+            了解です！今朝の定例で佐藤さんが担当になっていましたね。CSS変数で対応する方針で、半日くらいの見込みとのことでした。何かサポートできることはありますか？
+          </div>
+        </div>
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">定例で決まった色のリストを教えて</div>
+        </div>
+        <div class="msg msg-ai">
+          <div class="bubble bubble-ai">
+            今朝の週次定例の字幕から確認しました：<br><br>
+            鈴木さんの発言によると、デザインチームから以下の変更要望がありました：<br>
+            ・メインカラー: #6366F1（現在）→ #4F46E5（濃いめ）<br>
+            ・グラフ配色: パステル系に統一<br>
+            ・アクセントカラー: #EC4899 を追加<br><br>
+            <em>※ 会議メモ「週次定例 — 03/09」から参照</em>
+          </div>
+        </div>
+      </div>
+      <div class="input-area">
+        <input type="text" placeholder="メッセージを入力..." />
+        <button>送信</button>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin:24px 0 12px; font-size:15px;">トピック整理機能</h3>
+  <table class="compare-table">
+    <tr><th>機能</th><th>説明</th><th>自動/手動</th></tr>
+    <tr><td>自動カテゴリ</td><td>「今日」「今週」「先月」「それ以前」で時系列グルーピング</td><td>自動</td></tr>
+    <tr><td>タイプ分類</td><td>📋会議メモ / 💬チャット をアイコン+タブで区別</td><td>自動</td></tr>
+    <tr><td>ピン留め</td><td>重要なトピックを上部に固定</td><td>手動</td></tr>
+    <tr><td>検索</td><td>トピック名・メッセージ内容で全文検索</td><td>手動</td></tr>
+    <tr><td>アーカイブ</td><td>古いトピックを非表示に（削除はしない）</td><td>手動</td></tr>
+    <tr><td>TODOバッジ</td><td>未完了TODOがあるトピックにバッジ表示</td><td>自動</td></tr>
+    <tr><td>トピック間参照</td><td>AIが他トピック（会議メモ等）の内容を横断参照して回答</td><td>自動</td></tr>
+  </table>
+</div>
+
+<!-- ===== TODO連携 ===== -->
+<div id="todo-link" class="section">
+  <h1 class="section-title">TODO連携 — 会議のアクションアイテムをTODOに</h1>
+  <p class="section-desc">
+    AIが会議から抽出したアクションアイテムをワンクリックでTODOに変換。担当者・期日も自動設定。
+  </p>
+
+  <div class="app-frame">
+    <div class="sidebar">
+      <div class="sidebar-top">
+        <input class="sidebar-search" type="text" placeholder="🔍 トピックを検索..." />
+      </div>
+      <div class="sidebar-tabs">
+        <div class="sidebar-tab active">すべて</div>
+        <div class="sidebar-tab">会議</div>
+        <div class="sidebar-tab">チャット</div>
+        <div class="sidebar-tab">アーカイブ</div>
+      </div>
+      <div class="sidebar-list">
+        <div class="category-header">📌 ピン留め <span class="count">1</span></div>
+        <div class="topic-item active">
+          <span class="topic-icon">📋</span>
+          <div class="topic-content">
+            <div class="topic-title">週次定例 — 03/09 10:00</div>
+            <div class="topic-meta">
+              <span class="topic-tag meeting">会議メモ</span>
+              <span class="topic-tag todo">TODO 5件</span>
+            </div>
+          </div>
+          <span class="topic-pin">📌</span>
+        </div>
+        <div class="category-header">今日 <span class="count">2</span></div>
+        <div class="topic-item">
+          <span class="topic-icon">💬</span>
+          <div class="topic-content">
+            <div class="topic-title">午後の作業相談</div>
+            <div class="topic-meta">5分前</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-area" style="flex:1;">
+      <div class="main-header">
+        <h2>📋 週次定例 — 03/09 10:00 <span class="badge badge-done">✅ 完了</span></h2>
+      </div>
+      <div class="chat-scroll">
+        <!-- 要約 -->
+        <div class="summary-card">
+          <h4>📝 会議の全体要約</h4>
+          <ul>
+            <li><strong>API改修</strong>: 完了・テスト環境デプロイ済み</li>
+            <li><strong>リリーススケジュール</strong>: 来週末リリース判定</li>
+            <li><strong>デザイン変更</strong>: ダッシュボード色味変更</li>
+          </ul>
+        </div>
+
+        <!-- アクションアイテム → TODO変換 -->
+        <div style="background:#fff; border:1px solid #e0e0e0; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
+          <h4 style="font-size:13px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+            📌 アクションアイテム
+            <span style="font-size:11px; color:#6c63ff; font-weight:400; margin-left:auto; cursor:pointer;">すべてTODOに追加</span>
+          </h4>
+
+          <div class="action-item">
+            <span style="flex:1;">🔲 鈴木: API改修レビュー + テストケース追加（本日午後）</span>
+            <button class="link-btn linked">✓ TODO追加済み</button>
+          </div>
+          <div class="action-item">
+            <span style="flex:1;">🔲 佐藤: 負荷テスト実施（3/12 木曜）</span>
+            <button class="link-btn linked">✓ TODO追加済み</button>
+          </div>
+          <div class="action-item">
+            <span style="flex:1;">🔲 佐藤: ダッシュボード色味変更（今週中）</span>
+            <button class="link-btn">→ TODOに追加</button>
+          </div>
+          <div class="action-item">
+            <span style="flex:1;">🔲 鈴木: ユーザー管理画面モック作成（来週〜）</span>
+            <button class="link-btn">→ TODOに追加</button>
+          </div>
+          <div class="action-item">
+            <span style="flex:1;">🔲 田中: QAチームへの引き継ぎ（3/13 金曜）</span>
+            <button class="link-btn">→ TODOに追加</button>
+          </div>
+        </div>
+
+        <!-- ユーザー追加指示 -->
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">佐藤さんのタスクをすべてTODOに追加して、優先度「高」にして</div>
+        </div>
+        <div class="msg msg-ai">
+          <div class="bubble bubble-ai">
+            佐藤さんのタスク2件をTODOに追加しました：<br><br>
+            ✅ <strong>負荷テスト実施</strong> — 期限: 3/12（木）、優先度: 高<br>
+            ✅ <strong>ダッシュボード色味変更</strong> — 期限: 3/13（金）、優先度: 高<br><br>
+            TODOパネルで確認できます。
+          </div>
+        </div>
+      </div>
+      <div class="input-area">
+        <input type="text" placeholder="AIに指示..." />
+        <button>送信</button>
+      </div>
+    </div>
+
+    <!-- TODOパネル -->
+    <div class="todo-panel">
+      <div class="todo-header">
+        <h3>✅ TODO</h3>
+        <span style="font-size:12px; color:#999;">5件</span>
+      </div>
+      <div class="todo-filters">
+        <div class="todo-filter active">すべて</div>
+        <div class="todo-filter">今日</div>
+        <div class="todo-filter">今週</div>
+        <div class="todo-filter">担当別</div>
+      </div>
+      <div class="todo-list">
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">API改修レビュー + テストケース追加</div>
+            <div class="todo-info">
+              <span class="todo-assignee">鈴木</span>
+              <span class="todo-due overdue">今日 午後</span>
+              <span class="todo-priority high">高</span>
+              <span class="todo-source">📋 週次定例</span>
+            </div>
+          </div>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">負荷テスト実施</div>
+            <div class="todo-info">
+              <span class="todo-assignee">佐藤</span>
+              <span class="todo-due">3/12（木）</span>
+              <span class="todo-priority high">高</span>
+              <span class="todo-source">📋 週次定例</span>
+            </div>
+          </div>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">ダッシュボード色味変更</div>
+            <div class="todo-info">
+              <span class="todo-assignee">佐藤</span>
+              <span class="todo-due">3/13（金）</span>
+              <span class="todo-priority high">高</span>
+              <span class="todo-source">📋 週次定例</span>
+            </div>
+          </div>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">ユーザー管理画面モック作成</div>
+            <div class="todo-info">
+              <span class="todo-assignee">鈴木</span>
+              <span class="todo-due">来週〜</span>
+              <span class="todo-priority mid">中</span>
+              <span class="todo-source">📋 週次定例</span>
+            </div>
+          </div>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">QAチームへの引き継ぎ</div>
+            <div class="todo-info">
+              <span class="todo-assignee">田中</span>
+              <span class="todo-due">3/13（金）</span>
+              <span class="todo-priority mid">中</span>
+              <span class="todo-source">📋 週次定例</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="todo-add">
+        <input type="text" placeholder="+ TODOを追加..." />
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TODOビュー ===== -->
+<div id="todo-view" class="section">
+  <h1 class="section-title">TODOビュー — 全トピック横断のタスク一覧</h1>
+  <p class="section-desc">
+    会議・チャットから生まれたTODOを横断的に管理。担当者別・期限別にフィルタ。元の会議メモにジャンプ可能。
+  </p>
+
+  <!-- 統計 -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="num">12</div>
+      <div class="label">未完了TODO</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" style="color:#e53935;">3</div>
+      <div class="label">期限超過</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" style="color:#2e7d32;">28</div>
+      <div class="label">今月完了</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" style="color:#f57f17;">5</div>
+      <div class="label">今週期限</div>
+    </div>
+  </div>
+
+  <div class="app-frame" style="height:500px;">
+    <div style="flex:1; display:flex; flex-direction:column;">
+      <!-- フィルタバー -->
+      <div style="padding:12px 16px; border-bottom:1px solid #e0e0e0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <div class="todo-filter active">すべて (12)</div>
+        <div class="todo-filter">今日 (3)</div>
+        <div class="todo-filter">今週 (5)</div>
+        <div class="todo-filter">期限超過 (3)</div>
+        <span style="color:#e0e0e0;">|</span>
+        <div class="todo-filter">鈴木 (4)</div>
+        <div class="todo-filter">佐藤 (3)</div>
+        <div class="todo-filter">田中 (2)</div>
+        <div class="todo-filter">自分 (3)</div>
+        <input type="text" placeholder="🔍 TODO検索..." style="margin-left:auto; padding:6px 12px; border:1px solid #ddd; border-radius:6px; font-size:12px; outline:none; width:180px;" />
+      </div>
+
+      <div style="flex:1; overflow-y:auto;">
+        <!-- 期限超過 -->
+        <div class="category-header" style="background:#fee; color:#e53935;">
+          ⚠️ 期限超過 <span class="count" style="background:#fcc;">3</span>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">API改修レビュー + テストケース追加</div>
+            <div class="todo-info">
+              <span class="todo-assignee">鈴木</span>
+              <span class="todo-due overdue">3/9（昨日）</span>
+              <span class="todo-priority high">高</span>
+              <span class="todo-source">📋 週次定例 3/9</span>
+            </div>
+          </div>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">テスト計画書の更新</div>
+            <div class="todo-info">
+              <span class="todo-assignee">自分</span>
+              <span class="todo-due overdue">3/8（2日前）</span>
+              <span class="todo-priority mid">中</span>
+              <span class="todo-source">📋 スプリントレトロ 3/7</span>
+            </div>
+          </div>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">CI/CD パイプライン見直し</div>
+            <div class="todo-info">
+              <span class="todo-assignee">自分</span>
+              <span class="todo-due overdue">3/7（3日前）</span>
+              <span class="todo-priority low">低</span>
+              <span class="todo-source">💬 API設計の相談</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 今日 -->
+        <div class="category-header">
+          今日 <span class="count">2</span>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">デザインレビューのフィードバック整理</div>
+            <div class="todo-info">
+              <span class="todo-assignee">自分</span>
+              <span class="todo-due">今日</span>
+              <span class="todo-priority high">高</span>
+              <span class="todo-source">📋 デザインレビュー 3/9</span>
+            </div>
+          </div>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">負荷テスト環境の準備</div>
+            <div class="todo-info">
+              <span class="todo-assignee">佐藤</span>
+              <span class="todo-due">今日</span>
+              <span class="todo-priority mid">中</span>
+              <span class="todo-source">📋 週次定例 3/9</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 今週 -->
+        <div class="category-header">
+          今週 <span class="count">4</span>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">負荷テスト実施</div>
+            <div class="todo-info">
+              <span class="todo-assignee">佐藤</span>
+              <span class="todo-due">3/12（木）</span>
+              <span class="todo-priority high">高</span>
+              <span class="todo-source">📋 週次定例 3/9</span>
+            </div>
+          </div>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">ダッシュボード色味変更</div>
+            <div class="todo-info">
+              <span class="todo-assignee">佐藤</span>
+              <span class="todo-due">3/13（金）</span>
+              <span class="todo-priority high">高</span>
+              <span class="todo-source">📋 週次定例 3/9</span>
+            </div>
+          </div>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">QAチームへの引き継ぎ</div>
+            <div class="todo-info">
+              <span class="todo-assignee">田中</span>
+              <span class="todo-due">3/13（金）</span>
+              <span class="todo-priority mid">中</span>
+              <span class="todo-source">📋 週次定例 3/9</span>
+            </div>
+          </div>
+        </div>
+        <div class="todo-item">
+          <div class="todo-check"></div>
+          <div class="todo-body">
+            <div class="todo-text">コンポーネントライブラリ調査</div>
+            <div class="todo-info">
+              <span class="todo-assignee">鈴木</span>
+              <span class="todo-due">3/14（土）</span>
+              <span class="todo-priority low">低</span>
+              <span class="todo-source">💬 API設計の相談</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 完了済み -->
+        <div class="category-header" style="color:#2e7d32;">
+          ✅ 最近完了 <span class="count">3</span>
+          <span class="category-toggle">▶</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== コンテキストメニュー ===== -->
+<div id="ctx-menu" class="section">
+  <h1 class="section-title">操作メニュー — トピックの右クリック / 長押し</h1>
+  <p class="section-desc">トピックの整理操作は右クリック（PC）/ 長押し（モバイル）メニューから。</p>
+
+  <div style="display:flex; gap:40px; flex-wrap:wrap; justify-content:center;">
+    <!-- トピック右クリック -->
+    <div>
+      <h3 style="font-size:14px; margin-bottom:12px; text-align:center; color:#666;">トピック右クリック</h3>
+      <div style="position:relative; width:300px;">
+        <div class="topic-item" style="background:#e8e8ff; border:1px solid #e0e0e0; border-radius:8px;">
+          <span class="topic-icon">📋</span>
+          <div class="topic-content">
+            <div class="topic-title">週次定例 — 03/09 10:00</div>
+            <div class="topic-meta">
+              <span class="topic-tag meeting">会議メモ</span>
+            </div>
+          </div>
+        </div>
+        <div class="ctx-menu" style="position:relative; margin-top:4px;">
+          <div class="ctx-item">📌 ピン留め / 解除</div>
+          <div class="ctx-item">✏️ 名前を変更</div>
+          <div class="ctx-divider"></div>
+          <div class="ctx-item">📋 TODOを表示</div>
+          <div class="ctx-item">📄 エクスポート</div>
+          <div class="ctx-item">🔗 共有リンクを作成</div>
+          <div class="ctx-divider"></div>
+          <div class="ctx-item">📦 アーカイブ</div>
+          <div class="ctx-item" style="color:#e53935;">🗑️ 削除</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AIメッセージ右クリック -->
+    <div>
+      <h3 style="font-size:14px; margin-bottom:12px; text-align:center; color:#666;">AIメッセージ右クリック</h3>
+      <div style="position:relative; width:320px;">
+        <div class="bubble bubble-ai" style="font-size:13px; line-height:1.7; border-radius:10px;">
+          佐藤さんのタスク：<br>
+          1. 負荷テスト実施（3/12）<br>
+          2. ダッシュボード色味変更（今週中）
+        </div>
+        <div class="ctx-menu" style="position:relative; margin-top:4px;">
+          <div class="ctx-item">📋 コピー</div>
+          <div class="ctx-item">✅ TODOに追加</div>
+          <div class="ctx-item">📌 この内容をピン</div>
+          <div class="ctx-divider"></div>
+          <div class="ctx-item">🔄 再生成</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI指示でTODO -->
+    <div>
+      <h3 style="font-size:14px; margin-bottom:12px; text-align:center; color:#666;">AI指示によるTODO操作</h3>
+      <div style="width:360px; background:#fff; border-radius:10px; padding:16px; box-shadow:0 2px 12px rgba(0,0,0,0.08); font-size:13px; line-height:2;">
+        <div style="font-weight:600; margin-bottom:8px;">自然言語でTODO操作:</div>
+        <div style="color:#6c63ff;">「この会議のTODOを全部追加して」</div>
+        <div style="color:#6c63ff;">「佐藤さんのタスクを優先度高にして」</div>
+        <div style="color:#6c63ff;">「期限切れのTODOを教えて」</div>
+        <div style="color:#6c63ff;">「今週のTODOをリストアップして」</div>
+        <div style="color:#6c63ff;">「API改修レビューを完了にして」</div>
+        <div style="color:#6c63ff;">「来週の月曜までにDBマイグレーションをTODOに追加して」</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== モバイル ===== -->
+<div id="mobile-todo" class="section">
+  <h1 class="section-title">モバイル — トピック整理 + TODO</h1>
+  <p class="section-desc">モバイルではボトムナビにTODOタブを追加。トピックのスワイプ操作でピン留め/アーカイブ。</p>
+
+  <div style="display:flex; gap:24px; flex-wrap:wrap; justify-content:center;">
+    <!-- モバイル: トピック一覧 -->
+    <div>
+      <h3 style="text-align:center; font-size:14px; margin-bottom:12px; color:#666;">トピック一覧（タブ切替）</h3>
+      <div class="mobile-frame">
+        <div class="mobile-status"><span>9:41</span><span>📶 🔋</span></div>
+        <div class="mobile-header">
+          <h2>トピック</h2>
+          <span style="font-size:18px; color:#6c63ff; cursor:pointer;">🔍</span>
+        </div>
+        <div class="mobile-tabs">
+          <div class="mobile-tab active">すべて</div>
+          <div class="mobile-tab">会議</div>
+          <div class="mobile-tab">チャット</div>
+        </div>
+        <div style="flex:1; overflow-y:auto;">
+          <div class="category-header" style="font-size:10px;">📌 ピン留め</div>
+          <div class="topic-item" style="padding:10px 14px;">
+            <span class="topic-icon">📋</span>
+            <div class="topic-content">
+              <div class="topic-title" style="font-size:13px;">週次定例 — 03/09</div>
+              <div class="topic-meta" style="font-size:10px;">
+                <span class="topic-tag meeting" style="font-size:9px;">会議</span>
+                <span class="topic-tag todo" style="font-size:9px;">TODO 3</span>
+                <span>45分</span>
+              </div>
+            </div>
+            <span class="topic-pin">📌</span>
+          </div>
+
+          <div class="category-header" style="font-size:10px;">今日</div>
+          <div class="topic-item" style="padding:10px 14px;">
+            <span class="topic-icon">💬</span>
+            <div class="topic-content">
+              <div class="topic-title" style="font-size:13px;">午後の作業相談</div>
+              <div class="topic-meta" style="font-size:10px;">5分前</div>
+            </div>
+          </div>
+          <div class="topic-item" style="padding:10px 14px;">
+            <span class="topic-icon">📋</span>
+            <div class="topic-content">
+              <div class="topic-title" style="font-size:13px;">デザインレビュー — 14:00</div>
+              <div class="topic-meta" style="font-size:10px;">
+                <span class="topic-tag meeting" style="font-size:9px;">会議</span>
+                <span style="color:#e53935;">🔴 会議中</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="category-header" style="font-size:10px;">今週</div>
+          <div class="topic-item" style="padding:10px 14px;">
+            <span class="topic-icon">📋</span>
+            <div class="topic-content">
+              <div class="topic-title" style="font-size:13px;">スプリントレトロ — 03/07</div>
+              <div class="topic-meta" style="font-size:10px;">
+                <span class="topic-tag meeting" style="font-size:9px;">会議</span>
+              </div>
+            </div>
+          </div>
+          <div class="topic-item" style="padding:10px 14px;">
+            <span class="topic-icon">💬</span>
+            <div class="topic-content">
+              <div class="topic-title" style="font-size:13px;">API設計の相談</div>
+              <div class="topic-meta" style="font-size:10px;">3/7</div>
+            </div>
+          </div>
+          <div class="topic-item" style="padding:10px 14px;">
+            <span class="topic-icon">💬</span>
+            <div class="topic-content">
+              <div class="topic-title" style="font-size:13px;">ランチのおすすめ</div>
+              <div class="topic-meta" style="font-size:10px;">3/6</div>
+            </div>
+          </div>
+        </div>
+        <div class="mobile-bottomnav">
+          <div class="mobile-bottomnav-item active"><span class="icon">💬</span>トピック</div>
+          <div class="mobile-bottomnav-item"><span class="icon">✅</span>TODO</div>
+          <div class="mobile-bottomnav-item"><span class="icon">👤</span>ホーム</div>
+          <div class="mobile-bottomnav-item"><span class="icon">⚙️</span>設定</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- モバイル: TODO -->
+    <div>
+      <h3 style="text-align:center; font-size:14px; margin-bottom:12px; color:#666;">TODOタブ</h3>
+      <div class="mobile-frame">
+        <div class="mobile-status"><span>9:41</span><span>📶 🔋</span></div>
+        <div class="mobile-header">
+          <h2>TODO</h2>
+          <span style="font-size:14px; color:#999;">12件</span>
+        </div>
+        <div class="todo-filters" style="padding:8px 10px;">
+          <div class="todo-filter active" style="font-size:10px;">すべて</div>
+          <div class="todo-filter" style="font-size:10px;">今日</div>
+          <div class="todo-filter" style="font-size:10px;">今週</div>
+          <div class="todo-filter" style="font-size:10px; color:#e53935; border-color:#fcc;">期限超過 3</div>
+        </div>
+        <div style="flex:1; overflow-y:auto;">
+          <div class="category-header" style="background:#fee; color:#e53935; font-size:10px;">⚠️ 期限超過</div>
+          <div class="todo-item" style="padding:8px 14px;">
+            <div class="todo-check"></div>
+            <div class="todo-body">
+              <div class="todo-text" style="font-size:12px;">API改修レビュー</div>
+              <div class="todo-info">
+                <span class="todo-assignee" style="font-size:10px;">鈴木</span>
+                <span class="todo-due overdue" style="font-size:10px;">昨日</span>
+                <span class="todo-source" style="font-size:9px;">📋 週次定例</span>
+              </div>
+            </div>
+          </div>
+          <div class="todo-item" style="padding:8px 14px;">
+            <div class="todo-check"></div>
+            <div class="todo-body">
+              <div class="todo-text" style="font-size:12px;">テスト計画書の更新</div>
+              <div class="todo-info">
+                <span class="todo-assignee" style="font-size:10px;">自分</span>
+                <span class="todo-due overdue" style="font-size:10px;">2日前</span>
+                <span class="todo-source" style="font-size:9px;">📋 レトロ</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="category-header" style="font-size:10px;">今日</div>
+          <div class="todo-item" style="padding:8px 14px;">
+            <div class="todo-check"></div>
+            <div class="todo-body">
+              <div class="todo-text" style="font-size:12px;">デザインフィードバック整理</div>
+              <div class="todo-info">
+                <span class="todo-assignee" style="font-size:10px;">自分</span>
+                <span class="todo-due" style="font-size:10px;">今日</span>
+                <span class="todo-priority high" style="font-size:9px;">高</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="category-header" style="font-size:10px;">今週</div>
+          <div class="todo-item" style="padding:8px 14px;">
+            <div class="todo-check"></div>
+            <div class="todo-body">
+              <div class="todo-text" style="font-size:12px;">負荷テスト実施</div>
+              <div class="todo-info">
+                <span class="todo-assignee" style="font-size:10px;">佐藤</span>
+                <span class="todo-due" style="font-size:10px;">3/12</span>
+                <span class="todo-priority high" style="font-size:9px;">高</span>
+              </div>
+            </div>
+          </div>
+          <div class="todo-item" style="padding:8px 14px;">
+            <div class="todo-check"></div>
+            <div class="todo-body">
+              <div class="todo-text" style="font-size:12px;">ダッシュボード色味変更</div>
+              <div class="todo-info">
+                <span class="todo-assignee" style="font-size:10px;">佐藤</span>
+                <span class="todo-due" style="font-size:10px;">3/13</span>
+                <span class="todo-priority high" style="font-size:9px;">高</span>
+              </div>
+            </div>
+          </div>
+          <div class="todo-item" style="padding:8px 14px;">
+            <div class="todo-check"></div>
+            <div class="todo-body">
+              <div class="todo-text" style="font-size:12px;">QAチーム引き継ぎ</div>
+              <div class="todo-info">
+                <span class="todo-assignee" style="font-size:10px;">田中</span>
+                <span class="todo-due" style="font-size:10px;">3/13</span>
+                <span class="todo-priority mid" style="font-size:9px;">中</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="category-header" style="color:#2e7d32; font-size:10px;">✅ 完了 (28) ▶</div>
+        </div>
+        <div class="mobile-bottomnav">
+          <div class="mobile-bottomnav-item"><span class="icon">💬</span>トピック</div>
+          <div class="mobile-bottomnav-item active"><span class="icon">✅</span>TODO</div>
+          <div class="mobile-bottomnav-item"><span class="icon">👤</span>ホーム</div>
+          <div class="mobile-bottomnav-item"><span class="icon">⚙️</span>設定</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:24px; background:#fff; border-radius:10px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+    <h3 style="font-size:14px; margin-bottom:10px;">モバイルジェスチャー操作</h3>
+    <table class="compare-table">
+      <tr><th>操作</th><th>対象</th><th>動作</th></tr>
+      <tr><td>← スワイプ</td><td>トピック</td><td>アーカイブ</td></tr>
+      <tr><td>→ スワイプ</td><td>トピック</td><td>ピン留め / 解除</td></tr>
+      <tr><td>長押し</td><td>トピック</td><td>コンテキストメニュー表示</td></tr>
+      <tr><td>← スワイプ</td><td>TODO</td><td>削除</td></tr>
+      <tr><td>→ スワイプ</td><td>TODO</td><td>完了 / 未完了切替</td></tr>
+      <tr><td>タップ</td><td>TODOのソースラベル</td><td>元のトピック（会議メモ）にジャンプ</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ===== 設計 ===== -->
+<div id="arch" class="section">
+  <h1 class="section-title">設計 — データモデル + API</h1>
+  <p class="section-desc">既存のDynamoDBスキーマを拡張してTODO + トピック管理を実装。</p>
+
+  <h3 style="font-size:15px; margin-bottom:12px;">TODO → 会議メモ連携フロー</h3>
+  <div class="flow-h">
+    <div class="flow-box highlight">
+      <strong>会議終了</strong>
+      AIが自動要約 +<br>アクションアイテム抽出
+    </div>
+    <span class="flow-arr">→</span>
+    <div class="flow-box">
+      <strong>TODO候補表示</strong>
+      ワンクリック or<br>AI指示でTODO化
+    </div>
+    <span class="flow-arr">→</span>
+    <div class="flow-box">
+      <strong>TODO保存</strong>
+      担当者・期日・優先度<br>+ ソーストピックID
+    </div>
+    <span class="flow-arr">→</span>
+    <div class="flow-box highlight">
+      <strong>TODOビュー</strong>
+      横断一覧・フィルタ<br>ソースにジャンプ
+    </div>
+  </div>
+
+  <h3 style="font-size:15px; margin:24px 0 12px;">DynamoDB スキーマ</h3>
+  <table class="compare-table">
+    <tr><th>PK</th><th>SK</th><th>属性</th><th>説明</th></tr>
+    <tr>
+      <td><code>USER#{userId}</code></td>
+      <td><code>TODO#{todoId}</code></td>
+      <td>text, assignee, dueDate, priority, status, sourceThemeId, sourceType</td>
+      <td>TODOアイテム</td>
+    </tr>
+    <tr>
+      <td><code>USER#{userId}</code></td>
+      <td><code>THEME_SESSION#{themeId}</code></td>
+      <td>+ isPinned, isArchived, themeType(chat|meeting), todoCount</td>
+      <td>トピック（既存拡張）</td>
+    </tr>
+  </table>
+
+  <h3 style="font-size:15px; margin:24px 0 12px;">GSI 活用</h3>
+  <table class="compare-table">
+    <tr><th>インデックス</th><th>用途</th></tr>
+    <tr><td>GSI1: <code>userId + dueDate</code></td><td>期限順のTODO一覧取得</td></tr>
+    <tr><td>GSI2: <code>userId + status#priority</code></td><td>ステータス別・優先度順</td></tr>
+  </table>
+
+  <h3 style="font-size:15px; margin:24px 0 12px;">API エンドポイント（新規）</h3>
+  <table class="compare-table">
+    <tr><th>エンドポイント</th><th>メソッド</th><th>説明</th></tr>
+    <tr><td><code>/todos</code></td><td>GET</td><td>TODO一覧（フィルタ: status, dueDate, assignee）</td></tr>
+    <tr><td><code>/todos</code></td><td>POST</td><td>TODO作成（手動 or AI経由）</td></tr>
+    <tr><td><code>/todos/{todoId}</code></td><td>PATCH</td><td>TODO更新（ステータス、優先度、期日変更）</td></tr>
+    <tr><td><code>/todos/{todoId}</code></td><td>DELETE</td><td>TODO削除</td></tr>
+    <tr><td><code>/themes/{themeId}</code></td><td>PATCH</td><td>トピック更新（+isPinned, +isArchived）</td></tr>
+    <tr><td><code>/themes/search</code></td><td>GET</td><td>トピック全文検索（OpenSearch or DDB Scan）</td></tr>
+  </table>
+
+  <h3 style="font-size:15px; margin:24px 0 12px;">LLM Tool Use 拡張</h3>
+  <table class="compare-table">
+    <tr><th>ツール名</th><th>説明</th></tr>
+    <tr><td><code>create_todo</code></td><td>TODOを作成（text, assignee, dueDate, priority）</td></tr>
+    <tr><td><code>list_todos</code></td><td>TODO一覧取得（フィルタ条件指定可）</td></tr>
+    <tr><td><code>update_todo</code></td><td>TODOのステータス・属性変更</td></tr>
+    <tr><td><code>search_topics</code></td><td>過去トピック検索（会議メモ横断参照用）</td></tr>
+  </table>
+
+  <h3 style="font-size:15px; margin:24px 0 12px;">実装フェーズ</h3>
+  <table class="compare-table">
+    <tr><th>Phase</th><th>内容</th><th>規模感</th></tr>
+    <tr><td>1</td><td>トピック整理（ピン留め・アーカイブ・時系列グルーピング・検索）</td><td>フロント中心</td></tr>
+    <tr><td>2</td><td>TODO CRUD + TODO ビュー + ボトムナビ追加</td><td>Lambda 4本 + フロント</td></tr>
+    <tr><td>3</td><td>会議メモ → TODO連携（AI自動抽出 + ワンクリック変換）</td><td>LLM Tool Use 拡張</td></tr>
+    <tr><td>4</td><td>AI自然言語TODO操作（「完了にして」「期限変更して」等）</td><td>LLM Tool Use 拡張</td></tr>
+  </table>
+</div>
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>

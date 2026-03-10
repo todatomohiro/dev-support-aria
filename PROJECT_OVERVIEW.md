@@ -1054,3 +1054,5 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 | Chrome 拡張 | 10ファイル |
 | 型定義ファイル | 10個 |
 | 対応プラットフォーム | 3種（Web / Tauri / Capacitor iOS） |
+
+

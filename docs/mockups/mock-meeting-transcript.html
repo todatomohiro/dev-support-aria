@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>会議トランスクリプト UI モックアップ</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  /* ナビゲーション */
+  .nav { display: flex; justify-content: center; gap: 12px; padding: 16px; background: #1a1a2e; position: sticky; top: 0; z-index: 100; flex-wrap: wrap; }
+  .nav button { padding: 8px 20px; border: 2px solid #6c63ff; background: transparent; color: #fff; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
+  .nav button.active { background: #6c63ff; }
+  .nav button:hover { background: #5a52d5; color: #fff; }
+
+  .section { display: none; max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .section.active { display: block; }
+  .section-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 13px; color: #666; margin-bottom: 20px; line-height: 1.7; }
+
+  /* ========================================
+     共通チャットスタイル
+     ======================================== */
+  .app-frame { height: 680px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); background: #fff; display: flex; }
+
+  /* サイドバー */
+  .sidebar { width: 260px; background: #f8f9fa; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-header { padding: 14px 16px; border-bottom: 1px solid #e0e0e0; font-size: 14px; font-weight: 700; }
+  .sidebar-list { flex: 1; overflow-y: auto; }
+  .sidebar-item { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.15s; }
+  .sidebar-item:hover { background: #e8e8ff; }
+  .sidebar-item.active { background: #6c63ff; color: #fff; }
+  .sidebar-item .title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .sidebar-item .meta { font-size: 11px; color: #999; margin-top: 3px; }
+  .sidebar-item.active .meta { color: rgba(255,255,255,0.7); }
+
+  /* メインエリア */
+  .main-area { flex: 1; display: flex; flex-direction: column; }
+
+  /* ヘッダー */
+  .main-header { padding: 12px 20px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+  .main-header h2 { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-live { background: #fee; color: #e53935; animation: pulse 2s infinite; }
+  .badge-done { background: #e8f5e9; color: #2e7d32; }
+  .badge-topic { background: #e8e8ff; color: #6c63ff; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  /* チャットメッセージ */
+  .chat-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; }
+  .msg { margin-bottom: 14px; }
+  .msg-user { display: flex; justify-content: flex-end; }
+  .msg-ai { display: flex; justify-content: flex-start; }
+  .bubble { max-width: 75%; padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.7; }
+  .bubble-user { background: #6c63ff; color: #fff; border-bottom-right-radius: 4px; }
+  .bubble-ai { background: #f0f0f0; border-bottom-left-radius: 4px; }
+
+  /* 字幕ブロック */
+  .transcript-block { background: #f8f9ff; border: 1px solid #e0e0ff; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; }
+  .transcript-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; color: #6c63ff; font-weight: 600; }
+  .transcript-header .icon { font-size: 16px; }
+  .transcript-line { display: flex; gap: 8px; margin-bottom: 6px; font-size: 13px; line-height: 1.6; }
+  .transcript-line .speaker { color: #6c63ff; font-weight: 600; white-space: nowrap; min-width: 60px; }
+  .transcript-line .text { color: #333; }
+  .transcript-line .time { color: #aaa; font-size: 11px; white-space: nowrap; margin-left: auto; }
+  .transcript-line.streaming .text { border-right: 2px solid #6c63ff; animation: blink 1s infinite; }
+  @keyframes blink { 0%, 100% { border-color: #6c63ff; } 50% { border-color: transparent; } }
+
+  /* 字幕区切り線 */
+  .transcript-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; font-size: 11px; color: #aaa; }
+  .transcript-divider::before, .transcript-divider::after { content: ''; flex: 1; height: 1px; background: #e0e0e0; }
+
+  /* 入力エリア */
+  .input-area { padding: 12px 16px; border-top: 1px solid #e0e0e0; display: flex; gap: 8px; align-items: center; }
+  .input-area input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; outline: none; }
+  .input-area input:focus { border-color: #6c63ff; }
+  .input-area button { padding: 10px 14px; background: #6c63ff; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .input-hint { font-size: 11px; color: #aaa; padding: 0 16px 8px; }
+
+  /* ステータスバー（会議中インジケータ） */
+  .meeting-bar { background: linear-gradient(90deg, #6c63ff, #e53935); color: #fff; padding: 6px 16px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+  .meeting-bar .dot { width: 8px; height: 8px; background: #fff; border-radius: 50%; animation: pulse 1.5s infinite; }
+
+  /* 要約カード */
+  .summary-card { background: linear-gradient(135deg, #f0f0ff, #e8f5e9); border: 1px solid #d0d0ff; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .summary-card h4 { font-size: 13px; font-weight: 700; color: #6c63ff; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .summary-card ul { font-size: 13px; line-height: 1.8; color: #333; padding-left: 20px; }
+  .summary-card .action-items { margin-top: 10px; padding-top: 10px; border-top: 1px solid #d0d0ff; }
+  .summary-card .action-items h5 { font-size: 12px; color: #e53935; font-weight: 600; margin-bottom: 4px; }
+
+  /* モバイルフレーム */
+  .mobile-frame { width: 375px; height: 700px; margin: 0 auto; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.12); background: #fff; display: flex; flex-direction: column; border: 6px solid #1a1a2e; }
+  .mobile-status { background: #1a1a2e; color: #fff; padding: 6px 16px; font-size: 10px; display: flex; justify-content: space-between; }
+  .mobile-header { padding: 10px 14px; border-bottom: 1px solid #e0e0e0; display: flex; align-items: center; gap: 10px; }
+  .mobile-header .back { font-size: 18px; cursor: pointer; color: #6c63ff; }
+  .mobile-header h2 { font-size: 14px; font-weight: 700; flex: 1; }
+
+  /* フローチャート */
+  .flow { display: flex; flex-direction: column; gap: 0; align-items: center; margin: 20px 0; }
+  .flow-step { background: #fff; border: 2px solid #e0e0e0; border-radius: 10px; padding: 14px 20px; width: 320px; text-align: center; font-size: 13px; line-height: 1.6; position: relative; }
+  .flow-step.highlight { border-color: #6c63ff; background: #f8f8ff; }
+  .flow-step .step-num { position: absolute; left: -12px; top: -12px; background: #6c63ff; color: #fff; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .flow-arrow { font-size: 20px; color: #ccc; padding: 4px 0; }
+
+  /* 比較テーブル */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  .compare-table th { background: #f8f9fa; padding: 10px 14px; text-align: left; border-bottom: 2px solid #e0e0e0; }
+  .compare-table td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; }
+  .compare-table tr:hover { background: #f8f8ff; }
+</style>
+</head>
+<body>
+
+<!-- ナビゲーション -->
+<div class="nav">
+  <button class="active" onclick="showSection('flow')">全体フロー</button>
+  <button onclick="showSection('pc-live')">PC: 会議中</button>
+  <button onclick="showSection('pc-summary')">PC: AI要約</button>
+  <button onclick="showSection('pc-done')">PC: 会議終了後</button>
+  <button onclick="showSection('mobile')">モバイル</button>
+  <button onclick="showSection('arch')">アーキテクチャ</button>
+</div>
+
+<!-- ===== セクション: 全体フロー ===== -->
+<div id="flow" class="section active">
+  <h1 class="section-title">会議トランスクリプト — 全体フロー</h1>
+  <p class="section-desc">
+    拡張機能が字幕を検出すると自動的にトピックが作成され、字幕が随時反映されます。<br>
+    会議中いつでもAIに指示（要約・質問・翻訳など）を送ることができます。
+  </p>
+
+  <div class="flow">
+    <div class="flow-step highlight">
+      <div class="step-num">1</div>
+      <strong>拡張機能が字幕検出</strong><br>
+      Meet/Teams/Zoom で会議開始 → RTC/WS フックが字幕を捕捉
+    </div>
+    <div class="flow-arrow">▼</div>
+    <div class="flow-step highlight">
+      <div class="step-num">2</div>
+      <strong>自動トピック作成</strong><br>
+      拡張機能 → API（ペアリングトークン）→ 会議トピック自動生成<br>
+      <span style="color:#6c63ff">「📋 週次定例 — 2026/03/09 10:00」</span>
+    </div>
+    <div class="flow-arrow">▼</div>
+    <div class="flow-step">
+      <div class="step-num">3</div>
+      <strong>字幕ストリーミング</strong><br>
+      30秒ごとにバッチ送信 → トピック内に字幕ブロックとして表示<br>
+      通常チャットとは視覚的に区別
+    </div>
+    <div class="flow-arrow">▼</div>
+    <div class="flow-step">
+      <div class="step-num">4</div>
+      <strong>会議中 AI 指示</strong><br>
+      ユーザーがいつでも「ここまでまとめて」「この議題の要点は？」など入力可能<br>
+      AIは字幕コンテキストを踏まえて回答
+    </div>
+    <div class="flow-arrow">▼</div>
+    <div class="flow-step">
+      <div class="step-num">5</div>
+      <strong>会議終了 → 最終要約</strong><br>
+      拡張機能が会議終了を検出 → 残りの字幕を送信<br>
+      AIが自動で全体要約 + アクションアイテム抽出
+    </div>
+  </div>
+
+  <h3 style="margin: 24px 0 12px; font-size: 15px;">字幕の表示形式</h3>
+  <table class="compare-table">
+    <tr><th>要素</th><th>表示</th><th>説明</th></tr>
+    <tr><td>字幕ブロック</td><td>青枠カード</td><td>通常チャットと区別。話者名 + タイムスタンプ付き</td></tr>
+    <tr><td>ユーザー発言</td><td>右側バブル（紫）</td><td>AIへの指示（通常チャットと同じ）</td></tr>
+    <tr><td>AI回答</td><td>左側バブル（グレー）</td><td>字幕を踏まえた回答・要約</td></tr>
+    <tr><td>要約カード</td><td>グラデーションカード</td><td>箇条書き + アクションアイテム</td></tr>
+    <tr><td>会議ステータス</td><td>上部バー（赤グラデ）</td><td>録音中/終了の状態表示</td></tr>
+  </table>
+</div>
+
+<!-- ===== セクション: PC 会議中 ===== -->
+<div id="pc-live" class="section">
+  <h1 class="section-title">PC: 会議中のリアルタイム表示</h1>
+  <p class="section-desc">
+    字幕は青枠のブロックとしてチャット内に流れ込みます。途中でAIに指示を出すと、字幕コンテキストを踏まえて回答します。
+  </p>
+
+  <div class="app-frame">
+    <!-- サイドバー -->
+    <div class="sidebar">
+      <div class="sidebar-header">トピック</div>
+      <div class="sidebar-list">
+        <div class="sidebar-item active">
+          <div class="title">📋 週次定例 — 03/09 10:00</div>
+          <div class="meta">🔴 会議中 — Google Meet</div>
+        </div>
+        <div class="sidebar-item">
+          <div class="title">💬 明日の予定について</div>
+          <div class="meta">10分前</div>
+        </div>
+        <div class="sidebar-item">
+          <div class="title">📋 プロジェクトレビュー</div>
+          <div class="meta">昨日 — 会議メモ</div>
+        </div>
+        <div class="sidebar-item">
+          <div class="title">💬 ランチのおすすめ</div>
+          <div class="meta">3日前</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- メインエリア -->
+    <div class="main-area">
+      <!-- 会議中バー -->
+      <div class="meeting-bar">
+        <div class="dot"></div>
+        <span>会議を記録中 — Google Meet（週次定例）</span>
+        <span style="margin-left:auto; font-size:11px;">00:12:34</span>
+      </div>
+
+      <div class="main-header">
+        <h2>📋 週次定例 — 03/09 10:00 <span class="badge badge-live">🔴 LIVE</span></h2>
+      </div>
+
+      <div class="chat-scroll">
+        <!-- AI自動メッセージ -->
+        <div class="msg msg-ai">
+          <div class="bubble bubble-ai">
+            会議の記録を開始しました。字幕を自動で記録しています。<br>
+            会議中いつでも「まとめて」「要点は？」などの指示を送れます。
+          </div>
+        </div>
+
+        <!-- 字幕ブロック 1 -->
+        <div class="transcript-block">
+          <div class="transcript-header">
+            <span class="icon">🎙️</span> 字幕 — 10:00〜10:03
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">田中</span>
+            <span class="text">おはようございます。では定例を始めましょう。まず先週のアクションアイテムの確認からいきます。</span>
+            <span class="time">10:00</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">佐藤</span>
+            <span class="text">はい。先週の件ですが、API の改修は完了しました。テスト環境にデプロイ済みです。</span>
+            <span class="time">10:01</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">田中</span>
+            <span class="text">ありがとうございます。レビューはいつ頃お願いできますか？</span>
+            <span class="time">10:02</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">鈴木</span>
+            <span class="text">今日の午後に見ます。テストケースも追加しておきます。</span>
+            <span class="time">10:03</span>
+          </div>
+        </div>
+
+        <!-- 字幕ブロック 2 -->
+        <div class="transcript-block">
+          <div class="transcript-header">
+            <span class="icon">🎙️</span> 字幕 — 10:03〜10:07
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">田中</span>
+            <span class="text">次の議題です。新機能のリリーススケジュールについて。鈴木さん、お願いします。</span>
+            <span class="time">10:03</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">鈴木</span>
+            <span class="text">はい。現状、フロントエンドの実装が80%完了しています。来週の水曜日にはステージングにデプロイできる見込みです。</span>
+            <span class="time">10:04</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">佐藤</span>
+            <span class="text">バックエンド側は準備できています。ただ、負荷テストがまだなので、木曜日にやりたいです。</span>
+            <span class="time">10:05</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">田中</span>
+            <span class="text">了解です。では金曜日にQAに渡して、来週末にリリース判定というスケジュールでいきましょう。</span>
+            <span class="time">10:06</span>
+          </div>
+        </div>
+
+        <!-- 字幕ブロック 3（ストリーミング中） -->
+        <div class="transcript-block" style="border-color: #6c63ff; border-style: dashed;">
+          <div class="transcript-header">
+            <span class="icon">🎙️</span> 字幕 — 10:07〜 <span style="color:#e53935; font-size:11px;">● 受信中</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">鈴木</span>
+            <span class="text">あと一点、デザインチームからフィードバックが来ていて…</span>
+            <span class="time">10:07</span>
+          </div>
+          <div class="transcript-line streaming">
+            <span class="speaker">鈴木</span>
+            <span class="text">ダッシュボードのグラフの色味を変えたいという話が</span>
+            <span class="time">now</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-hint">💡 会議中のAI指示例: 「ここまでの要点をまとめて」「リリーススケジュールを整理して」</div>
+      <div class="input-area">
+        <input type="text" placeholder="AIに指示を送る（字幕の内容を踏まえて回答します）" />
+        <button>送信</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== セクション: PC AI要約 ===== -->
+<div id="pc-summary" class="section">
+  <h1 class="section-title">PC: 会議中のAI要約指示</h1>
+  <p class="section-desc">
+    会議中にユーザーが「ここまでまとめて」と指示した場合のやり取り。字幕と通常チャットが自然に混在します。
+  </p>
+
+  <div class="app-frame">
+    <div class="sidebar">
+      <div class="sidebar-header">トピック</div>
+      <div class="sidebar-list">
+        <div class="sidebar-item active">
+          <div class="title">📋 週次定例 — 03/09 10:00</div>
+          <div class="meta">🔴 会議中 — Google Meet</div>
+        </div>
+        <div class="sidebar-item">
+          <div class="title">💬 明日の予定について</div>
+          <div class="meta">10分前</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-area">
+      <div class="meeting-bar">
+        <div class="dot"></div>
+        <span>会議を記録中 — Google Meet（週次定例）</span>
+        <span style="margin-left:auto; font-size:11px;">00:18:45</span>
+      </div>
+
+      <div class="main-header">
+        <h2>📋 週次定例 — 03/09 10:00 <span class="badge badge-live">🔴 LIVE</span></h2>
+      </div>
+
+      <div class="chat-scroll">
+        <!-- 字幕ブロック（折りたたみ表現） -->
+        <div class="transcript-block" style="opacity: 0.6;">
+          <div class="transcript-header">
+            <span class="icon">🎙️</span> 字幕 — 10:00〜10:07（14発言）
+            <span style="margin-left:auto; font-size:11px; cursor:pointer;">▼ 展開</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker" style="color:#999;">...</span>
+            <span class="text" style="color:#999;">API改修完了報告 → リリーススケジュール議論 → QA計画</span>
+          </div>
+        </div>
+
+        <!-- 字幕ブロック 2 -->
+        <div class="transcript-block">
+          <div class="transcript-header">
+            <span class="icon">🎙️</span> 字幕 — 10:07〜10:12
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">鈴木</span>
+            <span class="text">ダッシュボードのデザイン変更について、デザインチームからの要望を共有します。</span>
+            <span class="time">10:07</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">佐藤</span>
+            <span class="text">色味の変更だけなら、CSS変数で対応できますね。工数は半日くらいです。</span>
+            <span class="time">10:09</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">田中</span>
+            <span class="text">それなら今週中にお願いしたいです。リリースに含められますか？</span>
+            <span class="time">10:11</span>
+          </div>
+        </div>
+
+        <!-- ユーザー指示 -->
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">ここまでの内容をまとめて</div>
+        </div>
+
+        <!-- AI要約 -->
+        <div class="summary-card">
+          <h4>📝 会議の中間まとめ（10:00〜10:12）</h4>
+          <ul>
+            <li><strong>API改修</strong>: 佐藤さんが完了・テスト環境デプロイ済み。鈴木さんが本日午後レビュー予定</li>
+            <li><strong>リリーススケジュール</strong>: フロント80%完了 → 水曜ステージング → 木曜負荷テスト → 金曜QA → 来週末リリース判定</li>
+            <li><strong>デザイン変更</strong>: ダッシュボード色味変更。CSS変数で半日対応 → 今週中にリリースに含める方向</li>
+          </ul>
+          <div class="action-items">
+            <h5>📌 アクションアイテム</h5>
+            <ul>
+              <li>鈴木: API改修レビュー（本日午後）</li>
+              <li>佐藤: 負荷テスト実施（木曜）</li>
+              <li>佐藤: ダッシュボード色味変更（今週中）</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 続きの字幕 -->
+        <div class="transcript-block" style="border-color: #6c63ff; border-style: dashed;">
+          <div class="transcript-header">
+            <span class="icon">🎙️</span> 字幕 — 10:13〜 <span style="color:#e53935; font-size:11px;">● 受信中</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">田中</span>
+            <span class="text">では次の議題、来月のスプリント計画に移りましょう。</span>
+            <span class="time">10:13</span>
+          </div>
+          <div class="transcript-line streaming">
+            <span class="speaker">鈴木</span>
+            <span class="text">来月はユーザー管理画面のリニューアルを</span>
+            <span class="time">now</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <input type="text" placeholder="AIに指示を送る..." />
+        <button>送信</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== セクション: PC 会議終了後 ===== -->
+<div id="pc-done" class="section">
+  <h1 class="section-title">PC: 会議終了後の表示</h1>
+  <p class="section-desc">
+    会議終了時にAIが自動で全体要約を生成。トピックは通常のトピックとして残り、後から参照・追加質問が可能です。
+  </p>
+
+  <div class="app-frame">
+    <div class="sidebar">
+      <div class="sidebar-header">トピック</div>
+      <div class="sidebar-list">
+        <div class="sidebar-item">
+          <div class="title">💬 午後の作業相談</div>
+          <div class="meta">5分前</div>
+        </div>
+        <div class="sidebar-item active">
+          <div class="title">📋 週次定例 — 03/09 10:00</div>
+          <div class="meta">✅ 完了 — 45分</div>
+        </div>
+        <div class="sidebar-item">
+          <div class="title">📋 プロジェクトレビュー</div>
+          <div class="meta">昨日 — 会議メモ</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-area">
+      <div class="main-header">
+        <h2>📋 週次定例 — 03/09 10:00 <span class="badge badge-done">✅ 完了</span></h2>
+        <div style="display:flex; gap:8px;">
+          <button style="padding:6px 12px; border:1px solid #ddd; background:#fff; border-radius:6px; font-size:12px; cursor:pointer;">📄 エクスポート</button>
+          <button style="padding:6px 12px; border:1px solid #ddd; background:#fff; border-radius:6px; font-size:12px; cursor:pointer;">🔗 共有</button>
+        </div>
+      </div>
+
+      <div class="chat-scroll">
+        <!-- 会議メタ情報 -->
+        <div style="background:#f8f9fa; border-radius:10px; padding:14px 16px; margin-bottom:14px; font-size:13px;">
+          <div style="display:flex; gap:20px; flex-wrap:wrap;">
+            <div><strong>プラットフォーム:</strong> Google Meet</div>
+            <div><strong>時間:</strong> 10:00〜10:45（45分）</div>
+            <div><strong>参加者:</strong> 田中、佐藤、鈴木</div>
+            <div><strong>発言数:</strong> 42件</div>
+          </div>
+        </div>
+
+        <!-- AI自動要約 -->
+        <div class="summary-card">
+          <h4>📝 会議の全体要約（自動生成）</h4>
+          <ul>
+            <li><strong>API改修</strong>: 完了・デプロイ済み → 本日午後レビュー → テストケース追加</li>
+            <li><strong>新機能リリース</strong>: 水曜ステージング → 木曜負荷テスト → 金曜QA → 来週末リリース判定</li>
+            <li><strong>デザイン変更</strong>: ダッシュボード色味変更（CSS変数、半日）→ 今週中対応</li>
+            <li><strong>スプリント計画</strong>: 来月はユーザー管理画面リニューアル。デザイン先行で来週からモック作成</li>
+          </ul>
+          <div class="action-items">
+            <h5>📌 アクションアイテム</h5>
+            <ul>
+              <li>鈴木: API改修レビュー + テストケース追加（3/9 午後）</li>
+              <li>佐藤: 負荷テスト実施（3/12 木曜）</li>
+              <li>佐藤: ダッシュボード色味変更（3/13 金曜まで）</li>
+              <li>鈴木: ユーザー管理画面モック作成（来週〜）</li>
+              <li>田中: QAチームへの引き継ぎ（3/13 金曜）</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 折りたたみ字幕 -->
+        <div class="transcript-block" style="opacity:0.7; cursor:pointer;">
+          <div class="transcript-header">
+            <span class="icon">🎙️</span> 全字幕ログ（42発言）
+            <span style="margin-left:auto; font-size:11px;">▶ 展開して表示</span>
+          </div>
+        </div>
+
+        <div class="transcript-divider">会議終了 10:45</div>
+
+        <!-- 会議後の追加質問 -->
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">鈴木さんのアクションアイテムだけ抜き出して</div>
+        </div>
+
+        <div class="msg msg-ai">
+          <div class="bubble bubble-ai">
+            鈴木さんのアクションアイテムです：<br><br>
+            1. <strong>API改修レビュー + テストケース追加</strong> — 本日（3/9）午後<br>
+            2. <strong>ユーザー管理画面モック作成</strong> — 来週から着手<br><br>
+            何か追加で確認したいことはありますか？
+          </div>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <input type="text" placeholder="会議内容について質問する..." />
+        <button>送信</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== セクション: モバイル ===== -->
+<div id="mobile" class="section">
+  <h1 class="section-title">モバイル: 会議メモ閲覧</h1>
+  <p class="section-desc">
+    モバイルでは会議後の閲覧・追加質問がメインユースケース。拡張機能はPCで動作するため、モバイルは閲覧に特化。
+  </p>
+
+  <div style="display:flex; gap:24px; flex-wrap:wrap; justify-content:center;">
+    <!-- モバイル: トピック一覧 -->
+    <div>
+      <h3 style="text-align:center; font-size:14px; margin-bottom:12px; color:#666;">トピック一覧</h3>
+      <div class="mobile-frame">
+        <div class="mobile-status">
+          <span>9:41</span>
+          <span>📶 🔋</span>
+        </div>
+        <div class="mobile-header">
+          <h2>トピック</h2>
+        </div>
+        <div style="flex:1; overflow-y:auto;">
+          <div class="sidebar-item">
+            <div class="title">💬 午後の作業相談</div>
+            <div class="meta">5分前</div>
+          </div>
+          <div class="sidebar-item" style="background:#f0f0ff;">
+            <div class="title">📋 週次定例 — 03/09 10:00</div>
+            <div class="meta" style="color:#2e7d32;">✅ 完了 — 45分 — 42発言</div>
+          </div>
+          <div class="sidebar-item">
+            <div class="title">📋 プロジェクトレビュー</div>
+            <div class="meta">昨日 — 会議メモ</div>
+          </div>
+          <div class="sidebar-item">
+            <div class="title">💬 ランチのおすすめ</div>
+            <div class="meta">3日前</div>
+          </div>
+          <div class="sidebar-item">
+            <div class="title">💬 天気の話</div>
+            <div class="meta">4日前</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- モバイル: 会議メモ詳細 -->
+    <div>
+      <h3 style="text-align:center; font-size:14px; margin-bottom:12px; color:#666;">会議メモ詳細</h3>
+      <div class="mobile-frame">
+        <div class="mobile-status">
+          <span>9:41</span>
+          <span>📶 🔋</span>
+        </div>
+        <div class="mobile-header">
+          <span class="back">←</span>
+          <h2>週次定例</h2>
+          <span style="font-size:12px; color:#2e7d32;">✅</span>
+        </div>
+        <div style="flex:1; overflow-y:auto; padding:12px;">
+          <div style="background:#f8f9fa; border-radius:8px; padding:10px 12px; margin-bottom:10px; font-size:12px;">
+            <div>🕐 10:00〜10:45（45分）</div>
+            <div>👥 田中、佐藤、鈴木</div>
+          </div>
+
+          <div class="summary-card" style="font-size:12px;">
+            <h4 style="font-size:12px;">📝 要約</h4>
+            <ul style="font-size:12px; line-height:1.7;">
+              <li><strong>API改修</strong>: 完了 → 本日レビュー</li>
+              <li><strong>リリース</strong>: 来週末判定</li>
+              <li><strong>デザイン変更</strong>: 今週中</li>
+            </ul>
+            <div class="action-items" style="font-size:12px;">
+              <h5 style="font-size:11px;">📌 TODO</h5>
+              <ul style="font-size:12px;">
+                <li>鈴木: レビュー（本日）</li>
+                <li>佐藤: 負荷テスト（木曜）</li>
+                <li>佐藤: 色味変更（金曜）</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="msg msg-user" style="margin-bottom:8px;">
+            <div class="bubble bubble-user" style="font-size:12px;">次回までに準備することは？</div>
+          </div>
+          <div class="msg msg-ai">
+            <div class="bubble bubble-ai" style="font-size:12px;">
+              次回までの準備事項です：<br>
+              1. API レビュー結果の共有<br>
+              2. 負荷テスト結果の報告<br>
+              3. デザイン変更の確認
+            </div>
+          </div>
+        </div>
+        <div class="input-area" style="padding:8px 10px;">
+          <input type="text" placeholder="質問する..." style="font-size:12px; padding:8px;" />
+          <button style="font-size:12px; padding:8px 12px;">送信</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== セクション: アーキテクチャ ===== -->
+<div id="arch" class="section">
+  <h1 class="section-title">アーキテクチャ</h1>
+  <p class="section-desc">拡張機能 → API → Ai-Baアプリ のデータフロー</p>
+
+  <div style="background:#fff; border-radius:12px; padding:24px; box-shadow:0 2px 12px rgba(0,0,0,0.08); font-family:monospace; font-size:13px; line-height:2; overflow-x:auto;">
+<pre style="margin:0;">
+┌─────────────────────────────────────────────────────────────────────┐
+│  Chrome 拡張機能（Ai-Ba Tools）                                      │
+│                                                                     │
+│  meet-rtc-hook.js ─┐                                               │
+│  teams-rtc-hook.js ─┼→ tool-noter.js ─→ 字幕蓄積（メモリ内）         │
+│  zoom-hook.js ─────┘        │                                       │
+│                             ├→ 30秒バッチ ─→ REST API 送信           │
+│                             └→ 会議終了   ─→ 最終バッチ送信           │
+│                                                                     │
+│  popup.js: ペアリングコード入力 → トークン取得・保存                   │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │ REST API（ペアリングトークン認証）
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  AWS バックエンド                                                    │
+│                                                                     │
+│  POST /meeting/start                                                │
+│    → トピック自動作成（THEME_SESSION）                                │
+│    → WebSocket で Ai-Ba アプリに通知                                 │
+│                                                                     │
+│  POST /meeting/transcript                                           │
+│    → 字幕バッチ保存（MSG# として保存）                                │
+│    → WebSocket で Ai-Ba アプリにリアルタイム配信                      │
+│                                                                     │
+│  POST /meeting/end                                                  │
+│    → 最終字幕保存                                                    │
+│    → LLM 要約生成（非同期）→ 要約メッセージとして保存                 │
+│                                                                     │
+│  POST /llm/chat（既存）                                              │
+│    → themeId 指定 → 字幕コンテキストを含めて回答                      │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │ WebSocket
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Ai-Ba アプリ（フロントエンド）                                      │
+│                                                                     │
+│  WebSocket 受信:                                                    │
+│    meeting_started  → トピック自動追加 + 自動切替                     │
+│    transcript_chunk → 字幕ブロックをチャットに追加                    │
+│    meeting_ended    → ステータス更新 + 要約表示                      │
+│                                                                     │
+│  ユーザー操作:                                                      │
+│    通常チャット入力 → /llm/chat（字幕コンテキスト付き）               │
+│    エクスポート     → 全文 + 要約をテキスト/PDF出力                   │
+└─────────────────────────────────────────────────────────────────────┘
+
+ペアリングフロー:
+  [Ai-Baアプリ] 設定 → 連携コード生成 → 「482931」表示（5分有効）
+  [拡張機能]    popup → コード入力 → POST /extension/pair → トークン取得
+  [以降]        全 API に Authorization: Bearer {token} を付与
+</pre>
+  </div>
+
+  <h3 style="margin:24px 0 12px; font-size:15px;">API エンドポイント（新規）</h3>
+  <table class="compare-table">
+    <tr><th>エンドポイント</th><th>メソッド</th><th>説明</th></tr>
+    <tr><td><code>/extension/pair</code></td><td>POST</td><td>ペアリングコード検証 → トークン発行</td></tr>
+    <tr><td><code>/extension/generate-code</code></td><td>POST</td><td>ペアリングコード生成（Cognito認証）</td></tr>
+    <tr><td><code>/meeting/start</code></td><td>POST</td><td>会議開始 → トピック自動作成</td></tr>
+    <tr><td><code>/meeting/transcript</code></td><td>POST</td><td>字幕バッチ送信（30秒ごと）</td></tr>
+    <tr><td><code>/meeting/end</code></td><td>POST</td><td>会議終了 → 最終要約生成</td></tr>
+  </table>
+
+  <h3 style="margin:24px 0 12px; font-size:15px;">DynamoDB スキーマ（追加）</h3>
+  <table class="compare-table">
+    <tr><th>PK</th><th>SK</th><th>説明</th></tr>
+    <tr><td><code>PAIR#{code}</code></td><td><code>CODE</code></td><td>ペアリングコード（TTL 5分）</td></tr>
+    <tr><td><code>EXT_TOKEN#{token}</code></td><td><code>META</code></td><td>拡張機能トークン → userId マッピング</td></tr>
+    <tr><td><code>USER#{userId}#THEME#{themeId}</code></td><td><code>TRANSCRIPT#{timestamp}</code></td><td>字幕バッチデータ</td></tr>
+  </table>
+</div>
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>

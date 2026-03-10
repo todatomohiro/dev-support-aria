@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '@/auth/authStore'
 import { useAppStore } from '@/stores/appStore'
 import { briefingService } from '@/services/briefingService'
@@ -13,61 +13,48 @@ const POLL_INTERVAL_MS = 30 * 60 * 1000
  * - 認証完了時: 条件を満たせばブリーフィングを自動実行
  * - visibilitychange: バックグラウンド復帰時にチェック
  * - setInterval: 開きっぱなし対応（30分ごと）
+ *
+ * tryBriefing を1箇所に統合し、triggeredRef で実行中の重複を防止する。
  */
 export function useBriefing() {
+  /** ブリーフィング実行中フラグ（trueの間は新たなトリガーをブロック） */
   const triggeredRef = useRef(false)
   const authStatus = useAuthStore((s) => s.status)
 
+  const tryBriefing = useCallback(() => {
+    // 実行中は新たなトリガーをブロック
+    if (triggeredRef.current) return
+
+    const currentAuth = useAuthStore.getState().status
+    const { isLoading } = useAppStore.getState()
+
+    console.log(`[Briefing] チェック: auth=${currentAuth}, loading=${isLoading}, shouldTrigger=${briefingService.shouldTrigger()}`)
+
+    if (currentAuth !== 'authenticated') return
+    if (isLoading) return
+    if (!briefingService.shouldTrigger()) return
+
+    // markTriggered を先に呼び、メモリキャッシュで即座に重複をブロック
+    briefingService.markTriggered()
+    triggeredRef.current = true
+    console.log('[Briefing] トリガー実行')
+
+    const { currentLocation } = useAppStore.getState()
+    chatController.requestBriefing(currentLocation ?? undefined).finally(() => {
+      triggeredRef.current = false
+    })
+  }, [])
+
+  // 認証済みになったら少し待ってからトリガー
   useEffect(() => {
-    const tryBriefing = () => {
-      if (triggeredRef.current) return
-
-      const currentAuth = useAuthStore.getState().status
-      const { isLoading } = useAppStore.getState()
-
-      console.log(`[Briefing] チェック: auth=${currentAuth}, loading=${isLoading}, shouldTrigger=${briefingService.shouldTrigger()}`)
-
-      if (currentAuth !== 'authenticated') return
-      if (isLoading) return
-      if (!briefingService.shouldTrigger()) return
-
-      console.log('[Briefing] トリガー実行')
-      triggeredRef.current = true
-      briefingService.markTriggered()
-
-      const { currentLocation } = useAppStore.getState()
-      chatController.requestBriefing(currentLocation ?? undefined).finally(() => {
-        triggeredRef.current = false
-      })
-    }
-
-    // 認証済みになったら少し待ってからトリガー
     if (authStatus === 'authenticated') {
       const initTimer = setTimeout(tryBriefing, 3000)
       return () => clearTimeout(initTimer)
     }
-  }, [authStatus])
+  }, [authStatus, tryBriefing])
 
-  // visibilitychange + ポーリング（認証状態に依存しない）
+  // visibilitychange + ポーリング
   useEffect(() => {
-    const tryBriefing = () => {
-      if (triggeredRef.current) return
-      const currentAuth = useAuthStore.getState().status
-      const { isLoading } = useAppStore.getState()
-      if (currentAuth !== 'authenticated') return
-      if (isLoading) return
-      if (!briefingService.shouldTrigger()) return
-
-      console.log('[Briefing] トリガー実行（復帰/ポーリング）')
-      triggeredRef.current = true
-      briefingService.markTriggered()
-
-      const { currentLocation } = useAppStore.getState()
-      chatController.requestBriefing(currentLocation ?? undefined).finally(() => {
-        triggeredRef.current = false
-      })
-    }
-
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         setTimeout(tryBriefing, 1000)
@@ -81,5 +68,5 @@ export function useBriefing() {
       clearInterval(pollTimer)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [])
+  }, [tryBriefing])
 }

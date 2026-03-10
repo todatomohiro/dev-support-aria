@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>プライベートモード + 選択的記憶 モックアップ</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  .nav { display: flex; justify-content: center; gap: 10px; padding: 14px; background: #1a1a2e; position: sticky; top: 0; z-index: 100; flex-wrap: wrap; }
+  .nav button { padding: 8px 18px; border: 2px solid #6c63ff; background: transparent; color: #fff; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+  .nav button.active { background: #6c63ff; }
+  .nav button:hover { background: #5a52d5; color: #fff; }
+
+  .section { display: none; max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .section.active { display: block; }
+  .section-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 13px; color: #666; margin-bottom: 20px; line-height: 1.7; }
+
+  .app-frame { height: 700px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); background: #fff; display: flex; }
+
+  /* サイドバー */
+  .sidebar { width: 280px; background: #f8f9fa; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-header { padding: 14px 16px; border-bottom: 1px solid #e0e0e0; font-size: 14px; font-weight: 700; }
+  .sidebar-list { flex: 1; overflow-y: auto; }
+  .topic-item { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.15s; display: flex; gap: 10px; align-items: flex-start; }
+  .topic-item:hover { background: #e8e8ff; }
+  .topic-item.active { background: #6c63ff; color: #fff; }
+  .topic-item.active .topic-meta { color: rgba(255,255,255,0.7); }
+  .topic-item.active .topic-tag { background: rgba(255,255,255,0.2); color: #fff; }
+  .topic-item.private { border-left: 3px solid #78909c; }
+  .topic-item.private.active { background: #546e7a; }
+  .topic-icon { font-size: 18px; flex-shrink: 0; margin-top: 2px; }
+  .topic-content { flex: 1; min-width: 0; }
+  .topic-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topic-meta { font-size: 11px; color: #999; margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+  .topic-tag { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
+  .topic-tag.meeting { background: #fff3e0; color: #e65100; }
+  .topic-tag.private { background: #eceff1; color: #546e7a; }
+  .topic-tag.learning { background: #e8f5e9; color: #2e7d32; }
+  .category-header { padding: 8px 14px; font-size: 11px; font-weight: 700; color: #999; letter-spacing: 0.5px; background: #f0f0f0; }
+
+  /* メインエリア */
+  .main-area { flex: 1; display: flex; flex-direction: column; }
+  .main-header { padding: 12px 20px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+  .main-header h2 { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+
+  /* プライベートモードバー */
+  .private-bar { background: #546e7a; color: #fff; padding: 8px 16px; font-size: 12px; display: flex; align-items: center; gap: 10px; }
+  .private-bar .icon { font-size: 16px; }
+  .private-bar .desc { flex: 1; }
+  .private-bar .toggle-area { display: flex; align-items: center; gap: 8px; }
+
+  /* 通常モードバー */
+  .learning-bar { background: linear-gradient(90deg, #e8f5e9, #c8e6c9); color: #2e7d32; padding: 8px 16px; font-size: 12px; display: flex; align-items: center; gap: 10px; }
+
+  /* 会議記録バー */
+  .meeting-bar { background: linear-gradient(90deg, #546e7a, #e53935); color: #fff; padding: 6px 16px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+  .meeting-bar .dot { width: 8px; height: 8px; background: #fff; border-radius: 50%; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+  .chat-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; }
+  .input-area { padding: 12px 16px; border-top: 1px solid #e0e0e0; display: flex; gap: 8px; align-items: center; }
+  .input-area input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; outline: none; }
+  .input-area input:focus { border-color: #6c63ff; }
+  .input-area button { padding: 10px 14px; background: #6c63ff; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .input-hint { font-size: 11px; color: #999; padding: 0 16px 6px; }
+
+  /* メッセージ */
+  .msg { margin-bottom: 14px; }
+  .msg-user { display: flex; justify-content: flex-end; }
+  .msg-ai { display: flex; justify-content: flex-start; }
+  .bubble { max-width: 75%; padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.7; position: relative; }
+  .bubble-user { background: #6c63ff; color: #fff; border-bottom-right-radius: 4px; }
+  .bubble-ai { background: #f0f0f0; border-bottom-left-radius: 4px; }
+  .bubble-private { background: #eceff1; border: 1px dashed #b0bec5; }
+
+  /* 記憶ボタン */
+  .remember-btn { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; padding: 4px 10px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 11px; cursor: pointer; background: #fff; color: #999; transition: all 0.2s; }
+  .remember-btn:hover { border-color: #6c63ff; color: #6c63ff; background: #f8f8ff; }
+  .remember-btn.remembered { border-color: #2e7d32; color: #2e7d32; background: #e8f5e9; }
+
+  /* 記憶インジケータ */
+  .memory-indicator { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 10px; margin-left: 8px; }
+  .memory-indicator.saved { background: #e8f5e9; color: #2e7d32; }
+  .memory-indicator.private { background: #eceff1; color: #78909c; }
+
+  /* トグルスイッチ */
+  .toggle { width: 40px; height: 22px; background: #ccc; border-radius: 11px; cursor: pointer; position: relative; transition: background 0.3s; }
+  .toggle.on { background: #6c63ff; }
+  .toggle::after { content: ''; position: absolute; width: 18px; height: 18px; background: #fff; border-radius: 50%; top: 2px; left: 2px; transition: left 0.3s; }
+  .toggle.on::after { left: 20px; }
+
+  /* 字幕ブロック */
+  .transcript-block { background: #f5f5f5; border: 1px solid #e0e0e0; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; }
+  .transcript-block.private-style { border-style: dashed; border-color: #b0bec5; }
+  .transcript-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; color: #78909c; font-weight: 600; }
+  .transcript-line { display: flex; gap: 8px; margin-bottom: 6px; font-size: 13px; line-height: 1.6; }
+  .transcript-line .speaker { color: #546e7a; font-weight: 600; white-space: nowrap; min-width: 60px; }
+  .transcript-line .text { color: #333; }
+  .transcript-line .time { color: #aaa; font-size: 11px; white-space: nowrap; margin-left: auto; }
+
+  /* 要約カード */
+  .summary-card { background: linear-gradient(135deg, #f5f5f5, #eceff1); border: 1px solid #cfd8dc; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .summary-card h4 { font-size: 13px; font-weight: 700; color: #546e7a; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .summary-card ul { font-size: 13px; line-height: 1.8; color: #333; padding-left: 20px; }
+
+  /* 比較テーブル */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  .compare-table th { background: #f8f9fa; padding: 10px 14px; text-align: left; border-bottom: 2px solid #e0e0e0; }
+  .compare-table td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+
+  /* モード比較カード */
+  .mode-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); flex: 1; min-width: 280px; }
+  .mode-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .mode-card ul { font-size: 13px; line-height: 2; padding-left: 20px; }
+  .mode-card .check { color: #2e7d32; }
+  .mode-card .cross { color: #e53935; }
+
+  /* モバイルフレーム */
+  .mobile-frame { width: 375px; height: 720px; margin: 0 auto; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.12); background: #fff; display: flex; flex-direction: column; border: 6px solid #1a1a2e; }
+  .mobile-status { background: #1a1a2e; color: #fff; padding: 6px 16px; font-size: 10px; display: flex; justify-content: space-between; }
+  .mobile-header { padding: 10px 14px; border-bottom: 1px solid #e0e0e0; display: flex; align-items: center; gap: 10px; }
+  .mobile-header .back { font-size: 18px; cursor: pointer; color: #6c63ff; }
+  .mobile-header h2 { font-size: 14px; font-weight: 700; flex: 1; }
+
+  /* 設定パネル */
+  .settings-group { background: #fff; border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+  .settings-item { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  .settings-item:last-child { border-bottom: none; }
+  .settings-label { display: flex; align-items: center; gap: 10px; }
+  .settings-label .icon { font-size: 18px; }
+  .settings-desc { font-size: 11px; color: #999; margin-top: 2px; }
+
+  /* フロー図 */
+  .flow-v { display: flex; flex-direction: column; align-items: center; gap: 0; margin: 20px 0; }
+  .flow-step { background: #fff; border: 2px solid #e0e0e0; border-radius: 10px; padding: 14px 20px; width: 400px; text-align: center; font-size: 13px; line-height: 1.6; }
+  .flow-step.highlight { border-color: #6c63ff; background: #f8f8ff; }
+  .flow-step.private-flow { border-color: #78909c; background: #eceff1; }
+  .flow-step.learning-flow { border-color: #2e7d32; background: #e8f5e9; }
+  .flow-arr { font-size: 20px; color: #ccc; padding: 4px 0; }
+  .flow-branch { display: flex; gap: 24px; align-items: flex-start; }
+  .flow-branch-label { font-size: 12px; color: #999; text-align: center; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <button class="active" onclick="showSection('concept')">コンセプト</button>
+  <button onclick="showSection('normal-chat')">通常モード</button>
+  <button onclick="showSection('private-chat')">プライベートモード</button>
+  <button onclick="showSection('meeting-private')">会議（プライベート）</button>
+  <button onclick="showSection('remember-btn')">覚えてボタン</button>
+  <button onclick="showSection('mobile')">モバイル</button>
+  <button onclick="showSection('arch')">設計</button>
+</div>
+
+<!-- ===== コンセプト ===== -->
+<div id="concept" class="section active">
+  <h1 class="section-title">プライベートモード + 選択的記憶</h1>
+  <p class="section-desc">
+    「AIが何を覚えるか」をユーザーがコントロール。お客様情報や会議内容がAIの人格記憶を汚染しないよう、<br>
+    プライベートモードでは学習を停止し、本当に覚えてほしいことだけを明示的に記憶させます。
+  </p>
+
+  <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:24px;">
+    <div class="mode-card">
+      <h3><span style="color:#2e7d32;">🟢</span> 通常モード（学習ON）</h3>
+      <ul>
+        <li><span class="check">✓</span> 会話から自動で事実を抽出・記憶</li>
+        <li><span class="check">✓</span> 中期記憶（AgentCore）に保存</li>
+        <li><span class="check">✓</span> セッション終了時に永久記憶を更新</li>
+        <li><span class="check">✓</span> 過去の会話を踏まえた応答</li>
+      </ul>
+      <div style="margin-top:12px; padding:10px; background:#e8f5e9; border-radius:8px; font-size:12px; color:#2e7d32;">
+        <strong>適切な用途:</strong> 日常会話、個人的な相談、好みの共有
+      </div>
+    </div>
+    <div class="mode-card">
+      <h3><span style="color:#78909c;">🔒</span> プライベートモード（学習OFF）</h3>
+      <ul>
+        <li><span class="cross">✗</span> 会話内容を記憶しない</li>
+        <li><span class="cross">✗</span> 中期記憶に保存しない</li>
+        <li><span class="cross">✗</span> 永久記憶を更新しない</li>
+        <li><span class="check">✓</span> 既存の記憶は参照可能（読み取り専用）</li>
+        <li><span class="check">✓</span> 「覚えて」ボタンで選択的に記憶可能</li>
+      </ul>
+      <div style="margin-top:12px; padding:10px; background:#eceff1; border-radius:8px; font-size:12px; color:#546e7a;">
+        <strong>適切な用途:</strong> 会議メモ、お客様情報、機密相談、一時的な調べ物
+      </div>
+    </div>
+  </div>
+
+  <h3 style="font-size:15px; margin-bottom:12px;">記憶フロー比較</h3>
+  <div style="display:flex; gap:40px; justify-content:center; flex-wrap:wrap;">
+    <div>
+      <div class="flow-branch-label"><strong>通常モード</strong></div>
+      <div class="flow-v">
+        <div class="flow-step learning-flow" style="width:280px;">
+          <strong>ユーザー発言</strong><br>
+          「来週から大阪に出張です」
+        </div>
+        <div class="flow-arr">▼</div>
+        <div class="flow-step" style="width:280px;">
+          <strong>AI応答</strong> + 自動学習<br>
+          → 中期記憶に保存<br>
+          → セッション終了時に永久記憶へ
+        </div>
+        <div class="flow-arr">▼</div>
+        <div class="flow-step learning-flow" style="width:280px;">
+          <strong>永久記憶に追加</strong><br>
+          「ユーザーは来週大阪出張予定」
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="flow-branch-label"><strong>プライベートモード</strong></div>
+      <div class="flow-v">
+        <div class="flow-step private-flow" style="width:280px;">
+          <strong>会議字幕</strong><br>
+          「A社の予算は3000万です」
+        </div>
+        <div class="flow-arr">▼</div>
+        <div class="flow-step" style="width:280px;">
+          <strong>AI応答のみ</strong><br>
+          記憶系処理をすべてスキップ<br>
+          🚫 extractFacts / AgentCore / summarize
+        </div>
+        <div class="flow-arr">▼</div>
+        <div class="flow-step private-flow" style="width:280px;">
+          <strong>記憶なし</strong><br>
+          トピック内のメッセージ履歴のみ保持<br>
+          AI人格には影響しない
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 通常モード ===== -->
+<div id="normal-chat" class="section">
+  <h1 class="section-title">通常モード — 自動学習ON</h1>
+  <p class="section-desc">現在と同じ動作。会話からAIが自動的に学習し、ユーザーのことを覚えていく。</p>
+
+  <div class="app-frame">
+    <div class="sidebar">
+      <div class="sidebar-header">トピック</div>
+      <div class="sidebar-list">
+        <div class="category-header">今日</div>
+        <div class="topic-item active">
+          <span class="topic-icon">💬</span>
+          <div class="topic-content">
+            <div class="topic-title">来週の出張について</div>
+            <div class="topic-meta">
+              <span class="topic-tag learning">学習中</span>
+              <span>3分前</span>
+            </div>
+          </div>
+        </div>
+        <div class="topic-item private">
+          <span class="topic-icon">🔒</span>
+          <div class="topic-content">
+            <div class="topic-title">A社 提案書レビュー</div>
+            <div class="topic-meta">
+              <span class="topic-tag private">プライベート</span>
+              <span>30分前</span>
+            </div>
+          </div>
+        </div>
+        <div class="topic-item private">
+          <span class="topic-icon">🔒</span>
+          <div class="topic-content">
+            <div class="topic-title">📋 週次定例 — 03/09</div>
+            <div class="topic-meta">
+              <span class="topic-tag private">プライベート</span>
+              <span class="topic-tag meeting">会議</span>
+            </div>
+          </div>
+        </div>
+        <div class="topic-item">
+          <span class="topic-icon">💬</span>
+          <div class="topic-content">
+            <div class="topic-title">おすすめの本</div>
+            <div class="topic-meta">
+              <span class="topic-tag learning">学習中</span>
+              <span>昨日</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-area">
+      <!-- 学習ONバー -->
+      <div class="learning-bar">
+        <span>🟢</span>
+        <span class="desc">通常モード — 会話内容から自動で学習します</span>
+        <div class="toggle-area">
+          <span style="font-size:11px;">学習</span>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+
+      <div class="main-header">
+        <h2>💬 来週の出張について</h2>
+      </div>
+
+      <div class="chat-scroll">
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">来週の火曜から大阪出張になりました。木曜まで3日間です。</div>
+        </div>
+        <div class="msg msg-ai">
+          <div class="bubble bubble-ai">
+            大阪出張ですね！3日間（火〜木）ということは、けっこうしっかりしたスケジュールですね。<br><br>
+            何か準備で手伝えることはありますか？新幹線の時間調べたり、大阪のおすすめごはん屋さんとか聞いてくれてもいいですよ 😊
+            <div class="remember-btn remembered" style="pointer-events:none;">
+              🧠 記憶しました: 「来週火〜木 大阪出張」
+            </div>
+          </div>
+        </div>
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">ホテルはいつもの難波のところにしようと思ってます</div>
+        </div>
+        <div class="msg msg-ai">
+          <div class="bubble bubble-ai">
+            難波のホテルですね、了解です！前回も利用されていたところでしょうか。<br><br>
+            出張中のスケジュール管理が必要でしたら声かけてくださいね。
+            <div class="remember-btn remembered" style="pointer-events:none;">
+              🧠 記憶しました: 「大阪出張時は難波のホテルを利用」
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-hint">🟢 このトピックの会話内容はAIの学習に反映されます</div>
+      <div class="input-area">
+        <input type="text" placeholder="メッセージを入力..." />
+        <button>送信</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== プライベートモード ===== -->
+<div id="private-chat" class="section">
+  <h1 class="section-title">プライベートモード — お客様情報を扱う</h1>
+  <p class="section-desc">
+    お客様の機密情報を含む相談。AIは通常通り回答するが、会話内容を記憶しない。<br>
+    ただし「覚えて」ボタンで選択的に記憶させることは可能。
+  </p>
+
+  <div class="app-frame">
+    <div class="sidebar">
+      <div class="sidebar-header">トピック</div>
+      <div class="sidebar-list">
+        <div class="category-header">今日</div>
+        <div class="topic-item">
+          <span class="topic-icon">💬</span>
+          <div class="topic-content">
+            <div class="topic-title">来週の出張について</div>
+            <div class="topic-meta">
+              <span class="topic-tag learning">学習中</span>
+              <span>10分前</span>
+            </div>
+          </div>
+        </div>
+        <div class="topic-item active private">
+          <span class="topic-icon">🔒</span>
+          <div class="topic-content">
+            <div class="topic-title">A社 提案書レビュー</div>
+            <div class="topic-meta">
+              <span class="topic-tag private">プライベート</span>
+              <span>now</span>
+            </div>
+          </div>
+        </div>
+        <div class="topic-item private">
+          <span class="topic-icon">🔒</span>
+          <div class="topic-content">
+            <div class="topic-title">📋 週次定例 — 03/09</div>
+            <div class="topic-meta">
+              <span class="topic-tag private">プライベート</span>
+              <span class="topic-tag meeting">会議</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-area">
+      <!-- プライベートモードバー -->
+      <div class="private-bar">
+        <span class="icon">🔒</span>
+        <span class="desc">プライベートモード — 会話内容は記憶されません</span>
+        <div class="toggle-area">
+          <span style="font-size:11px;">学習</span>
+          <div class="toggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+
+      <div class="main-header">
+        <h2>🔒 A社 提案書レビュー</h2>
+        <span class="memory-indicator private">🔒 学習OFF</span>
+      </div>
+
+      <div class="chat-scroll">
+        <div class="msg msg-ai">
+          <div class="bubble bubble-private">
+            🔒 このトピックはプライベートモードです。<br>
+            会話内容はAIの学習に反映されません。覚えてほしいことがあれば「🧠 覚えて」ボタンを使ってください。
+          </div>
+        </div>
+
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">A社向けの提案書を確認してほしい。予算は3000万で、納期は来年3月末。</div>
+        </div>
+        <div class="msg msg-ai">
+          <div class="bubble bubble-ai">
+            承知しました。A社向けの提案書を確認しますね。<br><br>
+            <strong>確認ポイント:</strong><br>
+            ・予算3000万に対するコスト構成は妥当か<br>
+            ・来年3月末の納期に対するマイルストーン設定<br>
+            ・リスク要因の洗い出し<br><br>
+            提案書の内容を共有していただけますか？
+            <!-- 覚えてボタンなし = 記憶されない -->
+          </div>
+        </div>
+
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">A社の担当は山田部長で、技術的にはクラウド移行がメインです</div>
+        </div>
+        <div class="msg msg-ai">
+          <div class="bubble bubble-ai">
+            了解です。クラウド移行案件ですね。<br><br>
+            提案書に含めるべき要素：<br>
+            ・現行システムの棚卸し → 移行対象の選定<br>
+            ・クラウドアーキテクチャ設計（AWS/Azure/GCP）<br>
+            ・データ移行計画 + テスト工程<br>
+            ・運用体制の切り替え計画<br><br>
+            山田部長の関心事項で特に重視すべき点はありますか？
+            <!-- これも記憶されない -->
+          </div>
+        </div>
+
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">A社案件では今後もAWSを使うことになりそう。これは覚えておいて。</div>
+        </div>
+        <div class="msg msg-ai">
+          <div class="bubble bubble-ai">
+            分かりました！A社案件でAWSを使用する方針、覚えておきますね。<br><br>
+            提案書でもAWSを前提としたアーキテクチャを提示するのが良さそうですね。
+            <div class="remember-btn remembered" style="pointer-events:none;">
+              🧠 記憶しました: 「A社案件はAWSを使用」
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-hint">🔒 このトピックの会話はAIの学習に反映されません（「覚えて」ボタンを使った内容を除く）</div>
+      <div class="input-area">
+        <input type="text" placeholder="メッセージを入力..." />
+        <button>送信</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 会議（プライベート） ===== -->
+<div id="meeting-private" class="section">
+  <h1 class="section-title">会議メモ — 自動プライベートモード</h1>
+  <p class="section-desc">
+    会議トピックはデフォルトでプライベートモード。お客様情報や社内議論が自動学習されない。<br>
+    ただし要約やアクションアイテムの中で覚えてほしい部分は個別に記憶可能。
+  </p>
+
+  <div class="app-frame">
+    <div class="sidebar">
+      <div class="sidebar-header">トピック</div>
+      <div class="sidebar-list">
+        <div class="category-header">今日</div>
+        <div class="topic-item">
+          <span class="topic-icon">💬</span>
+          <div class="topic-content">
+            <div class="topic-title">来週の出張について</div>
+            <div class="topic-meta"><span class="topic-tag learning">学習中</span></div>
+          </div>
+        </div>
+        <div class="topic-item active private">
+          <span class="topic-icon">🔒</span>
+          <div class="topic-content">
+            <div class="topic-title">📋 クライアントMTG — 03/09</div>
+            <div class="topic-meta">
+              <span class="topic-tag private">プライベート</span>
+              <span class="topic-tag meeting">会議</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-area">
+      <div class="meeting-bar">
+        <div class="dot"></div>
+        <span>🔒 会議を記録中（プライベート）— Google Meet</span>
+        <span style="margin-left:auto; font-size:11px;">00:25:12</span>
+      </div>
+
+      <div class="main-header">
+        <h2>🔒 📋 クライアントMTG — 03/09 <span style="font-size:12px; color:#78909c;">プライベート</span></h2>
+      </div>
+
+      <div class="chat-scroll">
+        <div class="msg msg-ai">
+          <div class="bubble bubble-private">
+            🔒 会議トピックはプライベートモードで記録します。<br>
+            字幕・要約の内容はAIの学習に反映されません。
+          </div>
+        </div>
+
+        <!-- 字幕ブロック -->
+        <div class="transcript-block private-style">
+          <div class="transcript-header">
+            <span>🔒</span> <span>🎙️</span> 字幕 — 14:00〜14:10
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">田中</span>
+            <span class="text">B社さんの要件を整理しましょう。予算感は2000万前後と聞いています。</span>
+            <span class="time">14:01</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">クライアント</span>
+            <span class="text">はい、2000万は上限で、できれば1500万に収めたいです。</span>
+            <span class="time">14:03</span>
+          </div>
+          <div class="transcript-line">
+            <span class="speaker">佐藤</span>
+            <span class="text">1500万だとスコープを絞る必要があります。Phase1とPhase2に分けるのはどうでしょう。</span>
+            <span class="time">14:05</span>
+          </div>
+        </div>
+
+        <!-- ユーザーが途中で要約依頼 -->
+        <div class="msg msg-user">
+          <div class="bubble bubble-user">予算の話をまとめて</div>
+        </div>
+
+        <div class="summary-card">
+          <h4>🔒 📝 予算に関するまとめ</h4>
+          <ul>
+            <li>B社予算上限: 2000万円、希望: 1500万円</li>
+            <li>1500万の場合: Phase分割が必要（佐藤提案）</li>
+          </ul>
+          <div style="margin-top:10px; padding-top:10px; border-top:1px solid #cfd8dc;">
+            <div style="font-size:12px; color:#78909c; margin-bottom:6px;">選択的に記憶:</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <div class="remember-btn" onclick="this.classList.toggle('remembered'); this.innerHTML = this.classList.contains('remembered') ? '🧠 記憶済み: Phase分割提案' : '🧠 覚えて: 「Phase分割の提案をした」'">
+                🧠 覚えて: 「Phase分割の提案をした」
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 会議終了後 -->
+        <div style="display:flex; align-items:center; gap:12px; margin:16px 0; font-size:11px; color:#aaa;">
+          <span style="flex:1; height:1px; background:#e0e0e0;"></span>
+          会議終了 14:45
+          <span style="flex:1; height:1px; background:#e0e0e0;"></span>
+        </div>
+
+        <div class="summary-card">
+          <h4>🔒 📝 会議の全体要約（自動生成）</h4>
+          <ul>
+            <li>B社案件の予算: 上限2000万、希望1500万</li>
+            <li>Phase分割で段階的に対応する方向</li>
+            <li>Phase1: コア機能（1500万以内）、Phase2: 拡張機能</li>
+          </ul>
+          <div style="margin-top:12px; padding-top:10px; border-top:1px solid #cfd8dc;">
+            <div style="font-size:12px; color:#78909c; margin-bottom:8px;">覚えてほしい内容を選択:</div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <div class="remember-btn" onclick="this.classList.toggle('remembered'); this.textContent = this.classList.contains('remembered') ? '🧠 記憶済み' : '🧠 覚えて: 「B社案件はPhase分割で進める方針」'">
+                🧠 覚えて: 「B社案件はPhase分割で進める方針」
+              </div>
+              <div class="remember-btn" onclick="this.classList.toggle('remembered'); this.textContent = this.classList.contains('remembered') ? '🧠 記憶済み' : '🧠 覚えて: 「B社のPhase1予算は1500万以内」'">
+                🧠 覚えて: 「B社のPhase1予算は1500万以内」
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <input type="text" placeholder="会議内容について質問..." />
+        <button>送信</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 覚えてボタン ===== -->
+<div id="remember-btn" class="section">
+  <h1 class="section-title">「覚えて」ボタン — 選択的記憶の操作方法</h1>
+  <p class="section-desc">
+    プライベートモードでも通常モードでも使える。AIの回答やまとめに対して「これは覚えて」と選択的に指示。
+  </p>
+
+  <div style="display:flex; gap:24px; flex-wrap:wrap;">
+    <!-- パターン1: ボタン操作 -->
+    <div style="flex:1; min-width:320px;">
+      <h3 style="font-size:14px; margin-bottom:12px;">パターン1: ボタンで記憶</h3>
+      <div style="background:#fff; border-radius:12px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+        <div class="bubble bubble-ai" style="border-radius:10px; margin-bottom:12px;">
+          B社案件はPhase分割で進める方針になりました。<br>
+          Phase1の予算は1500万以内です。
+        </div>
+
+        <div style="font-size:12px; color:#666; margin-bottom:8px;">AIの回答の下に表示:</div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="remember-btn" onclick="this.classList.toggle('remembered'); updateBtnText(this, '「B社はPhase分割方針」')">
+            🧠 覚えて: 「B社はPhase分割方針」
+          </div>
+          <div class="remember-btn" onclick="this.classList.toggle('remembered'); updateBtnText(this, '「Phase1予算は1500万以内」')">
+            🧠 覚えて: 「Phase1予算は1500万以内」
+          </div>
+        </div>
+
+        <div style="margin-top:16px; font-size:12px; color:#999; line-height:1.8;">
+          ・AIが回答内容から記憶候補を自動提案<br>
+          ・クリックで永久記憶に保存<br>
+          ・もう一度クリックで取り消し
+        </div>
+      </div>
+    </div>
+
+    <!-- パターン2: 発話で記憶 -->
+    <div style="flex:1; min-width:320px;">
+      <h3 style="font-size:14px; margin-bottom:12px;">パターン2: 発話で記憶指示</h3>
+      <div style="background:#fff; border-radius:12px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+        <div class="bubble bubble-user" style="border-radius:10px; margin-bottom:8px; display:inline-block;">
+          B社案件ではAWSを使うことになった。これ覚えておいて。
+        </div>
+        <div class="bubble bubble-ai" style="border-radius:10px; margin-bottom:8px;">
+          覚えておきますね！<br>
+          <div class="remember-btn remembered" style="pointer-events:none; margin-top:6px;">
+            🧠 記憶しました: 「B社案件はAWSを使用」
+          </div>
+        </div>
+
+        <div style="margin-top:16px; font-size:12px; color:#999; line-height:1.8;">
+          ・「覚えて」「記憶して」「メモして」などのキーワードで発動<br>
+          ・プライベートモードでも有効<br>
+          ・AIが内容を要約して永久記憶に保存
+        </div>
+      </div>
+    </div>
+
+    <!-- パターン3: 記憶管理 -->
+    <div style="flex:1; min-width:320px;">
+      <h3 style="font-size:14px; margin-bottom:12px;">パターン3: 記憶の確認・削除</h3>
+      <div style="background:#fff; border-radius:12px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+        <div class="bubble bubble-user" style="border-radius:10px; margin-bottom:8px; display:inline-block;">
+          B社について覚えていることを教えて
+        </div>
+        <div class="bubble bubble-ai" style="border-radius:10px; margin-bottom:8px;">
+          B社について覚えていることです：<br><br>
+          <div style="background:#e8f5e9; padding:8px 12px; border-radius:6px; margin:4px 0; font-size:12px;">
+            🧠 B社案件はPhase分割で進める方針
+            <span style="float:right; color:#e53935; cursor:pointer; font-size:11px;">✕ 忘れる</span>
+          </div>
+          <div style="background:#e8f5e9; padding:8px 12px; border-radius:6px; margin:4px 0; font-size:12px;">
+            🧠 B社案件はAWSを使用
+            <span style="float:right; color:#e53935; cursor:pointer; font-size:11px;">✕ 忘れる</span>
+          </div>
+          <div style="background:#e8f5e9; padding:8px 12px; border-radius:6px; margin:4px 0; font-size:12px;">
+            🧠 Phase1予算は1500万以内
+            <span style="float:right; color:#e53935; cursor:pointer; font-size:11px;">✕ 忘れる</span>
+          </div>
+        </div>
+
+        <div style="margin-top:16px; font-size:12px; color:#999; line-height:1.8;">
+          ・「覚えていること教えて」「B社の記憶を消して」で管理<br>
+          ・個別に「忘れる」で削除可能<br>
+          ・設定画面からも一覧確認・編集可能
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="font-size:15px; margin:24px 0 12px;">モード別の記憶動作まとめ</h3>
+  <table class="compare-table">
+    <tr><th>操作</th><th>通常モード</th><th>プライベートモード</th></tr>
+    <tr><td>普通の会話</td><td>🟢 自動で学習（従来通り）</td><td>🔒 学習しない</td></tr>
+    <tr><td>「覚えて」と発話</td><td>🟢 即座に永久記憶に保存</td><td>🟢 即座に永久記憶に保存</td></tr>
+    <tr><td>🧠ボタンをクリック</td><td>🟢 永久記憶に保存</td><td>🟢 永久記憶に保存</td></tr>
+    <tr><td>会議字幕</td><td>（通常は会議=プライベート）</td><td>🔒 学習しない</td></tr>
+    <tr><td>AI要約</td><td>🟢 自動で学習</td><td>🔒 学習しない（ボタンで選択可）</td></tr>
+    <tr><td>セッション終了時</td><td>🟢 永久記憶を自動更新</td><td>🔒 更新しない</td></tr>
+  </table>
+</div>
+
+<!-- ===== モバイル ===== -->
+<div id="mobile" class="section">
+  <h1 class="section-title">モバイル — プライベートモード</h1>
+
+  <div style="display:flex; gap:24px; flex-wrap:wrap; justify-content:center;">
+    <!-- トピック新規作成 -->
+    <div>
+      <h3 style="text-align:center; font-size:14px; margin-bottom:12px; color:#666;">新規トピック作成</h3>
+      <div class="mobile-frame" style="height:400px;">
+        <div class="mobile-status"><span>9:41</span><span>📶 🔋</span></div>
+        <div class="mobile-header">
+          <span class="back">←</span>
+          <h2>新しいトピック</h2>
+        </div>
+        <div style="padding:16px;">
+          <div style="margin-bottom:16px;">
+            <label style="font-size:12px; color:#666; display:block; margin-bottom:6px;">トピック名</label>
+            <input type="text" placeholder="トピック名を入力..." style="width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:8px; font-size:13px;" />
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-item">
+              <div class="settings-label">
+                <span class="icon">🔒</span>
+                <div>
+                  <div>プライベートモード</div>
+                  <div class="settings-desc">会話内容を学習しない</div>
+                </div>
+              </div>
+              <div class="toggle" onclick="this.classList.toggle('on')"></div>
+            </div>
+          </div>
+
+          <div style="font-size:11px; color:#999; line-height:1.7; margin-top:12px;">
+            プライベートモードでは会話内容がAIの学習に反映されません。<br>
+            お客様情報や機密事項を扱う場合にご利用ください。
+          </div>
+
+          <button style="width:100%; margin-top:16px; padding:12px; background:#6c63ff; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;">
+            トピックを作成
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- プライベートチャット -->
+    <div>
+      <h3 style="text-align:center; font-size:14px; margin-bottom:12px; color:#666;">プライベートチャット</h3>
+      <div class="mobile-frame" style="height:600px;">
+        <div class="mobile-status"><span>9:41</span><span>📶 🔋</span></div>
+        <div style="background:#546e7a; color:#fff; padding:6px 14px; font-size:11px; display:flex; align-items:center; gap:6px;">
+          🔒 プライベートモード
+          <span style="margin-left:auto; font-size:10px; opacity:0.7;">学習OFF</span>
+        </div>
+        <div class="mobile-header">
+          <span class="back">←</span>
+          <h2>🔒 A社 提案レビュー</h2>
+        </div>
+        <div style="flex:1; overflow-y:auto; padding:12px;">
+          <div class="msg msg-user" style="margin-bottom:8px;">
+            <div class="bubble bubble-user" style="font-size:12px;">A社の予算3000万で提案書を確認して</div>
+          </div>
+          <div class="msg msg-ai" style="margin-bottom:8px;">
+            <div class="bubble bubble-ai" style="font-size:12px;">
+              承知しました。予算3000万のポイント：<br>
+              ・インフラ: 40%（1200万）<br>
+              ・開発: 45%（1350万）<br>
+              ・テスト/PM: 15%（450万）
+            </div>
+          </div>
+          <div class="msg msg-user" style="margin-bottom:8px;">
+            <div class="bubble bubble-user" style="font-size:12px;">A社案件ではAWSを使う方針。覚えておいて</div>
+          </div>
+          <div class="msg msg-ai" style="margin-bottom:8px;">
+            <div class="bubble bubble-ai" style="font-size:12px;">
+              覚えておきますね！
+              <div class="remember-btn remembered" style="pointer-events:none; font-size:10px;">
+                🧠 記憶済み
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:6px 10px; font-size:10px; color:#78909c;">🔒 学習OFF — 「覚えて」で選択的に記憶</div>
+        <div class="input-area" style="padding:8px 10px;">
+          <input type="text" placeholder="メッセージ..." style="font-size:12px; padding:8px;" />
+          <button style="font-size:12px; padding:8px 12px;">送信</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 設計 ===== -->
+<div id="arch" class="section">
+  <h1 class="section-title">設計 — プライベートモード + 選択的記憶</h1>
+
+  <h3 style="font-size:15px; margin-bottom:12px;">バックエンド変更点</h3>
+  <div style="background:#fff; border-radius:12px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.06); font-family:monospace; font-size:12px; line-height:2; overflow-x:auto; margin-bottom:20px;">
+<pre style="margin:0;">
+会話フロー（Lambda /llm/chat）:
+
+  1. リクエスト受信: { message, themeId, isPrivate, ... }
+                                        ↓
+  2. LLM 応答生成（通常通り — 既存記憶は参照可能）
+                                        ↓
+  3. 記憶処理の分岐:
+     ┌─ isPrivate === false（通常モード）
+     │   ├→ メッセージ保存（DynamoDB）           ✅ 実行
+     │   ├→ 中期記憶保存（AgentCore Memory）     ✅ 実行
+     │   ├→ ローリング要約（summarize）           ✅ 実行
+     │   └→ セッション終了時: extractFacts        ✅ 実行
+     │
+     └─ isPrivate === true（プライベートモード）
+         ├→ メッセージ保存（DynamoDB）            ✅ 実行（履歴は残す）
+         ├→ 中期記憶保存（AgentCore Memory）      🚫 スキップ
+         ├→ ローリング要約（summarize）            🚫 スキップ
+         └→ セッション終了時: extractFacts         🚫 スキップ
+
+選択的記憶（「覚えて」ボタン / 発話）:
+  → POST /memory/remember { text: "B社案件はAWS使用", sourceThemeId }
+  → DynamoDB PERMANENT_FACTS に直接追加
+  → プライベートモードでも実行可能
+</pre>
+  </div>
+
+  <h3 style="font-size:15px; margin-bottom:12px;">DynamoDB スキーマ変更</h3>
+  <table class="compare-table">
+    <tr><th>変更対象</th><th>変更内容</th></tr>
+    <tr>
+      <td><code>THEME_SESSION#{themeId}</code></td>
+      <td>+ <code>isPrivate: boolean</code> 属性追加</td>
+    </tr>
+    <tr>
+      <td><code>PERMANENT_FACTS</code></td>
+      <td>+ <code>source: "auto" | "manual"</code>（自動抽出 vs 手動記憶を区別）</td>
+    </tr>
+  </table>
+
+  <h3 style="font-size:15px; margin:24px 0 12px;">API 変更点</h3>
+  <table class="compare-table">
+    <tr><th>エンドポイント</th><th>変更</th></tr>
+    <tr><td><code>POST /llm/chat</code></td><td>リクエストに <code>isPrivate</code> 追加。プライベート時は記憶系処理スキップ</td></tr>
+    <tr><td><code>POST /themes</code></td><td>作成時に <code>isPrivate</code> 指定可能</td></tr>
+    <tr><td><code>PATCH /themes/{id}</code></td><td>途中からプライベート切替可能</td></tr>
+    <tr><td><code>POST /memory/remember</code> (新規)</td><td>選択的記憶の保存（テキスト + ソース）</td></tr>
+    <tr><td><code>DELETE /memory/remember/{id}</code> (新規)</td><td>手動記憶の個別削除（「忘れて」）</td></tr>
+  </table>
+
+  <h3 style="font-size:15px; margin:24px 0 12px;">フロントエンド変更点</h3>
+  <table class="compare-table">
+    <tr><th>コンポーネント</th><th>変更</th></tr>
+    <tr><td>トピック作成</td><td>プライベートモードトグル追加</td></tr>
+    <tr><td>チャットヘッダー</td><td>モード表示バー（通常=緑 / プライベート=グレー）</td></tr>
+    <tr><td>AIメッセージ</td><td>「🧠 覚えて」ボタンコンポーネント追加</td></tr>
+    <tr><td>会議トピック</td><td>自動的にプライベートモードで作成</td></tr>
+    <tr><td>サイドバー</td><td>🔒アイコン + プライベートタグ表示</td></tr>
+    <tr><td>chatController</td><td>sendMessage に isPrivate フラグ追加</td></tr>
+  </table>
+
+  <h3 style="font-size:15px; margin:24px 0 12px;">LLM プロンプト変更</h3>
+  <table class="compare-table">
+    <tr><th>項目</th><th>内容</th></tr>
+    <tr><td>覚えてキーワード検出</td><td>LLMのツールに <code>remember_fact</code> を追加。「覚えて」「メモして」で発動</td></tr>
+    <tr><td>記憶候補の自動提案</td><td>プライベートモード時、AI回答のJSON出力に <code>memorySuggestions[]</code> を追加</td></tr>
+    <tr><td>プライベートモード認識</td><td>システムプロンプトに「このトピックはプライベートモードです」を注入</td></tr>
+  </table>
+
+  <h3 style="font-size:15px; margin:24px 0 12px;">実装の影響範囲（小さい）</h3>
+  <div style="background:#e8f5e9; border-radius:10px; padding:16px; font-size:13px; line-height:1.8;">
+    <strong>核心的な変更はシンプル:</strong><br>
+    Lambda <code>/llm/chat</code> の記憶処理部分に <code>if (!isPrivate)</code> の分岐を1箇所追加するだけ。<br>
+    既存の記憶システム（extractFacts, summarize, AgentCore）には変更不要。<br>
+    フロントエンドは UI 表示の追加が中心。<br><br>
+    <strong>既存機能への影響: なし</strong>（isPrivate のデフォルトは false → 従来通り学習ON）
+  </div>
+</div>
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function updateBtnText(el, content) {
+  if (el.classList.contains('remembered')) {
+    el.textContent = '🧠 記憶しました: ' + content;
+  } else {
+    el.textContent = '🧠 覚えて: ' + content;
+  }
+}
+</script>
+
+</body>
+</html>

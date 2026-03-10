@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live2D テクスチャアトラス ジェネレーター</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Hiragino Kaku Gothic ProN', sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+  h1 { text-align: center; margin-bottom: 10px; font-size: 1.4em; }
+  .subtitle { text-align: center; color: #888; margin-bottom: 20px; font-size: 0.9em; }
+  .container { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+  .panel { background: #16213e; border-radius: 12px; padding: 16px; }
+  .panel h2 { font-size: 1em; margin-bottom: 12px; color: #a8d8ea; }
+  canvas { border: 1px solid #333; border-radius: 8px; cursor: crosshair; }
+  .controls { display: flex; flex-direction: column; gap: 8px; min-width: 280px; }
+  .control-group { background: #0f3460; border-radius: 8px; padding: 12px; }
+  .control-group h3 { font-size: 0.85em; color: #e94560; margin-bottom: 8px; }
+  .color-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .color-row label { flex: 1; font-size: 0.8em; }
+  .color-row input[type="color"] { width: 36px; height: 28px; border: none; border-radius: 4px; cursor: pointer; }
+  .color-row input[type="range"] { flex: 1; }
+  .color-row span { font-size: 0.75em; width: 30px; text-align: right; }
+  button { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9em; font-weight: bold; transition: transform 0.1s; }
+  button:active { transform: scale(0.97); }
+  .btn-primary { background: #e94560; color: white; }
+  .btn-secondary { background: #0f3460; color: #a8d8ea; border: 1px solid #a8d8ea; }
+  .btn-download { background: #00b894; color: white; width: 100%; padding: 14px; font-size: 1em; margin-top: 8px; }
+  .actions { display: flex; gap: 8px; margin-top: 8px; }
+  .actions button { flex: 1; }
+  .toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .toggle-row label { flex: 1; font-size: 0.8em; }
+  input[type="checkbox"] { width: 18px; height: 18px; }
+  select { background: #1a1a2e; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; font-size: 0.8em; }
+</style>
+</head>
+<body>
+
+<h1>Live2D テクスチャアトラス ジェネレーター</h1>
+<p class="subtitle">simple.moc3 対応 — パーツ配置を維持したまま新しいキャラクターを生成</p>
+
+<div class="container">
+  <!-- Canvas Panel -->
+  <div class="panel">
+    <h2>プレビュー (1024 x 1024)</h2>
+    <canvas id="preview" width="512" height="512"></canvas>
+    <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center;">
+      <input type="checkbox" id="showGuide" checked>
+      <label for="showGuide" style="font-size: 0.8em;">パーツガイド表示</label>
+      <input type="checkbox" id="showOriginal">
+      <label for="showOriginal" style="font-size: 0.8em;">オリジナル重ねて表示</label>
+    </div>
+  </div>
+
+  <!-- Controls Panel -->
+  <div class="panel controls">
+    <div class="control-group">
+      <h3>キャラクタースタイル</h3>
+      <div class="color-row">
+        <label>プリセット</label>
+        <select id="preset">
+          <option value="ai-blue">AI アシスタント (ブルー)</option>
+          <option value="ai-purple">AI アシスタント (パープル)</option>
+          <option value="robot">ロボット</option>
+          <option value="cat">ネコ耳</option>
+          <option value="warm">ウォーム</option>
+          <option value="cool">クール</option>
+          <option value="custom">カスタム</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>肌・顔</h3>
+      <div class="color-row"><label>肌色</label><input type="color" id="skinColor" value="#ffe0cc"></div>
+      <div class="color-row"><label>頬の赤み</label><input type="color" id="cheekColor" value="#ffaaaa"><input type="range" id="cheekOpacity" min="0" max="100" value="30"><span id="cheekVal">30</span></div>
+      <div class="color-row"><label>輪郭線</label><input type="color" id="outlineColor" value="#8B6914"></div>
+    </div>
+
+    <div class="control-group">
+      <h3>目</h3>
+      <div class="color-row"><label>瞳色</label><input type="color" id="eyeColor" value="#4a90d9"></div>
+      <div class="color-row"><label>瞳ハイライト</label><input type="color" id="eyeHighlight" value="#ffffff"></div>
+      <div class="color-row"><label>まつ毛色</label><input type="color" id="lashColor" value="#333355"></div>
+      <div class="color-row">
+        <label>目の形</label>
+        <select id="eyeShape">
+          <option value="round">まんまる</option>
+          <option value="normal" selected>ノーマル</option>
+          <option value="sharp">シャープ</option>
+          <option value="droopy">タレ目</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>髪</h3>
+      <div class="color-row"><label>髪色</label><input type="color" id="hairColor" value="#4466aa"></div>
+      <div class="color-row"><label>髪ハイライト</label><input type="color" id="hairHighlight" value="#6699dd"></div>
+      <div class="color-row">
+        <label>前髪スタイル</label>
+        <select id="bangsStyle">
+          <option value="straight">ストレート</option>
+          <option value="parted" selected>センター分け</option>
+          <option value="side">サイド流し</option>
+          <option value="messy">ラフ</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>眉・口</h3>
+      <div class="color-row"><label>眉色</label><input type="color" id="browColor" value="#334477"></div>
+      <div class="color-row"><label>口色</label><input type="color" id="lipColor" value="#e88888"></div>
+    </div>
+
+    <div class="control-group">
+      <h3>服装</h3>
+      <div class="color-row"><label>服メイン色</label><input type="color" id="clothesColor" value="#2255aa"></div>
+      <div class="color-row"><label>服サブ色</label><input type="color" id="clothesAccent" value="#44aadd"></div>
+      <div class="color-row">
+        <label>スタイル</label>
+        <select id="clothesStyle">
+          <option value="hoodie" selected>パーカー</option>
+          <option value="blazer">ブレザー</option>
+          <option value="tshirt">Tシャツ</option>
+          <option value="uniform">制服</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="btn-download" id="downloadBtn">PNG ダウンロード (1024x1024)</button>
+    <div class="actions">
+      <button class="btn-secondary" id="randomBtn">ランダム</button>
+      <button class="btn-secondary" id="resetBtn">リセット</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Live2D テクスチャアトラス ジェネレーター
+// simple.moc3 のUVマップに合わせたパーツ配置で描画
+// ============================================================
+
+const SIZE = 1024;
+const HALF = SIZE / 2;
+
+// オフスクリーンキャンバス (1024x1024 実寸)
+const offCanvas = document.createElement('canvas');
+offCanvas.width = SIZE;
+offCanvas.height = SIZE;
+const ctx = offCanvas.getContext('2d');
+
+// プレビューキャンバス (512x512 表示)
+const preview = document.getElementById('preview');
+const pctx = preview.getContext('2d');
+
+// UI 要素
+const inputs = {};
+const ids = [
+  'skinColor','cheekColor','cheekOpacity','outlineColor',
+  'eyeColor','eyeHighlight','lashColor','eyeShape',
+  'hairColor','hairHighlight','bangsStyle',
+  'browColor','lipColor',
+  'clothesColor','clothesAccent','clothesStyle',
+  'preset','showGuide','showOriginal'
+];
+ids.forEach(id => {
+  inputs[id] = document.getElementById(id);
+  inputs[id].addEventListener('input', () => {
+    if (id === 'cheekOpacity') document.getElementById('cheekVal').textContent = inputs[id].value;
+    if (id === 'preset' && inputs[id].value !== 'custom') applyPreset(inputs[id].value);
+    render();
+  });
+  inputs[id].addEventListener('change', () => render());
+});
+
+// オリジナルテクスチャ画像読み込み
+let originalImg = null;
+const img = new Image();
+img.onload = () => { originalImg = img; render(); };
+img.src = '../live2d_model/runtime/simple.1024/texture_00.png';
+
+// プリセット定義
+const PRESETS = {
+  'ai-blue': {
+    skinColor:'#ffe0cc', cheekColor:'#ffaaaa', cheekOpacity:30, outlineColor:'#8B6914',
+    eyeColor:'#4a90d9', eyeHighlight:'#ffffff', lashColor:'#333355', eyeShape:'normal',
+    hairColor:'#4466aa', hairHighlight:'#6699dd', bangsStyle:'parted',
+    browColor:'#334477', lipColor:'#e88888',
+    clothesColor:'#2255aa', clothesAccent:'#44aadd', clothesStyle:'hoodie'
+  },
+  'ai-purple': {
+    skinColor:'#f5e0f0', cheekColor:'#ee99cc', cheekOpacity:25, outlineColor:'#6B4980',
+    eyeColor:'#9966cc', eyeHighlight:'#eeddff', lashColor:'#443355', eyeShape:'round',
+    hairColor:'#7744aa', hairHighlight:'#aa77dd', bangsStyle:'side',
+    browColor:'#554477', lipColor:'#cc77aa',
+    clothesColor:'#6633aa', clothesAccent:'#9966dd', clothesStyle:'hoodie'
+  },
+  'robot': {
+    skinColor:'#e8e8f0', cheekColor:'#88ccff', cheekOpacity:15, outlineColor:'#556677',
+    eyeColor:'#00ccff', eyeHighlight:'#ffffff', lashColor:'#334455', eyeShape:'sharp',
+    hairColor:'#556688', hairHighlight:'#7799bb', bangsStyle:'straight',
+    browColor:'#445566', lipColor:'#99aabb',
+    clothesColor:'#445566', clothesAccent:'#00ccff', clothesStyle:'tshirt'
+  },
+  'cat': {
+    skinColor:'#fff0e0', cheekColor:'#ffbbaa', cheekOpacity:40, outlineColor:'#996633',
+    eyeColor:'#ffaa00', eyeHighlight:'#ffffcc', lashColor:'#553322', eyeShape:'sharp',
+    hairColor:'#ff8844', hairHighlight:'#ffaa66', bangsStyle:'messy',
+    browColor:'#884422', lipColor:'#ff8877',
+    clothesColor:'#ff6644', clothesAccent:'#ffaa44', clothesStyle:'tshirt'
+  },
+  'warm': {
+    skinColor:'#ffe8d0', cheekColor:'#ff9999', cheekOpacity:35, outlineColor:'#8B5E3C',
+    eyeColor:'#cc6633', eyeHighlight:'#ffeecc', lashColor:'#553322', eyeShape:'droopy',
+    hairColor:'#994422', hairHighlight:'#cc7744', bangsStyle:'side',
+    browColor:'#774422', lipColor:'#dd7766',
+    clothesColor:'#cc5533', clothesAccent:'#ffaa55', clothesStyle:'blazer'
+  },
+  'cool': {
+    skinColor:'#f0eeee', cheekColor:'#ccbbcc', cheekOpacity:15, outlineColor:'#555560',
+    eyeColor:'#4488aa', eyeHighlight:'#ddeeff', lashColor:'#222233', eyeShape:'sharp',
+    hairColor:'#222233', hairHighlight:'#444466', bangsStyle:'straight',
+    browColor:'#333344', lipColor:'#aa7788',
+    clothesColor:'#222233', clothesAccent:'#4488aa', clothesStyle:'blazer'
+  }
+};
+
+function applyPreset(name) {
+  const p = PRESETS[name];
+  if (!p) return;
+  Object.keys(p).forEach(k => {
+    if (inputs[k]) {
+      if (inputs[k].type === 'range') { inputs[k].value = p[k]; document.getElementById('cheekVal').textContent = p[k]; }
+      else inputs[k].value = p[k];
+    }
+  });
+}
+
+function getVals() {
+  const v = {};
+  Object.keys(inputs).forEach(k => {
+    if (inputs[k].type === 'checkbox') v[k] = inputs[k].checked;
+    else if (inputs[k].type === 'range') v[k] = parseInt(inputs[k].value);
+    else v[k] = inputs[k].value;
+  });
+  return v;
+}
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return {r,g,b};
+}
+
+function darken(hex, amount=30) {
+  const {r,g,b} = hexToRgb(hex);
+  return `rgb(${Math.max(0,r-amount)},${Math.max(0,g-amount)},${Math.max(0,b-amount)})`;
+}
+function lighten(hex, amount=40) {
+  const {r,g,b} = hexToRgb(hex);
+  return `rgb(${Math.min(255,r+amount)},${Math.min(255,g+amount)},${Math.min(255,b+amount)})`;
+}
+
+// ============================================================
+// パーツ描画関数 — simple.moc3 のUV座標に合致させる
+// 座標はオリジナルテクスチャを分析して決定
+// ============================================================
+
+function drawFace(v) {
+  // 顔 — 左上エリア (約 30,20 ~ 400,430)
+  const cx = 210, cy = 230, rx = 175, ry = 200;
+
+  // 顔の塗り
+  ctx.fillStyle = v.skinColor;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 頬の赤み
+  if (v.cheekOpacity > 0) {
+    const {r,g,b} = hexToRgb(v.cheekColor);
+    ctx.fillStyle = `rgba(${r},${g},${b},${v.cheekOpacity/100})`;
+    ctx.beginPath();
+    ctx.ellipse(cx - 100, cy + 80, 45, 30, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + 100, cy + 80, 45, 30, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 輪郭線
+  ctx.strokeStyle = v.outlineColor;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawNeck(v) {
+  // 首 — 中央上 (約 432,10 ~ 510,185)
+  const x = 435, y = 10, w = 75, h = 175;
+  ctx.fillStyle = v.skinColor;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = v.outlineColor;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  // 首の影
+  ctx.fillStyle = darken(v.skinColor, 15);
+  ctx.fillRect(x, y, w, 20);
+}
+
+function drawEars(v) {
+  // 耳 — 左中 (約 10,440 ~ 170,580) — 左右の耳パーツ
+  const earW = 55, earH = 70;
+  // 左耳
+  ctx.fillStyle = v.skinColor;
+  ctx.beginPath();
+  ctx.ellipse(55, 500, earW, earH, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = lighten(v.skinColor, 10);
+  ctx.beginPath();
+  ctx.ellipse(55, 500, earW * 0.6, earH * 0.6, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = v.outlineColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(55, 500, earW, earH, -0.2, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 右耳
+  ctx.fillStyle = v.skinColor;
+  ctx.beginPath();
+  ctx.ellipse(155, 500, earW, earH, 0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = lighten(v.skinColor, 10);
+  ctx.beginPath();
+  ctx.ellipse(155, 500, earW * 0.6, earH * 0.6, 0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = v.outlineColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(155, 500, earW, earH, 0.2, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawEyebrows(v) {
+  // 眉 — (約 50,420 ~ 410,500) 左右の眉
+  ctx.strokeStyle = v.browColor;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+
+  // 左眉
+  ctx.beginPath();
+  ctx.moveTo(100, 440);
+  ctx.quadraticCurveTo(135, 420, 190, 435);
+  ctx.stroke();
+
+  // 右眉
+  ctx.beginPath();
+  ctx.moveTo(230, 435);
+  ctx.quadraticCurveTo(285, 420, 320, 440);
+  ctx.stroke();
+}
+
+function drawNose(v) {
+  // 鼻 — (約 442,210 ~ 505,270)
+  const cx = 472, cy = 240;
+  ctx.strokeStyle = v.outlineColor;
+  ctx.lineWidth = 2;
+  ctx.fillStyle = darken(v.skinColor, 10);
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, cy - 15);
+  ctx.quadraticCurveTo(cx, cy + 10, cx + 8, cy - 5);
+  ctx.stroke();
+  // 小さな丸い鼻先
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawMouth(v) {
+  // 口 — (約 432,280 ~ 540,380)
+  const cx = 485, cy = 330;
+
+  // 口の内側（開いた状態用）
+  ctx.fillStyle = '#882222';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 35, 25, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 唇
+  ctx.fillStyle = v.lipColor;
+  ctx.beginPath();
+  ctx.moveTo(cx - 35, cy);
+  ctx.quadraticCurveTo(cx, cy - 20, cx + 35, cy);
+  ctx.quadraticCurveTo(cx, cy + 20, cx - 35, cy);
+  ctx.fill();
+
+  // 口の輪郭
+  ctx.strokeStyle = darken(v.lipColor, 40);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 35, cy);
+  ctx.quadraticCurveTo(cx, cy - 15, cx + 35, cy);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - 35, cy);
+  ctx.quadraticCurveTo(cx, cy + 15, cx + 35, cy);
+  ctx.stroke();
+}
+
+function drawEyes(v) {
+  // 目 — 左下エリア (約 0,560 ~ 420,780)
+  // 左目と右目が並んでいる
+  const shape = v.eyeShape;
+
+  drawSingleEye(90, 670, -1, v, shape);   // 左目
+  drawSingleEye(310, 670, 1, v, shape);  // 右目
+}
+
+function drawSingleEye(cx, cy, dir, v, shape) {
+  const ew = 85, eh = shape === 'round' ? 75 : shape === 'sharp' ? 55 : 65;
+  const tilt = shape === 'droopy' ? 0.15 * dir : shape === 'sharp' ? -0.1 * dir : 0;
+
+  // 白目
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, ew, eh, tilt, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = v.lashColor;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, ew, eh, tilt, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 瞳（虹彩）
+  const irisR = eh * 0.7;
+  const grad = ctx.createRadialGradient(cx, cy, irisR * 0.2, cx, cy, irisR);
+  grad.addColorStop(0, lighten(v.eyeColor, 30));
+  grad.addColorStop(0.5, v.eyeColor);
+  grad.addColorStop(1, darken(v.eyeColor, 40));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy + 3, irisR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 瞳孔
+  ctx.fillStyle = '#111122';
+  ctx.beginPath();
+  ctx.arc(cx, cy + 3, irisR * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ハイライト
+  ctx.fillStyle = v.eyeHighlight;
+  ctx.beginPath();
+  ctx.ellipse(cx - irisR * 0.3, cy - irisR * 0.2, irisR * 0.25, irisR * 0.3, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx + irisR * 0.25, cy + irisR * 0.3, irisR * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 上まつ毛
+  ctx.strokeStyle = v.lashColor;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, ew + 2, eh + 2, tilt, Math.PI + 0.3, -0.3);
+  ctx.stroke();
+
+  // まつ毛飾り
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 3; i++) {
+    const angle = Math.PI + 0.5 + i * 0.5;
+    const x1 = cx + Math.cos(angle + tilt) * (ew + 2);
+    const y1 = cy + Math.sin(angle + tilt) * (eh + 2);
+    const x2 = x1 + Math.cos(angle + tilt - 0.3) * 12;
+    const y2 = y1 + Math.sin(angle + tilt - 0.3) * 12;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+}
+
+function drawEyeBalls(v) {
+  // 目玉パーツ — cdi3.json によると別パーツ (PARTS_01_EYE_BALL_001)
+  // 目の中で動く瞳部分。メインの目描画に含めているので、
+  // ここでは追加のハイライトエフェクトのみ
+}
+
+function drawHairFront(v) {
+  // 前髪 — 右上エリア (約 530,0 ~ 1024,340)
+  const style = v.bangsStyle;
+  const baseX = 540, baseY = 0, w = 480, h = 340;
+
+  ctx.fillStyle = v.hairColor;
+  ctx.strokeStyle = darken(v.hairColor, 30);
+  ctx.lineWidth = 2;
+
+  if (style === 'straight') {
+    // ストレート前髪
+    for (let i = 0; i < 6; i++) {
+      const x = baseX + i * (w / 6);
+      const sw = w / 6 + 10;
+      ctx.beginPath();
+      ctx.moveTo(x, baseY);
+      ctx.lineTo(x + sw, baseY);
+      ctx.quadraticCurveTo(x + sw + 5, h * 0.7, x + sw * 0.6, h);
+      ctx.quadraticCurveTo(x + sw * 0.3, h * 0.95, x - 5, h * 0.85);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // ハイライト
+      ctx.fillStyle = v.hairHighlight;
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.moveTo(x + sw * 0.3, baseY + 20);
+      ctx.quadraticCurveTo(x + sw * 0.4, h * 0.5, x + sw * 0.35, h * 0.7);
+      ctx.lineTo(x + sw * 0.2, h * 0.6);
+      ctx.quadraticCurveTo(x + sw * 0.15, h * 0.3, x + sw * 0.2, baseY + 20);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = v.hairColor;
+    }
+  } else if (style === 'parted') {
+    // センター分け
+    const midX = baseX + w / 2;
+    // 左束
+    for (let i = 0; i < 3; i++) {
+      const x = baseX + i * (w / 6);
+      ctx.beginPath();
+      ctx.moveTo(midX - i * 20, baseY);
+      ctx.quadraticCurveTo(x + 40, h * 0.3, x, h - 20 + i * 10);
+      ctx.quadraticCurveTo(x - 10, h * 0.5, midX - i * 20 - 30, baseY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    // 右束
+    for (let i = 0; i < 3; i++) {
+      const x = midX + 60 + i * (w / 6);
+      ctx.beginPath();
+      ctx.moveTo(midX + i * 20, baseY);
+      ctx.quadraticCurveTo(x - 40, h * 0.3, x, h - 20 + i * 10);
+      ctx.quadraticCurveTo(x + 10, h * 0.5, midX + i * 20 + 30, baseY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    // ハイライト
+    ctx.fillStyle = v.hairHighlight;
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    ctx.ellipse(midX - 60, h * 0.35, 30, 80, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(midX + 60, h * 0.35, 30, 80, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  } else if (style === 'side') {
+    // サイド流し
+    for (let i = 0; i < 5; i++) {
+      const x = baseX + i * (w / 5);
+      const endY = h - 30 + (i < 3 ? i * 30 : (4 - i) * 30);
+      ctx.beginPath();
+      ctx.moveTo(baseX + w * 0.8, baseY);
+      ctx.quadraticCurveTo(x + 60, h * 0.3, x + 20, endY);
+      ctx.quadraticCurveTo(x - 10, endY - 30, x, h * 0.4);
+      ctx.quadraticCurveTo(baseX + w * 0.6, baseY + 20, baseX + w * 0.75, baseY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+  } else if (style === 'messy') {
+    // ラフ・くしゃっとした前髪
+    for (let i = 0; i < 7; i++) {
+      const x = baseX + (i * w / 7) + (Math.sin(i * 2.5) * 20);
+      const endY = h * (0.6 + Math.sin(i * 1.8) * 0.3);
+      const cpx = x + (Math.cos(i * 3) * 40);
+      ctx.beginPath();
+      ctx.moveTo(x, baseY);
+      ctx.quadraticCurveTo(cpx, endY * 0.5, x + 30, endY);
+      ctx.quadraticCurveTo(cpx + 20, endY * 0.7, x + 60, baseY + 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+}
+
+function drawHairBack(v) {
+  // 後ろ髪 — 右下エリア (約 500,350 ~ 1024,1024)
+  const baseX = 500, baseY = 350, w = 520, h = 670;
+  const cx = baseX + w / 2, cy = baseY + h * 0.4;
+
+  // メインの塊
+  ctx.fillStyle = darken(v.hairColor, 20);
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, w / 2, h * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 下に流れる毛束
+  ctx.fillStyle = v.hairColor;
+  for (let i = 0; i < 8; i++) {
+    const x = baseX + 30 + i * (w / 8);
+    const bw = w / 8 + 15;
+    ctx.beginPath();
+    ctx.moveTo(x, baseY + h * 0.15);
+    ctx.quadraticCurveTo(x + bw / 2, baseY + h * 0.6, x + bw * 0.3, baseY + h);
+    ctx.lineTo(x + bw * 0.7, baseY + h - 10);
+    ctx.quadraticCurveTo(x + bw, baseY + h * 0.5, x + bw, baseY + h * 0.15);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // 輪郭
+  ctx.strokeStyle = darken(v.hairColor, 40);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, w / 2 - 5, h * 0.45 - 5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // ハイライト
+  ctx.fillStyle = v.hairHighlight;
+  ctx.globalAlpha = 0.2;
+  ctx.beginPath();
+  ctx.ellipse(cx - 40, cy - 30, 60, 120, -0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawHairSide(v) {
+  // 横髪 — 後ろ髪と前髪の間に配置
+  // cdi3.json: PARTS_01_HAIR_SIDE_001
+  // 横髪は前髪と後ろ髪の間に描画（重なり順で対応）
+}
+
+function drawBody(v) {
+  // 体 — 左下エリア (約 0,790 ~ 440,1024)
+  const baseX = 0, baseY = 790, w = 440, h = 234;
+  const style = v.clothesStyle;
+  const cx = baseX + w / 2;
+
+  // 首の付け根（肌色）
+  ctx.fillStyle = v.skinColor;
+  ctx.beginPath();
+  ctx.moveTo(cx - 40, baseY);
+  ctx.lineTo(cx + 40, baseY);
+  ctx.lineTo(cx + 60, baseY + 30);
+  ctx.lineTo(cx - 60, baseY + 30);
+  ctx.closePath();
+  ctx.fill();
+
+  if (style === 'hoodie') {
+    // パーカー
+    ctx.fillStyle = v.clothesColor;
+    ctx.beginPath();
+    ctx.moveTo(cx - 60, baseY + 25);
+    ctx.lineTo(baseX + 10, baseY + 80);
+    ctx.lineTo(baseX, baseY + h);
+    ctx.lineTo(baseX + w, baseY + h);
+    ctx.lineTo(baseX + w - 10, baseY + 80);
+    ctx.lineTo(cx + 60, baseY + 25);
+    ctx.closePath();
+    ctx.fill();
+
+    // フード
+    ctx.fillStyle = darken(v.clothesColor, 15);
+    ctx.beginPath();
+    ctx.moveTo(cx - 60, baseY + 25);
+    ctx.quadraticCurveTo(cx - 90, baseY + 10, cx - 100, baseY + 40);
+    ctx.lineTo(cx - 80, baseY + 70);
+    ctx.lineTo(cx - 60, baseY + 45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx + 60, baseY + 25);
+    ctx.quadraticCurveTo(cx + 90, baseY + 10, cx + 100, baseY + 40);
+    ctx.lineTo(cx + 80, baseY + 70);
+    ctx.lineTo(cx + 60, baseY + 45);
+    ctx.closePath();
+    ctx.fill();
+
+    // ジッパー
+    ctx.strokeStyle = v.clothesAccent;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx, baseY + 30);
+    ctx.lineTo(cx, baseY + h);
+    ctx.stroke();
+
+    // ポケット
+    ctx.strokeStyle = v.clothesAccent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - 100, baseY + 140);
+    ctx.lineTo(cx - 30, baseY + 140);
+    ctx.lineTo(cx - 25, baseY + 190);
+    ctx.lineTo(cx - 105, baseY + 190);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + 100, baseY + 140);
+    ctx.lineTo(cx + 30, baseY + 140);
+    ctx.lineTo(cx + 25, baseY + 190);
+    ctx.lineTo(cx + 105, baseY + 190);
+    ctx.closePath();
+    ctx.stroke();
+
+  } else if (style === 'blazer') {
+    // ブレザー
+    ctx.fillStyle = v.clothesColor;
+    ctx.beginPath();
+    ctx.moveTo(cx - 55, baseY + 25);
+    ctx.lineTo(baseX + 10, baseY + 70);
+    ctx.lineTo(baseX, baseY + h);
+    ctx.lineTo(baseX + w, baseY + h);
+    ctx.lineTo(baseX + w - 10, baseY + 70);
+    ctx.lineTo(cx + 55, baseY + 25);
+    ctx.closePath();
+    ctx.fill();
+
+    // 襟
+    ctx.fillStyle = darken(v.clothesColor, 20);
+    ctx.beginPath();
+    ctx.moveTo(cx - 45, baseY + 25);
+    ctx.lineTo(cx - 70, baseY + 80);
+    ctx.lineTo(cx - 10, baseY + 70);
+    ctx.lineTo(cx, baseY + 35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx + 45, baseY + 25);
+    ctx.lineTo(cx + 70, baseY + 80);
+    ctx.lineTo(cx + 10, baseY + 70);
+    ctx.lineTo(cx, baseY + 35);
+    ctx.closePath();
+    ctx.fill();
+
+    // ネクタイ
+    ctx.fillStyle = v.clothesAccent;
+    ctx.beginPath();
+    ctx.moveTo(cx - 12, baseY + 35);
+    ctx.lineTo(cx + 12, baseY + 35);
+    ctx.lineTo(cx + 8, baseY + 130);
+    ctx.lineTo(cx, baseY + 145);
+    ctx.lineTo(cx - 8, baseY + 130);
+    ctx.closePath();
+    ctx.fill();
+
+    // ボタン
+    ctx.fillStyle = v.clothesAccent;
+    ctx.beginPath();
+    ctx.arc(cx - 25, baseY + 110, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx - 25, baseY + 150, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+  } else if (style === 'tshirt') {
+    // Tシャツ
+    ctx.fillStyle = v.clothesColor;
+    ctx.beginPath();
+    ctx.moveTo(cx - 50, baseY + 25);
+    ctx.lineTo(baseX + 20, baseY + 70);
+    ctx.lineTo(baseX + 10, baseY + h);
+    ctx.lineTo(baseX + w - 10, baseY + h);
+    ctx.lineTo(baseX + w - 20, baseY + 70);
+    ctx.lineTo(cx + 50, baseY + 25);
+    ctx.closePath();
+    ctx.fill();
+
+    // 襟ぐり
+    ctx.strokeStyle = darken(v.clothesColor, 25);
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx - 50, baseY + 25);
+    ctx.quadraticCurveTo(cx, baseY + 55, cx + 50, baseY + 25);
+    ctx.stroke();
+
+    // デザイン（ロゴ的な）
+    ctx.strokeStyle = v.clothesAccent;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, baseY + 120, 30, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - 15, baseY + 110);
+    ctx.lineTo(cx + 15, baseY + 130);
+    ctx.moveTo(cx + 15, baseY + 110);
+    ctx.lineTo(cx - 15, baseY + 130);
+    ctx.stroke();
+
+  } else if (style === 'uniform') {
+    // 制服（セーラー風）
+    ctx.fillStyle = v.clothesColor;
+    ctx.beginPath();
+    ctx.moveTo(cx - 55, baseY + 25);
+    ctx.lineTo(baseX + 10, baseY + 75);
+    ctx.lineTo(baseX, baseY + h);
+    ctx.lineTo(baseX + w, baseY + h);
+    ctx.lineTo(baseX + w - 10, baseY + 75);
+    ctx.lineTo(cx + 55, baseY + 25);
+    ctx.closePath();
+    ctx.fill();
+
+    // セーラー襟
+    ctx.fillStyle = v.clothesAccent;
+    ctx.beginPath();
+    ctx.moveTo(cx - 50, baseY + 25);
+    ctx.lineTo(cx - 120, baseY + 100);
+    ctx.lineTo(cx - 100, baseY + 130);
+    ctx.lineTo(cx, baseY + 60);
+    ctx.lineTo(cx + 100, baseY + 130);
+    ctx.lineTo(cx + 120, baseY + 100);
+    ctx.lineTo(cx + 50, baseY + 25);
+    ctx.closePath();
+    ctx.fill();
+
+    // リボン
+    ctx.fillStyle = v.clothesAccent;
+    ctx.beginPath();
+    ctx.moveTo(cx, baseY + 45);
+    ctx.lineTo(cx - 25, baseY + 55);
+    ctx.lineTo(cx, baseY + 70);
+    ctx.lineTo(cx + 25, baseY + 55);
+    ctx.closePath();
+    ctx.fill();
+    // ライン
+    ctx.strokeStyle = lighten(v.clothesAccent, 30);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(baseX + 10, baseY + h - 25);
+    ctx.lineTo(baseX + w - 10, baseY + h - 25);
+    ctx.stroke();
+  }
+
+  // 輪郭
+  ctx.strokeStyle = darken(v.clothesColor, 40);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 60, baseY + 25);
+  ctx.lineTo(baseX + 10, baseY + 80);
+  ctx.lineTo(baseX, baseY + h);
+  ctx.lineTo(baseX + w, baseY + h);
+  ctx.lineTo(baseX + w - 10, baseY + 80);
+  ctx.lineTo(cx + 60, baseY + 25);
+  ctx.stroke();
+}
+
+// ============================================================
+// ガイドオーバーレイ（パーツ領域の表示）
+// ============================================================
+
+function drawGuide() {
+  const guides = [
+    { label: '顔', x: 30, y: 20, w: 370, h: 410, color: '#ff6666' },
+    { label: '首', x: 432, y: 10, w: 80, h: 180, color: '#ffaa44' },
+    { label: '前髪', x: 530, y: 0, w: 490, h: 340, color: '#44cc44' },
+    { label: '耳', x: 5, y: 440, w: 210, h: 130, color: '#ffcc44' },
+    { label: '眉', x: 70, y: 410, w: 280, h: 90, color: '#ff44ff' },
+    { label: '鼻', x: 440, y: 200, w: 70, h: 80, color: '#44ffff' },
+    { label: '口', x: 430, y: 280, w: 120, h: 100, color: '#ff8844' },
+    { label: '目', x: 0, y: 560, w: 420, h: 230, color: '#4488ff' },
+    { label: '体', x: 0, y: 790, w: 440, h: 234, color: '#88ff44' },
+    { label: '後ろ髪', x: 500, y: 350, w: 520, h: 674, color: '#aa44ff' },
+  ];
+
+  ctx.globalAlpha = 0.3;
+  guides.forEach(g => {
+    ctx.strokeStyle = g.color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(g.x, g.y, g.w, g.h);
+    ctx.setLineDash([]);
+  });
+  ctx.globalAlpha = 1;
+
+  ctx.font = '18px sans-serif';
+  guides.forEach(g => {
+    ctx.fillStyle = g.color;
+    ctx.globalAlpha = 0.8;
+    ctx.fillText(g.label, g.x + 4, g.y + 18);
+  });
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// メイン描画
+// ============================================================
+
+function render() {
+  const v = getVals();
+
+  // クリア
+  ctx.clearRect(0, 0, SIZE, SIZE);
+
+  // パーツ描画（レイヤー順）
+  drawHairBack(v);
+  drawBody(v);
+  drawNeck(v);
+  drawFace(v);
+  drawEars(v);
+  drawEyes(v);
+  drawEyebrows(v);
+  drawNose(v);
+  drawMouth(v);
+  drawHairFront(v);
+
+  // ガイド
+  if (v.showGuide) drawGuide();
+
+  // プレビューに描画
+  pctx.clearRect(0, 0, 512, 512);
+
+  // オリジナル重ね表示
+  if (v.showOriginal && originalImg) {
+    pctx.globalAlpha = 0.3;
+    pctx.drawImage(originalImg, 0, 0, 512, 512);
+    pctx.globalAlpha = 1;
+  }
+
+  pctx.drawImage(offCanvas, 0, 0, 512, 512);
+}
+
+// ダウンロード
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  // ガイドなしで再描画
+  const wasGuide = inputs.showGuide.checked;
+  inputs.showGuide.checked = false;
+  render();
+
+  const link = document.createElement('a');
+  link.download = 'texture_00.png';
+  link.href = offCanvas.toDataURL('image/png');
+  link.click();
+
+  inputs.showGuide.checked = wasGuide;
+  render();
+});
+
+// ランダム
+document.getElementById('randomBtn').addEventListener('click', () => {
+  const randHex = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
+  const randChoice = (arr) => arr[Math.floor(Math.random()*arr.length)];
+  const hue = Math.random() * 360;
+  const skinTones = ['#ffe0cc','#ffd5b8','#f5e0d0','#ffe8d0','#f0eeee','#f5e0f0','#e8e8f0'];
+
+  inputs.skinColor.value = randChoice(skinTones);
+  inputs.cheekColor.value = randHex();
+  inputs.cheekOpacity.value = Math.floor(Math.random() * 45 + 10);
+  inputs.outlineColor.value = randHex();
+  inputs.eyeColor.value = randHex();
+  inputs.eyeHighlight.value = '#ffffff';
+  inputs.lashColor.value = randHex();
+  inputs.eyeShape.value = randChoice(['round','normal','sharp','droopy']);
+  inputs.hairColor.value = randHex();
+  inputs.hairHighlight.value = lighten(inputs.hairColor.value, 40);
+  inputs.bangsStyle.value = randChoice(['straight','parted','side','messy']);
+  inputs.browColor.value = darken(inputs.hairColor.value, 20);
+  inputs.lipColor.value = randHex();
+  inputs.clothesColor.value = randHex();
+  inputs.clothesAccent.value = randHex();
+  inputs.clothesStyle.value = randChoice(['hoodie','blazer','tshirt','uniform']);
+  inputs.preset.value = 'custom';
+  document.getElementById('cheekVal').textContent = inputs.cheekOpacity.value;
+  render();
+});
+
+// リセット
+document.getElementById('resetBtn').addEventListener('click', () => {
+  inputs.preset.value = 'ai-blue';
+  applyPreset('ai-blue');
+  render();
+});
+
+// 初期描画
+render();
+</script>
+</body>
+</html>
