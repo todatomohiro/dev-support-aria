@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '@/auth/authStore'
 import { useAppStore } from '@/stores/appStore'
 import { briefingService } from '@/services/briefingService'
+import { activityPatternService } from '@/services/activityPatternService'
 import { chatController } from '@/services/chatController'
 
 /** 開きっぱなし時のチェック間隔（30分） */
@@ -10,7 +11,7 @@ const POLL_INTERVAL_MS = 30 * 60 * 1000
 /**
  * プロアクティブ・ブリーフィング hook
  *
- * - 認証完了時: 条件を満たせばブリーフィングを自動実行
+ * - 認証完了時: アクティビティパターンを取得し、条件を満たせばブリーフィングを自動実行
  * - visibilitychange: バックグラウンド復帰時にチェック
  * - setInterval: 開きっぱなし対応（30分ごと）
  *
@@ -19,6 +20,8 @@ const POLL_INTERVAL_MS = 30 * 60 * 1000
 export function useBriefing() {
   /** ブリーフィング実行中フラグ（trueの間は新たなトリガーをブロック） */
   const triggeredRef = useRef(false)
+  /** パターンロード済みフラグ */
+  const patternLoadedRef = useRef(false)
   const authStatus = useAuthStore((s) => s.status)
 
   const tryBriefing = useCallback(() => {
@@ -28,7 +31,7 @@ export function useBriefing() {
     const currentAuth = useAuthStore.getState().status
     const { isLoading } = useAppStore.getState()
 
-    console.log(`[Briefing] チェック: auth=${currentAuth}, loading=${isLoading}, shouldTrigger=${briefingService.shouldTrigger()}`)
+    console.log(`[Briefing] チェック: auth=${currentAuth}, loading=${isLoading}, hasPattern=${activityPatternService.hasPattern()}, shouldTrigger=${briefingService.shouldTrigger()}`)
 
     if (currentAuth !== 'authenticated') return
     if (isLoading) return
@@ -45,10 +48,17 @@ export function useBriefing() {
     })
   }, [])
 
-  // 認証済みになったら少し待ってからトリガー
+  // 認証済みになったらパターンをロードしてからブリーフィングをトリガー
   useEffect(() => {
     if (authStatus === 'authenticated') {
-      const initTimer = setTimeout(tryBriefing, 3000)
+      const initTimer = setTimeout(async () => {
+        // パターンロードは1セッションにつき1回
+        if (!patternLoadedRef.current) {
+          patternLoadedRef.current = true
+          await activityPatternService.loadPattern()
+        }
+        tryBriefing()
+      }, 3000)
       return () => clearTimeout(initTimer)
     }
   }, [authStatus, tryBriefing])

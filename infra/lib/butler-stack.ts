@@ -127,6 +127,7 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-users-activity',
     })
 
+
     const messagesListFn = new lambdaNode.NodejsFunction(this, 'MessagesListFn', {
       ...lambdaDefaults,
       entry: path.join(__dirname, '..', 'lambda', 'messages', 'list.ts'),
@@ -689,10 +690,11 @@ export class ButlerStack extends cdk.Stack {
     settingsResource.addMethod('GET', new apigateway.LambdaIntegration(settingsGetFn), authMethodOptions)
     settingsResource.addMethod('PUT', new apigateway.LambdaIntegration(settingsPutFn), authMethodOptions)
 
-    // /users/activity
+    // /users/activity (POST: ログ保存, GET: パターン取得)
     const usersResource = api.root.addResource('users')
     const usersActivityResource = usersResource.addResource('activity')
     usersActivityResource.addMethod('POST', new apigateway.LambdaIntegration(usersActivityFn), authMethodOptions)
+    usersActivityResource.addMethod('GET', new apigateway.LambdaIntegration(usersActivityFn), authMethodOptions)
 
     // /messages
     const messagesResource = api.root.addResource('messages')
