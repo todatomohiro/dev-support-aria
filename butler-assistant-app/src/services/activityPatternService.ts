@@ -6,7 +6,7 @@
  */
 
 import { getIdToken } from '@/auth'
-import { APIError, NetworkError } from '@/types'
+import { APIError } from '@/types'
 
 /**
  * ブリーフィングウィンドウ（バックエンドレスポンスと同一）
