@@ -3,6 +3,7 @@ import { DynamoDBClient, PutItemCommand, QueryCommand, DeleteItemCommand } from 
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb'
 import * as crypto from 'crypto'
 import { listEvents, createEvent } from './googleCalendar'
+import { listTasks, createTask, completeTask } from './googleTasks'
 import { searchPlaces } from './places'
 import { webSearch } from './webSearch'
 import { getWeather } from './weather'
@@ -66,6 +67,15 @@ export async function executeSkill(
         break
       case 'create_event':
         resultText = await createEvent(userId, input)
+        break
+      case 'list_tasks':
+        resultText = await listTasks(userId, input)
+        break
+      case 'create_task':
+        resultText = await createTask(userId, input)
+        break
+      case 'complete_task':
+        resultText = await completeTask(userId, input)
         break
       case 'search_places': {
         // LLM が locationBias を指定していなければ userLocation を自動注入

@@ -45,7 +45,7 @@ export class SkillClientImpl implements SkillClientService {
       currentPlatform === 'capacitor'
         ? CAPACITOR_REDIRECT_URI
         : `${window.location.origin}/oauth/callback`
-    const scope = 'https://www.googleapis.com/auth/calendar'
+    const scope = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/tasks'
 
     const params = new URLSearchParams({
       client_id: clientId,

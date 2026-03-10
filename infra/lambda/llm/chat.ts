@@ -203,6 +203,12 @@ const SKILL_RULES_PROMPT = `
 - Google カレンダーのツール（list_events, create_event）が利用可能です
 - ユーザーが予定の確認を頼んだら list_events を使って予定を取得してください
 - ユーザーが予定の作成を頼んだら、まずタイトル・日時・時間を確認してから create_event を使ってください。確認なしに勝手に作成しないでください
+- 【重要】カレンダー予定（create_event）とToDo（create_task）を正しく使い分けること:
+  - create_event: 会議・アポ・イベントなど「特定の日時に行う予定」。開始時刻と終了時刻がある
+  - create_task: やるべきこと・タスク・宿題・買い物リストなど「完了すべき作業」。期限日のみ（時刻なし）
+  - 「タスク」「ToDo」「やること」「〜しなきゃ」「〜をやっておいて」→ create_task
+  - 「予定」「会議」「ミーティング」「〜時に〜」→ create_event
+  - 迷った場合はユーザーに「カレンダーの予定とToDoのどちらに追加しますか？」と確認すること
 - ツールがエラーを返した場合（Google カレンダー未連携など）は、エラーメッセージをそのままユーザーに伝えてください
 - 日時は日本時間（+09:00）で処理してください
 - 「明日」「来週」などの相対日時は、現在の日時を基準に正しい日付に変換してください
@@ -225,6 +231,11 @@ const SKILL_RULES_PROMPT = `
 - メモのタイトルは内容を端的に表す短い文（15文字以内推奨）
 - タグは内容から適切なものを2〜3個自動付与
 - メモ一覧を表示するときは、タイトル・日時・タグを見やすく整理して表示
+- list_tasks: ユーザーが「ToDoを見せて」「やることリスト」と聞いた場合に使用。期限で絞り込み可能
+- create_task: ユーザーが「ToDoに追加して」「タスク作って」と言った場合に使用。会話の中でToDoに追加すべき内容（締め切りのある作業、買い物リスト等）があれば「ToDoに追加しましょうか？」と提案してもよい。ただし必ずユーザーの確認を得てから作成すること
+- complete_task: ユーザーが「ToDo完了」「タスク終わった」と言った場合に使用。事前に list_tasks でIDを確認してから実行
+- ToDo の期限は日付のみ（時刻指定不可）。「明日まで」→ 明日の日付、「来週金曜」→ その日付に変換
+- ToDo 一覧を表示するときは、期限・完了状態をわかりやすく整理して表示
 </skills>`
 
 /**
@@ -1754,6 +1765,28 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.warn('[Briefing] カレンダー取得スキップ:', e)
     }
 
+    // ToDo取得（失敗しても続行）
+    try {
+      const now = new Date()
+      const jstNow2 = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+      const todayDate = `${jstNow2.getFullYear()}-${String(jstNow2.getMonth() + 1).padStart(2, '0')}-${String(jstNow2.getDate()).padStart(2, '0')}`
+      const nextWeek = new Date(jstNow2)
+      nextWeek.setDate(nextWeek.getDate() + 7)
+      const nextWeekDate = `${nextWeek.getFullYear()}-${String(nextWeek.getMonth() + 1).padStart(2, '0')}-${String(nextWeek.getDate()).padStart(2, '0')}`
+
+      const tasksResult = await executeSkill('list_tasks', {
+        dueMax: `${nextWeekDate}T23:59:59Z`,
+        showCompleted: false,
+        maxResults: 10,
+      }, 'briefing-tasks', userId)
+      const tasksText = tasksResult.content?.[0] && 'text' in tasksResult.content[0] ? tasksResult.content[0].text : ''
+      if (tasksText && !tasksText.includes('エラー') && !tasksText.includes('未連携') && tasksText !== 'ToDo はありません。') {
+        briefingParts.push(`<tasks>\n今日（${todayDate}）〜1週間以内のToDo:\n${tasksText}\n</tasks>`)
+      }
+    } catch (e) {
+      console.warn('[Briefing] ToDo取得スキップ:', e)
+    }
+
     // 天気取得（失敗しても続行）
     try {
       const weatherInput: Record<string, unknown> = {}
@@ -1798,7 +1831,8 @@ ${briefingParts.join('\n\n')}
   - 「〜調べようか？」「〜気になったんだけど、詳しく見てみる？」と提案に留めること
 - suggestedReplies で具体的なアクションを提案すること（例: 「近くのお店を調べて」「今日の予定を詳しく」）
 - 全部の情報を詰め込まない。重要なもの1〜2個に絞って自然に伝える
-- 予定がなければ天気の話、天気が平穏なら過去の会話の話題、のように臨機応変に
+- ToDoがある場合は「今日はこんなToDoがあるよ」のように自然に触れること。期限が今日のものは優先的に伝える
+- 予定がなければ天気の話やToDo、天気が平穏なら過去の会話の話題、のように臨機応変に
 - 過去の会話情報がない場合は、無理に引き継がず時間帯に合った短い挨拶でよい
 - 情報がほとんどない場合は、時間帯に合った短い挨拶だけでよい
 - キャラクターの口調を守る
@@ -1813,7 +1847,7 @@ ${briefingParts.join('\n\n')}
       briefingPastSessions.length > 0 ? '過去セッション' : null,
       briefingSessionContext?.summary ? '現セッション' : null,
     ].filter(Boolean)
-    console.log(`[Briefing] コンテキスト: ${briefingParts.length} 件（カレンダー, 天気, 永久記憶, ${memorySources.join(', ') || 'なし'}）`)
+    console.log(`[Briefing] コンテキスト: ${briefingParts.length} 件（カレンダー, ToDo, 天気, 永久記憶, ${memorySources.join(', ') || 'なし'}）`)
   }
 
   // MCP ツールを動的注入（接続が有効な場合のみ）

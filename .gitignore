@@ -47,5 +47,8 @@ butler-assistant-app/android/build
 # CDK
 infra/cdk.out
 
+# Reference files (private)
+docs/re/
+
 # Claude Code
 .claude/

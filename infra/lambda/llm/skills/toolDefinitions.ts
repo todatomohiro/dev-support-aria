@@ -129,6 +129,79 @@ export const TOOL_DEFINITIONS: Tool[] = [
       },
     },
   },
+  {
+    toolSpec: {
+      name: 'list_tasks',
+      description: 'Google ToDo リストからタスクを取得します。ユーザーが「ToDoを見せて」「やることリスト」「タスク一覧」などと聞いた場合に使用してください。',
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            dueMin: {
+              type: 'string',
+              description: '期限の開始日時（RFC 3339 形式、例: 2026-03-10T00:00:00Z）。省略時はすべての未完了タスクを取得',
+            },
+            dueMax: {
+              type: 'string',
+              description: '期限の終了日時（RFC 3339 形式）。省略時は制限なし',
+            },
+            showCompleted: {
+              type: 'boolean',
+              description: '完了済みタスクも含めるか（デフォルト: false）',
+            },
+            maxResults: {
+              type: 'number',
+              description: '取得する最大件数（デフォルト: 20）',
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    toolSpec: {
+      name: 'create_task',
+      description: 'Google ToDo リストに新しいタスクを作成します。ユーザーが「ToDoに追加して」「タスク作って」と言った場合、またはAIが会話の中でToDoに追加すべきと判断した場合に使用してください。必ずユーザーに内容を確認してから作成してください。確認なしに勝手に作成しないでください。',
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            title: {
+              type: 'string',
+              description: 'タスクのタイトル',
+            },
+            notes: {
+              type: 'string',
+              description: 'タスクの詳細メモ（任意）',
+            },
+            due: {
+              type: 'string',
+              description: '期限日（ISO 8601 日付形式、例: 2026-03-15）。Google Tasks は日付のみ対応（時刻は無視される）。',
+            },
+          },
+          required: ['title'],
+        },
+      },
+    },
+  },
+  {
+    toolSpec: {
+      name: 'complete_task',
+      description: 'Google ToDo リストのタスクを完了にします。ユーザーが「ToDo完了」「タスク終わった」と言った場合に使用してください。事前に list_tasks でタスクIDを確認してから実行してください。',
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            taskId: {
+              type: 'string',
+              description: '完了にするタスクのID（list_tasks で取得したID）',
+            },
+          },
+          required: ['taskId'],
+        },
+      },
+    },
+  },
 ]
 
 /**
