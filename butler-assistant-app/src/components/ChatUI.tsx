@@ -446,7 +446,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       <div className="flex-1 overflow-y-auto flex flex-col" ref={scrollContainerRef}>
         {/* メッセージを下寄せにするスペーサー */}
         <div className="flex-1" />
-        <div className="p-2 sm:p-4 space-y-2 sm:space-y-4">
+        <div className="p-2 sm:p-4 space-y-4 sm:space-y-6 max-w-[760px] mx-auto w-full">
         {hasEarlierMessages && (
           <div className="flex justify-center py-2">
             <button
@@ -486,8 +486,19 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 
         {/* ストリーミングテキスト（タイプライター表示） */}
         {streamingText != null && streamingText.length > 0 && (
-          <div className="flex justify-start" data-testid="streaming-message">
-            <div className="max-w-[85%] sm:max-w-[70%] rounded-lg p-2 sm:p-3 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+          <div className="flex flex-col border-b border-gray-100 dark:border-gray-800/50 pb-2" data-testid="streaming-message">
+            <div className="flex items-center gap-2 mb-1.5">
+              <svg className="w-5 h-5 rounded flex-shrink-0" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                <defs><linearGradient id="aiba-stream-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stopColor="#26C6DA"/><stop offset="100%" stopColor="#FFB830"/></linearGradient></defs>
+                <rect width="512" height="512" fill="url(#aiba-stream-grad)"/>
+                <path d="M112,177 C112,148 136,124 165,124 L347,124 C376,124 400,148 400,177 L400,345 C400,374 376,398 347,398 L222,398 L160,470 L177,398 L165,398 C136,398 112,374 112,345 Z" fill="white" fillOpacity="0.95"/>
+                <path d="M256,201 L268,244 L311,256 L268,268 L256,311 L244,268 L201,256 L244,244 Z" fill="url(#aiba-stream-grad)"/>
+                <path d="M350,153 L354,170 L371,174 L354,179 L350,196 L345,179 L328,174 L345,170 Z" fill="url(#aiba-stream-grad)"/>
+                <path d="M160,333 L164,345 L176,348 L164,352 L160,364 L156,352 L144,348 L156,345 Z" fill="url(#aiba-stream-grad)"/>
+              </svg>
+              <span className="text-xs font-bold text-gray-400 dark:text-gray-500">Ai-Ba</span>
+            </div>
+            <div className="pl-7 text-gray-900 dark:text-gray-100">
               <div className="markdown-content">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {streamingText}
@@ -532,7 +543,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
             { label: '決定/TODO', prompt: '会議の決定事項とTODOをまとめてください' },
           ]
           return (
-            <div className="flex gap-2 overflow-x-auto px-2 sm:px-4 py-1.5 border-t border-gray-200 dark:border-gray-700" data-testid="meeting-actions">
+            <div className="flex gap-2 overflow-x-auto px-2 sm:px-4 py-1.5 max-w-[760px] mx-auto w-full" data-testid="meeting-actions">
               {meetingActions.map((action) => (
                 <button
                   key={action.label}
@@ -555,7 +566,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
           : (lastMsg?.role === 'assistant' ? lastMsg.suggestedReplies : undefined)
         const template = isPersistent ? persistentRepliesTemplate : undefined
         return replies?.length ? (
-          <div className="flex gap-2 overflow-x-auto px-2 sm:px-4 py-1.5 border-t border-gray-200 dark:border-gray-700" data-testid="quick-replies">
+          <div className="flex gap-2 overflow-x-auto px-2 sm:px-4 py-1.5 max-w-[760px] mx-auto w-full" data-testid="quick-replies">
             {replies.map((reply) => (
               <button
                 key={reply}
@@ -572,7 +583,7 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       })()}
 
       {/* 入力エリア */}
-      <div className="border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4">
+      <div className="p-2 sm:p-4 max-w-[760px] mx-auto w-full">
         <CameraPreview
           enabled={cameraEnabled}
           onCapture={(base64) => {
@@ -893,112 +904,136 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
     }
   }, [message.content, memoSaving, memoSaved])
 
+  // アクションボタン（AI メッセージ用）
+  const actionButtons = !isUser && (
+    <div className="flex items-center justify-between mt-1.5">
+      <span className="text-[10px] sm:text-xs opacity-70">
+        {formatRelativeTimestamp(message.timestamp)}
+      </span>
+      <div className="flex items-center">
+        {developerMode && promptText && (
+          <button
+            onClick={() => setShowDebug((prev) => !prev)}
+            className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold opacity-60 hover:opacity-100 transition-opacity bg-purple-500/20 hover:bg-purple-500/30 text-purple-700 dark:text-purple-300"
+            title="システムプロンプトを表示"
+            data-testid="debug-info-toggle"
+          >
+            PROMPT
+          </button>
+        )}
+        <button
+          onClick={handleQuickMemo}
+          disabled={memoSaving || memoSaved}
+          className={`ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-opacity ${memoSaved ? 'opacity-100 text-green-500' : 'opacity-60 hover:opacity-100'}`}
+          title={memoSaved ? '保存済み' : 'メモに保存'}
+          data-testid="memo-quick-save-button"
+        >
+          {memoSaved ? (
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+            </svg>
+          )}
+        </button>
+        <button
+          onClick={handleSpeak}
+          className="ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity"
+          title={isSpeaking ? '停止' : '読み上げ'}
+          data-testid="tts-speak-button"
+        >
+          {isSpeaking ? (
+            <svg className="w-3.5 h-3.5 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+            </svg>
+          )}
+        </button>
+      </div>
+    </div>
+  )
+
+  // ユーザーメッセージ: 右寄せバブル
+  if (isUser) {
+    return (
+      <div
+        className="flex justify-end"
+        data-testid="message-bubble"
+        data-timestamp={message.timestamp}
+        data-role={message.role}
+      >
+        <div className="max-w-[85%] sm:max-w-[70%] rounded-lg p-2 sm:p-3 bg-blue-600 text-white">
+          {message.imageBase64 && (
+            <img
+              src={`data:image/jpeg;base64,${message.imageBase64}`}
+              alt="送信画像"
+              className="max-w-[240px] max-h-[180px] rounded-md mb-1.5 object-cover"
+              data-testid="message-image"
+            />
+          )}
+          <p className="whitespace-pre-wrap">{linkifyContent(message.content, true)}</p>
+          <div className="flex items-center justify-end mt-1">
+            <span className="text-[10px] sm:text-xs opacity-70">
+              {formatRelativeTimestamp(message.timestamp)}
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // AI メッセージ: 全幅レイアウト
   return (
     <div
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+      className="flex flex-col border-b border-gray-100 dark:border-gray-800/50 pb-2"
       data-testid="message-bubble"
       data-timestamp={message.timestamp}
       data-role={message.role}
     >
-      <div
-        className={`max-w-[85%] sm:max-w-[70%] rounded-lg p-2 sm:p-3 ${
-          isUser
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-        }`}
-      >
-        {/* ユーザー送信画像 */}
-        {message.imageBase64 && (
-          <img
-            src={`data:image/jpeg;base64,${message.imageBase64}`}
-            alt="送信画像"
-            className="max-w-[240px] max-h-[180px] rounded-md mb-1.5 object-cover"
-            data-testid="message-image"
-          />
-        )}
-        {isUser ? (
-          <p className="whitespace-pre-wrap">{linkifyContent(message.content, true)}</p>
-        ) : (
-          <div className="markdown-content">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ href, children }) => (
-                  <a href={href} target="_blank" rel="noopener noreferrer">
-                    {children}
-                  </a>
-                ),
-                // 空のコードブロックを非表示
-                pre: ({ children, ...props }) => {
-                  const text = String(children).replace(/\n$/, '')
-                  if (!text || text === '[object Object]') return null
-                  return <pre {...props}>{children}</pre>
-                },
-              }}
-            >
-              {stripJsonMetadata(message.content)}
-            </ReactMarkdown>
-          </div>
-        )}
+      {/* アイコン + 名前行 */}
+      <div className="flex items-center gap-2 mb-1.5">
+        <svg className="w-5 h-5 rounded flex-shrink-0" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="aiba-icon-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stopColor="#26C6DA"/><stop offset="100%" stopColor="#FFB830"/></linearGradient></defs>
+          <rect width="512" height="512" fill="url(#aiba-icon-grad)"/>
+          <path d="M112,177 C112,148 136,124 165,124 L347,124 C376,124 400,148 400,177 L400,345 C400,374 376,398 347,398 L222,398 L160,470 L177,398 L165,398 C136,398 112,374 112,345 Z" fill="white" fillOpacity="0.95"/>
+          <path d="M256,201 L268,244 L311,256 L268,268 L256,311 L244,268 L201,256 L244,244 Z" fill="url(#aiba-icon-grad)"/>
+          <path d="M350,153 L354,170 L371,174 L354,179 L350,196 L345,179 L328,174 L345,170 Z" fill="url(#aiba-icon-grad)"/>
+          <path d="M160,333 L164,345 L176,348 L164,352 L160,364 L156,352 L144,348 L156,345 Z" fill="url(#aiba-icon-grad)"/>
+        </svg>
+        <span className="text-xs font-bold text-gray-400 dark:text-gray-500">Ai-Ba</span>
+      </div>
+      {/* コンテンツ */}
+      <div className="pl-7 text-gray-900 dark:text-gray-100">
+        <div className="markdown-content">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a: ({ href, children }) => (
+                <a href={href} target="_blank" rel="noopener noreferrer">
+                  {children}
+                </a>
+              ),
+              pre: ({ children, ...props }) => {
+                const text = String(children).replace(/\n$/, '')
+                if (!text || text === '[object Object]') return null
+                return <pre {...props}>{children}</pre>
+              },
+            }}
+          >
+            {stripJsonMetadata(message.content)}
+          </ReactMarkdown>
+        </div>
         {message.mapData && (
           <Suspense fallback={<div className="w-full h-48 rounded-md bg-gray-200 dark:bg-gray-700 animate-pulse mt-2" />}>
             <MapView mapData={message.mapData} />
           </Suspense>
         )}
-        <div className="flex items-center justify-between mt-1">
-          <span className="text-[10px] sm:text-xs opacity-70">
-            {formatRelativeTimestamp(message.timestamp)}
-          </span>
-          <div className="flex items-center">
-            {!isUser && developerMode && promptText && (
-              <button
-                onClick={() => setShowDebug((prev) => !prev)}
-                className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold opacity-60 hover:opacity-100 transition-opacity bg-purple-500/20 hover:bg-purple-500/30 text-purple-700 dark:text-purple-300"
-                title="システムプロンプトを表示"
-                data-testid="debug-info-toggle"
-              >
-                PROMPT
-              </button>
-            )}
-            {!isUser && (
-              <button
-                onClick={handleQuickMemo}
-                disabled={memoSaving || memoSaved}
-                className={`ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-opacity ${memoSaved ? 'opacity-100 text-green-500' : 'opacity-60 hover:opacity-100'}`}
-                title={memoSaved ? '保存済み' : 'メモに保存'}
-                data-testid="memo-quick-save-button"
-              >
-                {memoSaved ? (
-                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                  </svg>
-                ) : (
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                  </svg>
-                )}
-              </button>
-            )}
-            {!isUser && (
-              <button
-                onClick={handleSpeak}
-                className="ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity"
-                title={isSpeaking ? '停止' : '読み上げ'}
-                data-testid="tts-speak-button"
-              >
-                {isSpeaking ? (
-                  <svg className="w-3.5 h-3.5 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
-                  </svg>
-                ) : (
-                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
-                  </svg>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
+        {actionButtons}
         {showDebug && promptText && (
           <pre
             className="mt-2 p-2 rounded text-xs bg-purple-950/80 text-purple-200 overflow-x-auto whitespace-pre-wrap break-words max-h-[60vh] overflow-y-auto"
@@ -1067,8 +1102,19 @@ function ThemeSuggestionCard({ themeName, onCreateTheme }: { themeName: string; 
  */
 function SkeletonMessage() {
   return (
-    <div className="flex justify-start" data-testid="loading-indicator">
-      <div className="w-48 sm:w-64 rounded-lg p-3 bg-gray-100 dark:bg-gray-800 space-y-2">
+    <div className="flex flex-col pb-2" data-testid="loading-indicator">
+      <div className="flex items-center gap-2 mb-1.5">
+        <svg className="w-5 h-5 rounded flex-shrink-0" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="aiba-skel-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stopColor="#26C6DA"/><stop offset="100%" stopColor="#FFB830"/></linearGradient></defs>
+          <rect width="512" height="512" fill="url(#aiba-skel-grad)"/>
+          <path d="M112,177 C112,148 136,124 165,124 L347,124 C376,124 400,148 400,177 L400,345 C400,374 376,398 347,398 L222,398 L160,470 L177,398 L165,398 C136,398 112,374 112,345 Z" fill="white" fillOpacity="0.95"/>
+          <path d="M256,201 L268,244 L311,256 L268,268 L256,311 L244,268 L201,256 L244,244 Z" fill="url(#aiba-skel-grad)"/>
+          <path d="M350,153 L354,170 L371,174 L354,179 L350,196 L345,179 L328,174 L345,170 Z" fill="url(#aiba-skel-grad)"/>
+          <path d="M160,333 L164,345 L176,348 L164,352 L160,364 L156,352 L144,348 L156,345 Z" fill="url(#aiba-skel-grad)"/>
+        </svg>
+        <span className="text-xs font-bold text-gray-400 dark:text-gray-500">Ai-Ba</span>
+      </div>
+      <div className="pl-7 space-y-2">
         <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded animate-pulse w-3/4" />
         <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded animate-pulse w-1/2" />
         <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded animate-pulse w-2/3" />

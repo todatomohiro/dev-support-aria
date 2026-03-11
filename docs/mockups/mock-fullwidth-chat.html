@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ai-Ba チャットUI — 全幅レイアウト比較モックアップ</title>
+<style>
+  :root {
+    --bg: #111827;
+    --card: #1f2937;
+    --border: #374151;
+    --text: #f3f4f6;
+    --text-muted: #9ca3af;
+    --user-bg: #2563eb;
+    --ai-bg: #1f2937;
+    --ai-bg-light: #f3f4f6;
+    --ai-border: #374151;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif;
+    background: #0a0a0a;
+    color: var(--text);
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+    min-height: 100vh;
+  }
+
+  /* ─── 共通 ─── */
+  .phone {
+    width: 390px;
+    min-width: 390px;
+    background: var(--bg);
+    border-radius: 20px;
+    border: 2px solid var(--border);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 844px;
+  }
+  .phone-header {
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .phone-header h2 {
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .phone-header-icons {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .phone-header-icons span {
+    font-size: 14px;
+    opacity: 0.6;
+  }
+  .version-tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .version-tag.current {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+  }
+  .version-tag.new {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+  }
+
+  .chat-area {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-spacer { flex: 1; }
+  .chat-messages {
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* ─── ユーザーバブル（共通） ─── */
+  .msg-user {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .msg-user .bubble {
+    max-width: 80%;
+    background: var(--user-bg);
+    color: white;
+    border-radius: 16px 16px 4px 16px;
+    padding: 10px 14px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .msg-user .bubble .time {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-top: 4px;
+  }
+
+  /* ─── 現行: AIバブル ─── */
+  .msg-ai-bubble {
+    display: flex;
+    justify-content: flex-start;
+  }
+  .msg-ai-bubble .bubble {
+    max-width: 85%;
+    background: var(--ai-bg);
+    border: 1px solid var(--ai-border);
+    border-radius: 16px 16px 16px 4px;
+    padding: 10px 14px;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .msg-ai-bubble .bubble .actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 6px;
+  }
+  .msg-ai-bubble .bubble .time {
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .msg-ai-bubble .bubble .action-btns {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .action-btn {
+    opacity: 0.5;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .prompt-tag {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(168, 85, 247, 0.2);
+    color: #a855f7;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+
+  /* ─── 新: AI全幅 ─── */
+  .msg-ai-full {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .msg-ai-full .ai-icon-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .msg-ai-full .ai-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .msg-ai-full .ai-avatar svg {
+    width: 100%;
+    height: 100%;
+  }
+  .msg-ai-full .ai-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+  .msg-ai-full .ai-content {
+    font-size: 14px;
+    line-height: 1.8;
+    padding-left: 32px;
+  }
+  .msg-ai-full .ai-content strong {
+    color: #93c5fd;
+    font-weight: 600;
+  }
+  .msg-ai-full .actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    padding-left: 32px;
+  }
+  .msg-ai-full .time {
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .msg-ai-full .action-btns {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* ─── Markdown風装飾 ─── */
+  .md-bold { font-weight: 700; color: #93c5fd; }
+  .md-list { padding-left: 20px; margin: 6px 0; }
+  .md-list li { margin-bottom: 4px; }
+  .md-list li::marker { color: var(--text-muted); }
+
+  /* ─── クイックリプライ ─── */
+  .quick-replies {
+    display: flex;
+    gap: 8px;
+    padding: 8px 12px;
+    overflow-x: auto;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .quick-reply-btn {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid #3b82f6;
+    background: rgba(59, 130, 246, 0.08);
+    color: #93c5fd;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  /* ─── 入力エリア ─── */
+  .input-area {
+    border-top: 1px solid var(--border);
+    padding: 10px 12px;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .input-field {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 10px 16px;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+  .input-icons {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .input-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    opacity: 0.6;
+  }
+
+  /* ─── ラベル ─── */
+  .comparison-label {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    padding: 8px;
+    border-radius: 12px;
+  }
+  .comparison-label.current {
+    background: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
+  }
+  .comparison-label.new {
+    background: rgba(34, 197, 94, 0.1);
+    color: #86efac;
+  }
+
+  /* ─── ストリーミング表示 ─── */
+  .streaming-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 16px;
+    background: var(--text-muted);
+    animation: blink 1s infinite;
+    vertical-align: text-bottom;
+    margin-left: 2px;
+  }
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  /* ─── テーブル ─── */
+  .md-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 12px;
+  }
+  .md-table th {
+    background: rgba(255,255,255,0.05);
+    padding: 6px 10px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .md-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  /* ─── 注釈 ─── */
+  .annotation {
+    position: absolute;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px dashed #f59e0b;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #fbbf24;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* ─── デスクトップ比較 ─── */
+  .desktop-section {
+    width: 100%;
+    max-width: 700px;
+    margin-top: 0;
+  }
+  .desktop-frame {
+    background: var(--bg);
+    border-radius: 12px;
+    border: 2px solid var(--border);
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .desktop-frame .chat-messages {
+    padding: 16px 24px;
+  }
+  .desktop-frame .msg-ai-full .ai-content {
+    max-width: 640px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== 現行 (バブル型) ===== -->
+<div>
+  <div class="comparison-label current">BEFORE — 現行（バブル型）</div>
+  <div class="phone">
+    <div class="phone-header">
+      <h2>AI</h2>
+      <div class="phone-header-icons">
+        <span>🔍</span>
+        <span style="width:24px;height:24px;border-radius:50%;background:#2563eb;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:white;">T</span>
+        <span class="version-tag current">PoC</span>
+      </div>
+    </div>
+
+    <div class="chat-area">
+      <div class="chat-spacer"></div>
+      <div class="chat-messages">
+
+        <div class="msg-user">
+          <div class="bubble">
+            今記憶の期間を3日に変更したけど何か違和感はないかな？3日後は中長期記憶に変わる想定だよ
+            <div class="time">22:07</div>
+          </div>
+        </div>
+
+        <div class="msg-ai-bubble">
+          <div class="bubble">
+            記憶の期間を3日に変更したんだね。うーん、ちょっと考えてみるね。<br><br>
+            短期記憶が3日間ってことは、セッション内だけじゃなくて、その後3日間は会話の流れを覚えてるってことだよね。その後で中長期記憶に移行する、と。<br><br>
+            <span class="md-bold">違和感という点では、実装的には問題なさそうに思うんだけど</span>、ユーザー体験の観点から1つ気になることがあるんだ。3日って微妙な長さじゃない？例えば、ともくんが月曜に相談したことが木曜にはもう「古い記憶」として扱われるわけだけど、その間に「あ、あの話どうなってたっけ？」って思い出したときに、短期記憶には残ってるけど中長期には登録されてない...みたいな状態が起きるかもしれないんだよ。<br><br>
+            実際に使ってみて、<span class="md-bold">3日後に「あれ、あの話は？」みたいな違和感が出るかどうか</span>が重要な気がするんだ。試してみてどう？
+            <div class="actions">
+              <span class="time">22:07</span>
+              <div class="action-btns">
+                <span class="prompt-tag">PROMPT</span>
+                <span class="action-btn">🔖</span>
+                <span class="action-btn">🔊</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="msg-user">
+          <div class="bubble">
+            なるほど、確かにそうだね、再度調整しよう
+            <div class="time">22:08</div>
+          </div>
+        </div>
+
+        <div class="msg-ai-bubble">
+          <div class="bubble">
+            よかった、一緒に考えられてよかった。再度調整するんだね。<br><br>
+            <span class="md-bold">何か調整する際に気になることとか、試したい期間とかあったら言ってよ。</span>ともくんの開発の壁打ち相手として、一緒に考えるのが得意だからさ。<br><br>
+            頑張ってな！
+            <div class="actions">
+              <span class="time">22:08</span>
+              <div class="action-btns">
+                <span class="prompt-tag">PROMPT</span>
+                <span class="action-btn">🔖</span>
+                <span class="action-btn">🔊</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="quick-replies">
+      <div class="quick-reply-btn">5日間で試してみる</div>
+      <div class="quick-reply-btn">他の案を聞きたい</div>
+      <div class="quick-reply-btn">今日はここまで</div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-icons"><span class="input-icon">＋</span><span class="input-icon">⚙</span></div>
+      <div class="input-field">メッセージを入力...</div>
+      <div class="input-icons"><span class="input-icon">🎤</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 新: 全幅レイアウト ===== -->
+<div>
+  <div class="comparison-label new">AFTER — 全幅レイアウト（提案）</div>
+  <div class="phone">
+    <div class="phone-header">
+      <h2>AI</h2>
+      <div class="phone-header-icons">
+        <span>🔍</span>
+        <span style="width:24px;height:24px;border-radius:50%;background:#2563eb;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:white;">T</span>
+        <span class="version-tag new">PoC</span>
+      </div>
+    </div>
+
+    <div class="chat-area">
+      <div class="chat-spacer"></div>
+      <div class="chat-messages">
+
+        <div class="msg-user">
+          <div class="bubble">
+            今記憶の期間を3日に変更したけど何か違和感はないかな？3日後は中長期記憶に変わる想定だよ
+            <div class="time">22:07</div>
+          </div>
+        </div>
+
+        <div class="msg-ai-full">
+          <div class="ai-icon-row">
+            <div class="ai-avatar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="bg-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#26C6DA"/><stop offset="100%" stop-color="#FFB830"/></linearGradient></defs><rect width="512" height="512" fill="url(#bg-grad)"/><path d="M112,177 C112,148 136,124 165,124 L347,124 C376,124 400,148 400,177 L400,345 C400,374 376,398 347,398 L222,398 L160,470 L177,398 L165,398 C136,398 112,374 112,345 Z" fill="white" fill-opacity="0.95"/><path d="M256,201 L268,244 L311,256 L268,268 L256,311 L244,268 L201,256 L244,244 Z" fill="url(#bg-grad)"/><path d="M350,153 L354,170 L371,174 L354,179 L350,196 L345,179 L328,174 L345,170 Z" fill="url(#bg-grad)"/><path d="M160,333 L164,345 L176,348 L164,352 L160,364 L156,352 L144,348 L156,345 Z" fill="url(#bg-grad)"/></svg></div>
+            <span class="ai-name">Ai-Ba</span>
+          </div>
+          <div class="ai-content">
+            記憶の期間を3日に変更したんだね。うーん、ちょっと考えてみるね。<br><br>
+            短期記憶が3日間ってことは、セッション内だけじゃなくて、その後3日間は会話の流れを覚えてるってことだよね。その後で中長期記憶に移行する、と。<br><br>
+            <strong>違和感という点では、実装的には問題なさそうに思うんだけど</strong>、ユーザー体験の観点から1つ気になることがあるんだ。3日って微妙な長さじゃない？例えば、ともくんが月曜に相談したことが木曜にはもう「古い記憶」として扱われるわけだけど、その間に「あ、あの話どうなってたっけ？」って思い出したときに、短期記憶には残ってるけど中長期には登録されてない...みたいな状態が起きるかもしれないんだよ。<br><br>
+            実際に使ってみて、<strong>3日後に「あれ、あの話は？」みたいな違和感が出るかどうか</strong>が重要な気がするんだ。試してみてどう？
+          </div>
+          <div class="actions">
+            <span class="time">22:07</span>
+            <div class="action-btns">
+              <span class="prompt-tag">PROMPT</span>
+              <span class="action-btn">🔖</span>
+              <span class="action-btn">🔊</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="msg-user">
+          <div class="bubble">
+            なるほど、確かにそうだね、再度調整しよう
+            <div class="time">22:08</div>
+          </div>
+        </div>
+
+        <div class="msg-ai-full">
+          <div class="ai-icon-row">
+            <div class="ai-avatar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="bg-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#26C6DA"/><stop offset="100%" stop-color="#FFB830"/></linearGradient></defs><rect width="512" height="512" fill="url(#bg-grad)"/><path d="M112,177 C112,148 136,124 165,124 L347,124 C376,124 400,148 400,177 L400,345 C400,374 376,398 347,398 L222,398 L160,470 L177,398 L165,398 C136,398 112,374 112,345 Z" fill="white" fill-opacity="0.95"/><path d="M256,201 L268,244 L311,256 L268,268 L256,311 L244,268 L201,256 L244,244 Z" fill="url(#bg-grad)"/><path d="M350,153 L354,170 L371,174 L354,179 L350,196 L345,179 L328,174 L345,170 Z" fill="url(#bg-grad)"/><path d="M160,333 L164,345 L176,348 L164,352 L160,364 L156,352 L144,348 L156,345 Z" fill="url(#bg-grad)"/></svg></div>
+            <span class="ai-name">Ai-Ba</span>
+          </div>
+          <div class="ai-content">
+            よかった、一緒に考えられてよかった。再度調整するんだね。<br><br>
+            <strong>何か調整する際に気になることとか、試したい期間とかあったら言ってよ。</strong>ともくんの開発の壁打ち相手として、一緒に考えるのが得意だからさ。<br><br>
+            頑張ってな！
+          </div>
+          <div class="actions">
+            <span class="time">22:08</span>
+            <div class="action-btns">
+              <span class="prompt-tag">PROMPT</span>
+              <span class="action-btn">🔖</span>
+              <span class="action-btn">🔊</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="quick-replies">
+      <div class="quick-reply-btn">5日間で試してみる</div>
+      <div class="quick-reply-btn">他の案を聞きたい</div>
+      <div class="quick-reply-btn">今日はここまで</div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-icons"><span class="input-icon">＋</span><span class="input-icon">⚙</span></div>
+      <div class="input-field">メッセージを入力...</div>
+      <div class="input-icons"><span class="input-icon">🎤</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== デスクトップ: リッチコンテンツ例 ===== -->
+<div class="desktop-section">
+  <div class="comparison-label new">全幅レイアウト — リッチコンテンツ例（デスクトップ）</div>
+  <div class="desktop-frame">
+    <div class="chat-messages">
+
+      <div class="msg-user">
+        <div class="bubble">
+          AWS試験の勉強計画を立ててほしい。中級を4月に受けるよ
+          <div class="time">22:15</div>
+        </div>
+      </div>
+
+      <div class="msg-ai-full">
+        <div class="ai-icon-row">
+          <div class="ai-avatar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="bg-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#26C6DA"/><stop offset="100%" stop-color="#FFB830"/></linearGradient></defs><rect width="512" height="512" fill="url(#bg-grad)"/><path d="M112,177 C112,148 136,124 165,124 L347,124 C376,124 400,148 400,177 L400,345 C400,374 376,398 347,398 L222,398 L160,470 L177,398 L165,398 C136,398 112,374 112,345 Z" fill="white" fill-opacity="0.95"/><path d="M256,201 L268,244 L311,256 L268,268 L256,311 L244,268 L201,256 L244,244 Z" fill="url(#bg-grad)"/><path d="M350,153 L354,170 L371,174 L354,179 L350,196 L345,179 L328,174 L345,170 Z" fill="url(#bg-grad)"/><path d="M160,333 L164,345 L176,348 L164,352 L160,364 L156,352 L144,348 L156,345 Z" fill="url(#bg-grad)"/></svg></div>
+          <span class="ai-name">Ai-Ba</span>
+        </div>
+        <div class="ai-content">
+          おっ、中級試験に向けて本格的に動くんだね！初級合格の勢いそのままでいこう。<br><br>
+
+          <strong>4月中旬受験を想定した5週間プラン</strong>を考えてみたよ：<br><br>
+
+          <table class="md-table">
+            <thead>
+              <tr>
+                <th>週</th>
+                <th>期間</th>
+                <th>テーマ</th>
+                <th>目安時間</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1週目</td>
+                <td>3/12〜3/18</td>
+                <td>コンピューティング（EC2, Lambda, ECS）</td>
+                <td>5h</td>
+              </tr>
+              <tr>
+                <td>2週目</td>
+                <td>3/19〜3/25</td>
+                <td>ネットワーク（VPC, Route53, CloudFront）</td>
+                <td>5h</td>
+              </tr>
+              <tr>
+                <td>3週目</td>
+                <td>3/26〜4/1</td>
+                <td>データベース・ストレージ（RDS, DynamoDB, S3）</td>
+                <td>5h</td>
+              </tr>
+              <tr>
+                <td>4週目</td>
+                <td>4/2〜4/8</td>
+                <td>セキュリティ・モニタリング（IAM, CloudWatch）</td>
+                <td>4h</td>
+              </tr>
+              <tr>
+                <td>5週目</td>
+                <td>4/9〜4/15</td>
+                <td>模擬試験 + 弱点復習</td>
+                <td>6h</td>
+              </tr>
+            </tbody>
+          </table>
+          <br>
+
+          ともくんは<strong>実務でAWSインフラやってる</strong>から、コンピューティングとネットワークはサクサク進むと思う。重点的にやるなら<strong>データベースとセキュリティ</strong>かな。<br><br>
+
+          カレンダーに勉強タイムを入れておく？毎日の通勤時間とか使えそう？
+        </div>
+        <div class="actions">
+          <span class="time">22:15</span>
+          <div class="action-btns">
+            <span class="prompt-tag">PROMPT</span>
+            <span class="action-btn">🔖</span>
+            <span class="action-btn">🔊</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="msg-user">
+        <div class="bubble">
+          いいね！カレンダーに入れて
+          <div class="time">22:16</div>
+        </div>
+      </div>
+
+      <div class="msg-ai-full">
+        <div class="ai-icon-row">
+          <div class="ai-avatar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="bg-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#26C6DA"/><stop offset="100%" stop-color="#FFB830"/></linearGradient></defs><rect width="512" height="512" fill="url(#bg-grad)"/><path d="M112,177 C112,148 136,124 165,124 L347,124 C376,124 400,148 400,177 L400,345 C400,374 376,398 347,398 L222,398 L160,470 L177,398 L165,398 C136,398 112,374 112,345 Z" fill="white" fill-opacity="0.95"/><path d="M256,201 L268,244 L311,256 L268,268 L256,311 L244,268 L201,256 L244,244 Z" fill="url(#bg-grad)"/><path d="M350,153 L354,170 L371,174 L354,179 L350,196 L345,179 L328,174 L345,170 Z" fill="url(#bg-grad)"/><path d="M160,333 L164,345 L176,348 L164,352 L160,364 L156,352 L144,348 L156,345 Z" fill="url(#bg-grad)"/></svg></div>
+          <span class="ai-name">Ai-Ba</span>
+        </div>
+        <div class="ai-content" style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px;">
+          <span style="display:inline-block;width:16px;height:16px;border:2px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;"></span>
+          カレンダーに予定を作成中...
+          <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 変更点まとめ -->
+  <div style="background: var(--bg); border-radius: 12px; border: 2px solid var(--border); padding: 20px;">
+    <div style="font-size: 15px; font-weight: 700; margin-bottom: 14px;">変更点まとめ</div>
+    <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; line-height: 1.6;">
+      <div style="display:flex;gap:10px;">
+        <span style="color: #22c55e; flex-shrink:0;">1.</span>
+        <div><strong>AI回答</strong>: バブル廃止 → 左寄せ全幅 + アイコン行で話者識別</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <span style="color: #22c55e; flex-shrink:0;">2.</span>
+        <div><strong>ユーザー発言</strong>: 右寄せバブル維持（変更なし）</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <span style="color: #22c55e; flex-shrink:0;">3.</span>
+        <div><strong>アクション</strong>: PROMPT / 🔖 / 🔊 は右下に維持</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <span style="color: #22c55e; flex-shrink:0;">4.</span>
+        <div><strong>テーブル・リスト</strong>: 全幅を活かしたリッチ表示が可能に</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <span style="color: #22c55e; flex-shrink:0;">5.</span>
+        <div><strong>ツール実行中</strong>: インライン表示（スピナー + テキスト）</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <span style="color: #22c55e; flex-shrink:0;">6.</span>
+        <div><strong>区切り線</strong>: メッセージ間に薄いセパレータで会話の区切りを明示</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
