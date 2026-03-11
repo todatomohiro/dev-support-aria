@@ -278,12 +278,23 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
     }
   }, [])
 
+  /** スクロールコンテナを最下部に移動（iOS Safari 対応） */
+  const scrollToBottomImmediate = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    // requestAnimationFrame でレイアウト計算完了後にスクロール
+    // iOS Safari ではDOM変更直後の scrollTop 設定が無視されることがあるため
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight
+    })
+  }, [])
+
   // ストリーミング中は最下部へスクロール（テキストが増えるたびに）
   useEffect(() => {
     if (streamingText != null && streamingText.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      scrollToBottomImmediate()
     }
-  }, [streamingText])
+  }, [streamingText, scrollToBottomImmediate])
 
   // メッセージ変更時: 過去読み込み時はスクロール位置復元、それ以外は最下部へスクロール
   useEffect(() => {
@@ -316,9 +327,17 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   const scrollToBottom = () => {
     // 0件 → N件（初回ロード・トピック切り替え）は instant、それ以降は smooth
     const isInitialLoad = prevMessageCountRef.current === 0 && messages.length > 0
-    const behavior = isInitialLoad ? 'instant' as ScrollBehavior : 'smooth'
     prevMessageCountRef.current = messages.length
-    messagesEndRef.current?.scrollIntoView({ behavior })
+    if (isInitialLoad) {
+      // 初回ロードは即座にスクロール（アニメーション不要）
+      const container = scrollContainerRef.current
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      }
+    } else {
+      // メッセージ確定時もレイアウト後にスクロール（iOS Safari 対応）
+      scrollToBottomImmediate()
+    }
   }
 
   /** スクロール位置を監視して「最新へ」ボタンの表示を切り替え */

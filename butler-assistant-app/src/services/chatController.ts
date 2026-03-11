@@ -41,7 +41,7 @@ function extractStreamingText(raw: string): string {
         if (rest[i] === '"') break
         result += rest[i]
       }
-      return result
+      return stripTemplateTags(result)
     }
     return ''
   }
@@ -50,11 +50,18 @@ function extractStreamingText(raw: string): string {
   // LLM は平文 → {"emotion":...} や {\n  "emotion":...} の順で出力する場合がある
   const firstJsonIndex = raw.search(/\{[\s]*"/)
   if (firstJsonIndex > 0) {
-    return raw.slice(0, firstJsonIndex).trim()
+    return stripTemplateTags(raw.slice(0, firstJsonIndex).trim())
   }
 
   // 完全に平文のみ（JSON なし）
-  return raw.trim()
+  return stripTemplateTags(raw.trim())
+}
+
+/**
+ * LLM が誤出力する Liquid テンプレートタグ等を除去
+ */
+function stripTemplateTags(text: string): string {
+  return text.replace(/\{%\s*(?:raw|endraw)\s*%\}/g, '').trim()
 }
 
 /**
@@ -222,9 +229,44 @@ class ChatControllerImpl {
     return new Promise<void>((resolve, reject) => {
       let completed = false
       let rawAccumulated = ''
+      let lastActivityTime = Date.now()
+      let streamTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+      /** ストリーミングのタイムアウト監視を開始（REST 成功後に呼ぶ） */
+      const startStreamTimeout = () => {
+        // iOS Safari では WS 切断時に chat_complete が届かないため、
+        // 最後の delta から一定時間経過でタイムアウトさせる
+        const STREAM_IDLE_TIMEOUT_MS = 45_000
+        const CHECK_INTERVAL_MS = 5_000
+
+        const check = () => {
+          if (completed) return
+          const idle = Date.now() - lastActivityTime
+          if (idle >= STREAM_IDLE_TIMEOUT_MS) {
+            cleanup()
+            reject(new APIError('ストリーミングタイムアウト（WebSocket切断の可能性）', 504))
+          } else {
+            streamTimeoutId = setTimeout(check, CHECK_INTERVAL_MS)
+          }
+        }
+        streamTimeoutId = setTimeout(check, CHECK_INTERVAL_MS)
+      }
+
+      /** クリーンアップ共通処理 */
+      const cleanup = () => {
+        completed = true
+        if (streamTimeoutId) {
+          clearTimeout(streamTimeoutId)
+          streamTimeoutId = null
+        }
+        wsService.onChatStream(null)
+        useAppStore.getState().setStreamingText(null)
+        useAppStore.getState().setStreamingRequestId(null)
+      }
 
       // WebSocket コールバックを登録
       const handleStreamEvent = (event: ChatStreamEvent) => {
+        lastActivityTime = Date.now()
 
         switch (event.type) {
           case 'chat_delta': {
@@ -243,13 +285,7 @@ class ChatControllerImpl {
             break
 
           case 'chat_complete': {
-            completed = true
-            wsService.onChatStream(null)
-
-            // ストリーミング状態をクリア
-            const finalStore = useAppStore.getState()
-            finalStore.setStreamingText(null)
-            finalStore.setStreamingRequestId(null)
+            cleanup()
 
             // chat_complete の content は raw LLM JSON → パースして構造化
             const structuredResponse = this.parseStreamedContent(
@@ -270,6 +306,7 @@ class ChatControllerImpl {
               suggestedReplies: structuredResponse.suggestedReplies,
             }
 
+            const finalStore = useAppStore.getState()
             finalStore.addMessage(assistantMessage)
             syncService.saveMessage(assistantMessage)
 
@@ -291,10 +328,7 @@ class ChatControllerImpl {
           }
 
           case 'chat_error':
-            completed = true
-            wsService.onChatStream(null)
-            useAppStore.getState().setStreamingText(null)
-            useAppStore.getState().setStreamingRequestId(null)
+            cleanup()
             reject(new APIError(event.error, 500))
             break
         }
@@ -304,12 +338,16 @@ class ChatControllerImpl {
 
       // REST リクエストを送信（streaming: true）
       llmClient.sendMessage(content, store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode, true, briefingContext)
+        .then(() => {
+          // REST 成功（202）後、ストリーミングタイムアウト監視を開始
+          if (!completed) {
+            startStreamTimeout()
+          }
+        })
         .catch((error) => {
           // REST エラー（タイムアウト含む）: ストリーミングが完了していなければエラー
           if (!completed) {
-            wsService.onChatStream(null)
-            useAppStore.getState().setStreamingText(null)
-            useAppStore.getState().setStreamingRequestId(null)
+            cleanup()
             reject(error)
           }
         })
