@@ -1018,10 +1018,21 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
                   {children}
                 </a>
               ),
-              pre: ({ children, ...props }) => {
-                const text = String(children).replace(/\n$/, '')
-                if (!text || text === '[object Object]') return null
-                return <pre {...props}>{children}</pre>
+              pre: ({ children }) => (
+                <pre className="rounded-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 p-3 my-2 overflow-x-auto text-sm border border-gray-200 dark:border-gray-700">
+                  {children}
+                </pre>
+              ),
+              code: ({ className, children, ...props }) => {
+                const isInline = !className && typeof children === 'string' && !children.includes('\n')
+                if (isInline) {
+                  return (
+                    <code className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-sm font-mono" {...props}>
+                      {children}
+                    </code>
+                  )
+                }
+                return <code className={className} {...props}>{children}</code>
               },
             }}
           >

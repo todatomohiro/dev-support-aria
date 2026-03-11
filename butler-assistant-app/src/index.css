@@ -106,27 +106,17 @@ body {
   background-color: rgba(0, 0, 0, 0.04);
 }
 
-/* インラインコード */
+/* インラインコード（pre 内の code はコンポーネント側で制御） */
 .markdown-content code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.875em;
-  background-color: rgba(0, 0, 0, 0.06);
-  padding: 0.125em 0.375em;
-  border-radius: 0.25em;
 }
 
-/* コードブロック */
-.markdown-content pre {
-  margin: 0.5em 0;
-  padding: 0.75em;
-  border-radius: 0.375em;
-  background-color: rgba(0, 0, 0, 0.06);
-  overflow-x: auto;
-}
-
+/* コードブロック内の code はスタイルをリセット */
 .markdown-content pre code {
   background-color: transparent;
   padding: 0;
+  border-radius: 0;
+  font-size: 0.875em;
 }
 
 /* 太字・斜体 */
@@ -173,13 +163,7 @@ body {
   background-color: rgba(255, 255, 255, 0.06);
 }
 
-.dark .markdown-content code {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.dark .markdown-content pre {
-  background-color: rgba(255, 255, 255, 0.1);
-}
+/* ダークモードのコードスタイルはコンポーネント側の Tailwind で制御 */
 
 .dark .markdown-content a {
   color: #60a5fa;
