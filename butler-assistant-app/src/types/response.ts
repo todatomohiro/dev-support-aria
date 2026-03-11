@@ -41,6 +41,8 @@ export interface StructuredResponse {
   workStatus?: { active: boolean; expiresAt: string; toolCount: number }
   /** LLM が提案する回答候補（クイックリプライ） */
   suggestedReplies?: string[]
+  /** ブリーフィング反応記録用のDynamoDB SK（ブリーフィングモード時のみ） */
+  briefingLogSK?: string
 }
 
 /**

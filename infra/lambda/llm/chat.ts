@@ -15,6 +15,7 @@ import {
 import {
   DynamoDBClient,
   GetItemCommand,
+  PutItemCommand,
   QueryCommand,
   UpdateItemCommand,
 } from '@aws-sdk/client-dynamodb'
@@ -550,7 +551,7 @@ const MAX_IMAGE_BASE64_LENGTH = Math.ceil(5 * 1024 * 1024 * 4 / 3)
 /** 要約を生成する間隔（ターン数） */
 const SUMMARY_INTERVAL = 5
 /** セッションから取得する直近メッセージ数 */
-const RECENT_MESSAGES_LIMIT = 10
+const RECENT_MESSAGES_LIMIT = 20
 
 /**
  * AgentCore Memory からユーザーに関する記憶を検索（生レコード配列）
@@ -1153,6 +1154,174 @@ interface PastSessionGroup {
 }
 
 /**
+ * 5フェーズ・ブリーフィング
+ *
+ * | # | フェーズ         | 時間帯      | 種別    |
+ * |---|-----------------|------------|---------|
+ * | 1 | morning         | 6:00〜11:00 | main    |
+ * | 2 | midday_support  | 11:00〜12:00| support |
+ * | 3 | afternoon       | 12:00〜17:00| main    |
+ * | 4 | evening_support | 17:00〜19:00| support |
+ * | 5 | night           | 19:00〜23:00| main    |
+ */
+
+type BriefingPhase = 'morning' | 'midday_support' | 'afternoon' | 'evening_support' | 'night'
+
+interface PhaseDefinition {
+  phase: BriefingPhase
+  fromHour: number
+  toHour: number
+  type: 'main' | 'support'
+  label: string
+}
+
+const BRIEFING_PHASES: PhaseDefinition[] = [
+  { phase: 'morning',         fromHour: 6,  toHour: 11, type: 'main',    label: '朝' },
+  { phase: 'midday_support',  fromHour: 11, toHour: 12, type: 'support', label: '午前サポート' },
+  { phase: 'afternoon',       fromHour: 12, toHour: 17, type: 'main',    label: '昼' },
+  { phase: 'evening_support', fromHour: 17, toHour: 19, type: 'support', label: '夕方サポート' },
+  { phase: 'night',           fromHour: 19, toHour: 23, type: 'main',    label: '夜' },
+]
+
+/**
+ * 現在時刻のフェーズを取得
+ */
+function getCurrentPhase(jstHour: number): PhaseDefinition | null {
+  return BRIEFING_PHASES.find((p) => jstHour >= p.fromHour && jstHour < p.toHour) ?? null
+}
+
+/**
+ * ブリーフィング履歴エントリ
+ */
+interface BriefingLogEntry {
+  phase: BriefingPhase
+  phaseType: string
+  jstTime: string
+  summary: string
+  userReaction?: string // 'engaged' | 'dismissed' | 'ignored'
+}
+
+/**
+ * 当日のブリーフィング履歴を DynamoDB から取得
+ */
+async function getTodayBriefingLogs(userId: string): Promise<BriefingLogEntry[]> {
+  const now = new Date()
+  const todayJST = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+  const dateKey = `${todayJST.getFullYear()}-${String(todayJST.getMonth() + 1).padStart(2, '0')}-${String(todayJST.getDate()).padStart(2, '0')}`
+
+  try {
+    const result = await dynamo.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+      ExpressionAttributeValues: {
+        ':pk': { S: `USER#${userId}` },
+        ':skPrefix': { S: `BRIEFING_LOG#${dateKey}` },
+      },
+    }))
+
+    return (result.Items ?? []).map((item) => ({
+      phase: (item.phase?.S ?? 'morning') as BriefingPhase,
+      phaseType: item.phaseType?.S ?? 'main',
+      jstTime: item.jstTime?.S ?? '',
+      summary: item.summary?.S ?? '',
+      userReaction: item.userReaction?.S,
+    }))
+  } catch (e) {
+    console.warn('[Briefing] 履歴取得エラー:', e)
+    return []
+  }
+}
+
+/**
+ * 直近7日間のサポートフェーズへの反応スコアを取得
+ * +1: engaged, -0.5: dismissed, -1: ignored
+ */
+async function getSupportPhaseScore(userId: string): Promise<number> {
+  const now = new Date()
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const dateKeyFrom = new Date(sevenDaysAgo.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+  const fromKey = `${dateKeyFrom.getFullYear()}-${String(dateKeyFrom.getMonth() + 1).padStart(2, '0')}-${String(dateKeyFrom.getDate()).padStart(2, '0')}`
+
+  try {
+    const result = await dynamo.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'PK = :pk AND SK BETWEEN :skFrom AND :skTo',
+      FilterExpression: 'phaseType = :support AND attribute_exists(userReaction)',
+      ExpressionAttributeValues: {
+        ':pk': { S: `USER#${userId}` },
+        ':skFrom': { S: `BRIEFING_LOG#${fromKey}` },
+        ':skTo': { S: `BRIEFING_LOG#9999` },
+        ':support': { S: 'support' },
+      },
+    }))
+
+    let score = 0
+    for (const item of result.Items ?? []) {
+      const reaction = item.userReaction?.S
+      if (reaction === 'engaged') score += 1
+      else if (reaction === 'dismissed') score -= 0.5
+      else if (reaction === 'ignored') score -= 1
+    }
+    return score
+  } catch (e) {
+    console.warn('[Briefing] スコア取得エラー:', e)
+    return 0 // エラー時はニュートラル
+  }
+}
+
+/**
+ * ブリーフィング履歴を DynamoDB に保存（TTL: 8日）
+ */
+async function saveBriefingLog(userId: string, phase: BriefingPhase, phaseType: string, summary: string): Promise<string | undefined> {
+  const now = new Date()
+  const todayJST = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+  const dateKey = `${todayJST.getFullYear()}-${String(todayJST.getMonth() + 1).padStart(2, '0')}-${String(todayJST.getDate()).padStart(2, '0')}`
+  const jstTime = `${String(todayJST.getHours()).padStart(2, '0')}:${String(todayJST.getMinutes()).padStart(2, '0')}`
+  const timestamp = now.toISOString()
+  const ttl = Math.floor(now.getTime() / 1000) + 8 * 24 * 60 * 60 // 8日後に自動削除（スコア集計用に7日+1日）
+
+  try {
+    await dynamo.send(new PutItemCommand({
+      TableName: TABLE_NAME,
+      Item: {
+        PK: { S: `USER#${userId}` },
+        SK: { S: `BRIEFING_LOG#${dateKey}#${timestamp}` },
+        phase: { S: phase },
+        phaseType: { S: phaseType },
+        jstTime: { S: jstTime },
+        summary: { S: summary.slice(0, 200) },
+        TTL: { N: String(ttl) },
+      },
+    }))
+    return `BRIEFING_LOG#${dateKey}#${timestamp}`
+  } catch (e) {
+    console.warn('[Briefing] 履歴保存エラー:', e)
+    return undefined
+  }
+}
+
+/**
+ * ブリーフィング履歴にユーザー反応を記録
+ */
+async function updateBriefingReaction(userId: string, briefingSK: string, reaction: string): Promise<void> {
+  try {
+    await dynamo.send(new UpdateItemCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        PK: { S: `USER#${userId}` },
+        SK: { S: briefingSK },
+      },
+      UpdateExpression: 'SET userReaction = :r',
+      ExpressionAttributeValues: {
+        ':r': { S: reaction },
+      },
+    }))
+  } catch (e) {
+    console.warn('[Briefing] 反応記録エラー:', e)
+  }
+}
+
+/**
  * DynamoDB から過去セッションの要約を取得し、日付ごとにグループ化（直近7日間）
  */
 async function getRecentSessionSummaries(
@@ -1503,6 +1672,21 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return response(400, { error: 'Request body is required' })
   }
 
+  // アクション分岐: ブリーフィング反応記録
+  try {
+    const preBody = JSON.parse(event.body)
+    if (preBody.action === 'briefing_reaction') {
+      const { briefingLogSK, reaction } = preBody
+      if (!briefingLogSK || !reaction || !['engaged', 'dismissed', 'ignored'].includes(reaction)) {
+        return response(400, { error: 'briefingLogSK and reaction (engaged|dismissed|ignored) are required' })
+      }
+      await updateBriefingReaction(userId, briefingLogSK, reaction)
+      return response(200, { ok: true })
+    }
+  } catch {
+    return response(400, { error: 'Invalid JSON' })
+  }
+
   let message: string
   let history: Array<{ role: string; content: string }>
   let imageBase64: string | undefined
@@ -1711,11 +1895,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     // 中期記憶 + 過去セッション要約を並列取得（ブリーフィングの「記憶クロスオーバー」用）
     // 2つの検索クエリで「話題系」と「感情・状況系」の記憶を幅広く取得
-    const [briefingMemoryTopics, briefingMemoryEmotions, briefingPastSessions, briefingSessionContext] = await Promise.all([
+    const [briefingMemoryTopics, briefingMemoryEmotions, briefingPastSessions, briefingSessionContext, todayBriefingLogs] = await Promise.all([
       retrieveMemoryRecords(userId, '最近の会話の話題や気になっていたこと').catch(() => []),
       retrieveMemoryRecords(userId, 'ユーザーが悩んでいたこと、楽しみにしていること、頑張っていること').catch(() => []),
       sessionId ? getRecentSessionSummaries(userId, sessionId).catch(() => []) : Promise.resolve([]),
       sessionId ? getSessionContext(userId, sessionId).catch(() => ({ summary: '', checkpoints: [], recentMessages: [], turnsSinceSummary: 0, totalTurns: 0, sessionCreatedAt: '' })) : Promise.resolve(null),
+      getTodayBriefingLogs(userId),
     ])
     // 2クエリの結果をマージし重複を除去
     const briefingMemoryRecords = [...new Set([...briefingMemoryTopics, ...briefingMemoryEmotions])]
@@ -1822,14 +2007,55 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       briefingParts.push(`<user_preferences>\n${permanentMemory.preferences.map((p: string) => `- ${p}`).join('\n')}\n</user_preferences>`)
     }
 
-    // 時間帯判定
+    // フェーズ判定
     const jstHour = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })).getHours()
-    const timeOfDay = jstHour < 11 ? '朝' : jstHour < 17 ? '昼' : jstHour < 21 ? '夕方' : '夜'
+    const currentPhase = getCurrentPhase(jstHour)
+    const phaseName = currentPhase?.phase ?? 'morning'
+    const phaseType = currentPhase?.type ?? 'main'
+    const phaseLabel = currentPhase?.label ?? '朝'
+
+    // フェーズ消化状況
+    const consumedPhases = todayBriefingLogs.map((log) => log.phase)
+    const isPhaseConsumed = consumedPhases.includes(phaseName)
+
+    // サポートフェーズの発火判定（反応スコアベース）
+    let skipSupportPhase = false
+    if (phaseType === 'support') {
+      const supportScore = await getSupportPhaseScore(userId)
+      const hasAnyHistory = todayBriefingLogs.some((log) => log.phaseType === 'support' && log.userReaction)
+      // データがない（初回）→ 1回だけ試行。データがありスコアが負 → スキップ
+      if (hasAnyHistory && supportScore < 0) {
+        skipSupportPhase = true
+        console.log(`[Briefing] サポートフェーズスキップ: score=${supportScore}`)
+      } else {
+        console.log(`[Briefing] サポートフェーズ発火: score=${supportScore}, hasHistory=${hasAnyHistory}`)
+      }
+    }
+
+    // 今日のブリーフィング履歴をプロンプトに含める
+    if (todayBriefingLogs.length > 0) {
+      const logLines = todayBriefingLogs.map((log) => {
+        const pDef = BRIEFING_PHASES.find((p) => p.phase === log.phase)
+        return `- ${log.jstTime}（${pDef?.label ?? log.phase}）: ${log.summary}`
+      })
+      briefingParts.push(`<today_briefing_history>\n今日すでに行ったブリーフィング（${todayBriefingLogs.length}回）:\n${logLines.join('\n')}\n</today_briefing_history>`)
+    }
+
+    // サポートフェーズ用の追加ルール
+    const supportPhaseRules = phaseType === 'support' ? `
+- 【サポートフェーズ】これは合間の軽い声かけです:
+  - 直近のカレンダー予定やタスクのリマインドを中心にする
+  - 短く簡潔に（1〜2文程度）。長い報告は不要
+  - 「そろそろ○○の時間だよ」「午後の予定確認しておくね」等、実用的な一言
+  - 特に伝えることがなければ、気遣いの一言（「頑張ってるね」「無理しないでね」等）
+  - ユーザーの反応が今後のサポート頻度に影響するため、押し付けにならないよう注意` : ''
 
     // ブリーフィング専用のユーザーメッセージを構築
     const briefingUserMessage = `【ブリーフィングモード】
 あなたはユーザーの「相棒」です。ユーザーがアプリを開いたので、自然に話しかけてください。
-現在の時間帯: ${timeOfDay}
+現在のフェーズ: ${phaseLabel}（${phaseType === 'support' ? 'サポート' : 'メイン'}）
+このフェーズは消化済み: ${isPhaseConsumed ? 'はい' : 'いいえ'}
+本日のブリーフィング回数: ${todayBriefingLogs.length + 1}回目
 
 ${briefingParts.join('\n\n')}
 
@@ -1846,9 +2072,21 @@ ${briefingParts.join('\n\n')}
 - 予定がなければ天気の話やToDo、天気が平穏なら過去の会話の話題、のように臨機応変に
 - 過去の会話情報がない場合は、無理に引き継がず時間帯に合った短い挨拶でよい
 - 情報がほとんどない場合は、時間帯に合った短い挨拶だけでよい
+- 【重要】挨拶・内容の重複禁止:
+  - today_briefing_history を確認し、同じ種類の挨拶を繰り返さないこと
+  - 朝の挨拶（おはよう等）は1日1回まで。2回目以降は「また来たね」「戻ってきたね」等、再訪を認識した言い方にする
+  - 夜の挨拶（おやすみ等）も1日1回まで。2回目以降は別の話題で話しかける
+  - 前回のブリーフィングで伝えた内容と同じ情報は繰り返さない。新しい切り口や別の話題を選ぶ
+  - このフェーズが消化済みの場合、特に短く簡潔にすること${supportPhaseRules}
 - キャラクターの口調を守る
 - 押し付けがましくならないように。さりげなく自然に
 - 通常の JSON レスポンス形式（text, emotion, motion, suggestedReplies）で返すこと`
+
+    // サポートフェーズがスキップ判定の場合はブリーフィング自体を中止
+    if (skipSupportPhase) {
+      console.log(`[Briefing] サポートフェーズスキップのためブリーフィング中止`)
+      return response(200, { text: '', skipped: true, reason: 'support_phase_negative_score' })
+    }
 
     // ブリーフィングメッセージで messages を上書き（会話履歴は不要）
     messages = [{ role: 'user', content: [{ text: briefingUserMessage }] }]
@@ -1858,7 +2096,7 @@ ${briefingParts.join('\n\n')}
       briefingPastSessions.length > 0 ? '過去セッション' : null,
       briefingSessionContext?.summary ? '現セッション' : null,
     ].filter(Boolean)
-    console.log(`[Briefing] コンテキスト: ${briefingParts.length} 件（カレンダー, ToDo, 天気, 永久記憶, ${memorySources.join(', ') || 'なし'}）`)
+    console.log(`[Briefing] フェーズ: ${phaseLabel}(${phaseType}), 消化済み: ${isPhaseConsumed}, コンテキスト: ${briefingParts.length} 件（${memorySources.join(', ') || 'なし'}）`)
   }
 
   // MCP ツールを動的注入（接続が有効な場合のみ）
@@ -2126,6 +2364,20 @@ ${briefingParts.join('\n\n')}
       // DynamoDB にはテキスト部分のみ保存（JSON 構造体を除去）
       const textForStorage = extractTextFieldFromJson(content)
 
+      // ブリーフィング履歴を保存（フェーズ管理 + 挨拶の重複防止）
+      let savedBriefingSK: string | undefined
+      if (isBriefingMode) {
+        const jstHourNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })).getHours()
+        const briefingPhase = getCurrentPhase(jstHourNow)
+        const briefingSummary = textForStorage.slice(0, 200)
+        savedBriefingSK = await saveBriefingLog(
+          userId,
+          briefingPhase?.phase ?? 'morning',
+          briefingPhase?.type ?? 'main',
+          briefingSummary
+        )
+      }
+
       // セッションモードの場合: メッセージ保存 + 要約トリガー（ブリーフィングは保存しない）
       if (sessionId && !isBriefingMode) {
         try {
@@ -2198,6 +2450,7 @@ ${briefingParts.join('\n\n')}
         ...(permanentMemory.preferences.length > 0 ? { permanentPreferences: permanentMemory.preferences } : {}),
         ...(generatedThemeName ? { themeName: generatedThemeName } : {}),
         ...(workStatus ? { workStatus } : {}),
+        ...(savedBriefingSK ? { briefingLogSK: savedBriefingSK } : {}),
       })
     }
 

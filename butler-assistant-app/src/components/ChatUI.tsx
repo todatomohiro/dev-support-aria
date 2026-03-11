@@ -370,28 +370,56 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
     }
   }
 
-  /** ファイル選択ハンドラー */
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    // 5MB制限（バックエンドと同じ）
+  /** 画像ファイルを処理してプレビューに設定する共通関数 */
+  const processImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return
     if (file.size > 5 * 1024 * 1024) {
       alert('画像サイズは5MB以下にしてください')
-      e.target.value = ''
       return
     }
     const reader = new FileReader()
     reader.onload = () => {
       const result = reader.result as string
-      // data:image/xxx;base64,... から base64 部分を抽出
       const base64 = result.split(',')[1]
       if (base64) {
         setSelectedImage(base64)
       }
     }
     reader.readAsDataURL(file)
+  }, [])
+
+  /** ファイル選択ハンドラー */
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    processImageFile(file)
     e.target.value = ''
   }
+
+  /** ドラッグ＆ドロップ */
+  const [isDragOver, setIsDragOver] = useState(false)
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) {
+      processImageFile(file)
+    }
+  }, [processImageFile])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // IME 変換中は送信しない
@@ -583,7 +611,18 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       })()}
 
       {/* 入力エリア */}
-      <div className="p-2 sm:p-4 max-w-[760px] mx-auto w-full">
+      <div
+        className={`p-2 sm:p-4 max-w-[760px] mx-auto w-full relative ${isDragOver ? 'ring-2 ring-blue-500 ring-inset rounded-lg bg-blue-50/10' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* ドラッグ＆ドロップオーバーレイ */}
+        {isDragOver && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-blue-500/10 border-2 border-dashed border-blue-500 pointer-events-none">
+            <span className="text-sm font-medium text-blue-600 dark:text-blue-400">画像をドロップ</span>
+          </div>
+        )}
         <CameraPreview
           enabled={cameraEnabled}
           onCapture={(base64) => {

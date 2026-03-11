@@ -360,6 +360,27 @@ class LLMClientImpl implements LLMClientService {
       return new APIError(`APIエラーが発生しました（ステータス: ${response.status}）: ${body}`, response.status)
     }
   }
+
+  /**
+   * ブリーフィング反応を記録（PATCH /llm/chat）
+   */
+  async sendBriefingReaction(briefingLogSK: string, reaction: string): Promise<void> {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
+    if (!apiBaseUrl) return
+
+    const token = await getIdToken()
+    if (!token) return
+
+    await fetch(`${apiBaseUrl}/llm/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action: 'briefing_reaction', briefingLogSK, reaction }),
+      keepalive: true,
+    })
+  }
 }
 
 /**

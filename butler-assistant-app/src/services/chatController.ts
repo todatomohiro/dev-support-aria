@@ -866,6 +866,11 @@ class ChatControllerImpl {
         suggestedReplies: structuredResponse.suggestedReplies,
       }
 
+      // スキップされた場合は何もしない
+      if (!structuredResponse.text) {
+        return
+      }
+
       store.addMessage(assistantMessage)
       syncService.saveMessage(assistantMessage)
 
@@ -882,12 +887,70 @@ class ChatControllerImpl {
       // モーションと表情を再生
       this.playExpression(structuredResponse)
 
+      // ブリーフィング反応トラッキング開始
+      if (structuredResponse.briefingLogSK) {
+        this.trackBriefingReaction(structuredResponse.briefingLogSK)
+      }
+
       store.setError(null)
     } catch (error) {
       // ブリーフィング失敗は静かに無視（ユーザー操作ではないため）
       console.warn('[ChatController] ブリーフィング取得エラー:', error)
     } finally {
       store.setLoading(false)
+    }
+  }
+
+  /**
+   * ブリーフィング後のユーザー反応を追跡し、バックエンドに送信
+   *
+   * - 30秒以内にメッセージ送信 → 'engaged'（好反応）
+   * - 30秒以内に短文（5文字以下）で返信 → 'dismissed'（切り上げ）
+   * - 30秒経過 or アプリ非表示 → 'ignored'（無関心）
+   */
+  private trackBriefingReaction(briefingLogSK: string): void {
+    const REACTION_TIMEOUT_MS = 30_000
+    let resolved = false
+
+    const sendReaction = (reaction: string) => {
+      if (resolved) return
+      resolved = true
+      cleanup()
+      console.log(`[Briefing] 反応記録: ${reaction}`)
+      llmClient.sendBriefingReaction(briefingLogSK, reaction).catch((e) =>
+        console.warn('[Briefing] 反応送信失敗:', e)
+      )
+    }
+
+    // メッセージ送信を監視
+    let prevLen = useAppStore.getState().messages.length
+    const unsubscribe = useAppStore.subscribe((state) => {
+      const newLen = state.messages.length
+      if (newLen > prevLen) {
+        const lastMsg = state.messages[state.messages.length - 1]
+        if (lastMsg?.role === 'user') {
+          const text = lastMsg.content?.trim() ?? ''
+          sendReaction(text.length <= 5 ? 'dismissed' : 'engaged')
+        }
+      }
+      prevLen = newLen
+    })
+
+    // アプリ非表示を監視
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        sendReaction('ignored')
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    // タイムアウト
+    const timer = setTimeout(() => sendReaction('ignored'), REACTION_TIMEOUT_MS)
+
+    const cleanup = () => {
+      unsubscribe()
+      document.removeEventListener('visibilitychange', handleVisibility)
+      clearTimeout(timer)
     }
   }
 
