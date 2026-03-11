@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { useAuthStore } from '@/auth/authStore'
 import { useAppStore } from '@/stores'
 import { modelService } from '@/services/modelService'
+import { elevenLabsTtsService } from '@/services/elevenLabsTtsService'
 import type { ServerModel } from '@/services/modelService'
 import type { ModelReference } from '@/types'
 
@@ -70,8 +71,9 @@ export function AibaAlphaScreen() {
     }
   }
 
-  /** 音声会話開始 */
-  const handleStartVoiceChat = () => {
+  /** 音声会話開始（ユーザージェスチャー内で AudioContext をアンロック） */
+  const handleStartVoiceChat = async () => {
+    await elevenLabsTtsService.unlockAudio()
     navigate('/aiba-alpha/voice')
   }
 

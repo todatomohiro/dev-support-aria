@@ -14,7 +14,10 @@ interface VoiceTurn {
   emotion?: string
 }
 
-type VoiceState = 'connecting' | 'idle' | 'listening' | 'thinking' | 'speaking'
+type VoiceState = 'connecting' | 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
+
+/** 応答待ちタイムアウト（60秒） */
+const THINKING_TIMEOUT_MS = 60_000
 
 /**
  * マイAi-Ba(α) — 音声会話画面
@@ -24,7 +27,6 @@ type VoiceState = 'connecting' | 'idle' | 'listening' | 'thinking' | 'speaking'
  */
 export function VoiceChatScreen() {
   const navigate = useNavigate()
-  const messages = useAppStore((s) => s.messages)
   const streamingText = useAppStore((s) => s.streamingText)
 
   const [voiceState, setVoiceState] = useState<VoiceState>('connecting')
@@ -32,11 +34,26 @@ export function VoiceChatScreen() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [isMuted, setIsMuted] = useState(false)
   const [currentEmotion] = useState('neutral')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const startTimeRef = useRef(Date.now())
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
-  const prevMessageCountRef = useRef(messages.length)
   const isEndingRef = useRef(false)
+  const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const voiceStateRef = useRef<VoiceState>('connecting')
+  /** 最後に処理したメッセージの ID（count ベースだと MAX_MESSAGE_HISTORY で停滞する） */
+  const lastProcessedMsgIdRef = useRef<string | null>(
+    (() => {
+      const msgs = useAppStore.getState().messages
+      return msgs.length > 0 ? msgs[msgs.length - 1].id : null
+    })()
+  )
+
+  /** voiceState を更新し、ref も同期する */
+  const updateVoiceState = useCallback((next: VoiceState) => {
+    voiceStateRef.current = next
+    setVoiceState(next)
+  }, [])
 
   // タイマー
   useEffect(() => {
@@ -44,64 +61,129 @@ export function VoiceChatScreen() {
     timerRef.current = setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000))
     }, 1000)
-    // 接続完了を模擬（実際はWebSocket接続確認等）
-    const connectTimer = setTimeout(() => setVoiceState('idle'), 800)
+    const connectTimer = setTimeout(() => updateVoiceState('idle'), 800)
     return () => {
       clearInterval(timerRef.current)
       clearTimeout(connectTimer)
     }
-  }, [])
+  }, [updateVoiceState])
 
-  // メッセージ監視: 新しいアシスタントメッセージが来たらターンに追加
+  // クリーンアップ
   useEffect(() => {
-    if (messages.length > prevMessageCountRef.current) {
-      const newMessages = messages.slice(prevMessageCountRef.current)
-      for (const msg of newMessages) {
-        if (msg.role === 'assistant' && msg.content) {
-          setTurns((prev) => [...prev, {
-            role: 'assistant',
-            text: msg.content,
-            timestamp: Date.now(),
-          }])
-          // TTS再生（ElevenLabs 優先、失敗時 Polly フォールバック）
-          setVoiceState('speaking')
-          elevenLabsTtsService.synthesizeAndPlay(msg.content)
-            .catch(() => {
-              console.warn('[VoiceChat] ElevenLabs 失敗、Polly にフォールバック')
-              return ttsService.synthesizeAndPlay(msg.content)
-            })
-            .then(() => {
-              if (!isEndingRef.current) {
-                setVoiceState('idle')
-              }
-            })
-        }
+    return () => {
+      if (thinkingTimerRef.current) {
+        clearTimeout(thinkingTimerRef.current)
       }
     }
-    prevMessageCountRef.current = messages.length
-  }, [messages])
+  }, [])
 
-  // ストリーミングテキスト監視
+  /**
+   * TTS 再生（ElevenLabs 優先、失敗時 Polly フォールバック）
+   * 完了後に idle に戻す
+   */
+  const playTts = useCallback((text: string) => {
+    console.log('[VoiceChat] TTS 開始:', text.slice(0, 30) + '...')
+    updateVoiceState('speaking')
+
+    elevenLabsTtsService.synthesizeAndPlay(text)
+      .catch((e) => {
+        console.warn('[VoiceChat] ElevenLabs 失敗、Polly にフォールバック:', e.message)
+        return ttsService.synthesizeAndPlay(text)
+      })
+      .catch((e) => {
+        console.warn('[VoiceChat] TTS すべて失敗:', e)
+      })
+      .finally(() => {
+        if (!isEndingRef.current) {
+          console.log('[VoiceChat] TTS 完了 → idle')
+          updateVoiceState('idle')
+        }
+      })
+  }, [updateVoiceState])
+
+  // Zustand subscribe でメッセージを監視
+  // ※ MAX_MESSAGE_HISTORY で配列長が一定になるため、最後のメッセージ ID で検出
   useEffect(() => {
-    if (streamingText && voiceState === 'thinking') {
-      // ストリーミング中はまだ thinking のまま
-    }
-  }, [streamingText, voiceState])
+    const unsubscribe = useAppStore.subscribe((state) => {
+      const msgs = state.messages
+      if (msgs.length === 0) return
+
+      const lastMsg = msgs[msgs.length - 1]
+      if (lastMsg.id === lastProcessedMsgIdRef.current) return
+
+      // 新しいメッセージが追加された
+      lastProcessedMsgIdRef.current = lastMsg.id
+
+      if (lastMsg.role === 'assistant' && lastMsg.content) {
+        console.log('[VoiceChat] アシスタント応答検出:', lastMsg.content.slice(0, 40))
+
+        // thinking タイムアウトをクリア
+        if (thinkingTimerRef.current) {
+          clearTimeout(thinkingTimerRef.current)
+          thinkingTimerRef.current = undefined
+        }
+
+        // chatController の TTS を止める（二重再生防止）
+        ttsService.stop()
+
+        setErrorMessage(null)
+        setTurns((prev) => [...prev, {
+          role: 'assistant',
+          text: lastMsg.content,
+          timestamp: Date.now(),
+        }])
+
+        playTts(lastMsg.content)
+      } else if (lastMsg.role === 'user') {
+        // ユーザーメッセージは無視（handleSpeechResult で既に追加済み）
+      }
+    })
+
+    return () => { unsubscribe() }
+  }, [playTts])
 
   // STT 確定テキストのハンドラー
   const handleSpeechResult = useCallback((text: string) => {
     if (!text.trim() || isMuted) return
+
+    const current = voiceStateRef.current
+    if (current === 'thinking' || current === 'speaking') {
+      console.log('[VoiceChat] thinking/speaking 中のため入力を無視:', text.trim())
+      return
+    }
+
+    console.log('[VoiceChat] 音声入力確定:', text.trim())
 
     setTurns((prev) => [...prev, {
       role: 'user',
       text: text.trim(),
       timestamp: Date.now(),
     }])
-    setVoiceState('thinking')
+    setErrorMessage(null)
+    updateVoiceState('thinking')
 
-    // 既存の chatController を使ってメッセージ送信
-    chatController.sendMessage(text.trim())
-  }, [isMuted])
+    // thinking タイムアウトを設定
+    if (thinkingTimerRef.current) {
+      clearTimeout(thinkingTimerRef.current)
+    }
+    thinkingTimerRef.current = setTimeout(() => {
+      if (voiceStateRef.current === 'thinking') {
+        console.warn('[VoiceChat] 応答タイムアウト → idle に復帰')
+        setErrorMessage('応答がありませんでした。もう一度話しかけてください。')
+        updateVoiceState('idle')
+      }
+    }, THINKING_TIMEOUT_MS)
+
+    chatController.sendMessage(text.trim()).catch((error) => {
+      console.error('[VoiceChat] sendMessage エラー:', error)
+      if (thinkingTimerRef.current) {
+        clearTimeout(thinkingTimerRef.current)
+        thinkingTimerRef.current = undefined
+      }
+      setErrorMessage('送信に失敗しました。もう一度お試しください。')
+      updateVoiceState('idle')
+    })
+  }, [isMuted, updateVoiceState])
 
   const {
     status: sttStatus,
@@ -116,14 +198,13 @@ export function VoiceChatScreen() {
   // voiceState と STT status の同期
   useEffect(() => {
     if (sttStatus === 'listening' && voiceState === 'idle') {
-      setVoiceState('listening')
+      updateVoiceState('listening')
     }
-  }, [sttStatus, voiceState])
+  }, [sttStatus, voiceState, updateVoiceState])
 
   // idle 状態になったら自動で聞き始める
   useEffect(() => {
     if (voiceState === 'idle' && sttStatus !== 'listening' && !isMuted) {
-      // 少し遅延を入れてから開始（TTS終了直後の自分の声を拾わないように）
       const timer = setTimeout(() => {
         if (!isEndingRef.current) {
           toggleListening()
@@ -133,12 +214,19 @@ export function VoiceChatScreen() {
     }
   }, [voiceState, sttStatus, isMuted, toggleListening])
 
+  // thinking/speaking 中はSTTを停止して重複送信を防止
+  useEffect(() => {
+    if ((voiceState === 'thinking' || voiceState === 'speaking') && sttStatus === 'listening') {
+      toggleListening()
+    }
+  }, [voiceState, sttStatus, toggleListening])
+
   /** マイクミュートトグル */
   const handleToggleMute = useCallback(() => {
     setIsMuted((prev) => {
       const newMuted = !prev
       if (newMuted && sttStatus === 'listening') {
-        toggleListening() // 聞き取り停止
+        toggleListening()
       }
       return newMuted
     })
@@ -151,6 +239,9 @@ export function VoiceChatScreen() {
     ttsService.stop()
     if (sttStatus === 'listening') {
       toggleListening()
+    }
+    if (thinkingTimerRef.current) {
+      clearTimeout(thinkingTimerRef.current)
     }
     clearInterval(timerRef.current)
     navigate('/aiba-alpha/summary', { state: { turns, elapsedSeconds } })
@@ -181,10 +272,12 @@ export function VoiceChatScreen() {
       <div className="flex items-center justify-between px-4 pt-3 pb-2 shrink-0 relative z-10">
         <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-3 py-1.5">
           <div className={`w-2 h-2 rounded-full ${
-            voiceState === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.5)]'
+            voiceState === 'connecting' ? 'bg-yellow-400 animate-pulse'
+              : voiceState === 'error' ? 'bg-red-400'
+              : 'bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.5)]'
           }`} />
           <span className="text-xs text-white/60 font-medium">
-            {voiceState === 'connecting' ? '接続中...' : '接続中'}
+            {voiceState === 'connecting' ? '接続中...' : voiceState === 'error' ? 'エラー' : '接続中'}
           </span>
         </div>
         <span className="text-xs text-white/40 tabular-nums font-medium">
@@ -224,6 +317,9 @@ export function VoiceChatScreen() {
             <div className="text-[11px] text-indigo-400/60 font-semibold mb-0.5">Ai-Ba</div>
             <div className="text-sm text-white/80 leading-relaxed">{lastAiTurn.text}</div>
           </div>
+        )}
+        {errorMessage && (
+          <div className="text-sm text-red-400/80 text-center">{errorMessage}</div>
         )}
         {interimText && (
           <div className="text-sm text-white/30 italic text-right">{interimText}</div>

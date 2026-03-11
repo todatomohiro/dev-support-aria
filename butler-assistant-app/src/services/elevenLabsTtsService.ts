@@ -5,15 +5,15 @@ import { getIdToken } from '@/auth'
  *
  * Lambda プロキシ経由で ElevenLabs API を呼び出し、高品質な音声合成を行う。
  * 文単位のチャンク分割 + 並列取得 + 順次再生でストリーミング的な体験を提供。
- * 既存の ttsService と同じリップシンクインターフェースを持つ。
+ * iOS Safari 対応のため AudioContext + AudioBufferSourceNode で再生。
  */
 class ElevenLabsTtsServiceImpl {
-  /** 現在再生中の Audio インスタンス */
-  private currentAudio: HTMLAudioElement | null = null
-  /** 現在の Object URL（メモリリーク防止用） */
-  private currentUrl: string | null = null
-  /** Web Audio コンテキスト（遅延生成） */
+  /** Web Audio コンテキスト（iOS 対応のため共有） */
   private audioContext: AudioContext | null = null
+  /** 現在再生中の AudioBufferSourceNode */
+  private currentSource: AudioBufferSourceNode | null = null
+  /** 再生開始時刻（AudioContext.currentTime ベース） */
+  private playbackStartTime = 0
   /** 事前計算済み音量エンベロープ（60fps 間隔） */
   private volumeEnvelope: Float32Array | null = null
   /** rAF ループ ID */
@@ -22,12 +22,41 @@ class ElevenLabsTtsServiceImpl {
   private volumeCallback: ((volume: number) => void) | null = null
   /** 再生キャンセルフラグ */
   private aborted = false
+  /** 再生中フラグ */
+  private _isSpeaking = false
 
   private static readonly ENVELOPE_FPS = 60
 
   /** 音声再生中かどうかを返す */
   get isSpeaking(): boolean {
-    return this.currentAudio !== null && !this.currentAudio.paused
+    return this._isSpeaking
+  }
+
+  /**
+   * iOS Safari のオーディオ自動再生制限を解除
+   *
+   * ユーザージェスチャー（タップ等）のイベントハンドラー内で呼ぶこと。
+   * AudioContext の作成・resume をユーザージェスチャーのコンテキストで行い、
+   * 以降のプログラマティックな再生を可能にする。
+   */
+  async unlockAudio(): Promise<void> {
+    try {
+      if (!this.audioContext) {
+        this.audioContext = new AudioContext()
+      }
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume()
+      }
+      // サイレントバッファを再生して完全にアンロック
+      const silentBuffer = this.audioContext.createBuffer(1, 1, this.audioContext.sampleRate)
+      const source = this.audioContext.createBufferSource()
+      source.buffer = silentBuffer
+      source.connect(this.audioContext.destination)
+      source.start()
+      console.log('[ElevenLabs TTS] AudioContext アンロック完了:', this.audioContext.state)
+    } catch (e) {
+      console.warn('[ElevenLabs TTS] AudioContext アンロック失敗:', e)
+    }
   }
 
   /**
@@ -119,28 +148,52 @@ class ElevenLabsTtsServiceImpl {
   }
 
   /**
-   * 音声バイナリを再生し、完了まで待機
+   * AudioContext を確保（未作成なら作成、suspended なら resume）
+   */
+  private async ensureAudioContext(): Promise<AudioContext> {
+    if (!this.audioContext) {
+      this.audioContext = new AudioContext()
+    }
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume()
+    }
+    return this.audioContext
+  }
+
+  /**
+   * 音声バイナリを AudioContext 経由で再生し、完了まで待機
+   *
+   * HTMLAudioElement ではなく AudioBufferSourceNode を使用することで
+   * iOS Safari のオーディオ自動再生制限を回避する。
    */
   private async playAudioBytes(bytes: Uint8Array): Promise<void> {
-    await this.computeVolumeEnvelope(bytes)
+    const ctx = await this.ensureAudioContext()
 
-    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'audio/mpeg' })
-    const url = URL.createObjectURL(blob)
+    // MP3 バイナリをデコード
+    const copied = new Uint8Array(bytes).buffer
+    const audioBuffer = await ctx.decodeAudioData(copied)
 
-    this.currentUrl = url
-    const audio = new Audio(url)
-    this.currentAudio = audio
+    // 音量エンベロープを計算
+    this.computeVolumeEnvelopeFromBuffer(audioBuffer)
 
-    await audio.play()
-    this.startVolumeLoop(audio)
+    // AudioBufferSourceNode で再生
+    const source = ctx.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(ctx.destination)
 
+    this.currentSource = source
+    this._isSpeaking = true
+    this.playbackStartTime = ctx.currentTime
+    source.start()
+    this.startVolumeLoop()
+
+    // 再生完了まで待機
     await new Promise<void>((resolve) => {
-      audio.addEventListener('ended', () => {
+      source.onended = () => {
         this.stopVolumeLoop()
         this.cleanupCurrent()
         resolve()
-      }, { once: true })
-      audio.addEventListener('pause', () => resolve(), { once: true })
+      }
     })
   }
 
@@ -150,14 +203,12 @@ class ElevenLabsTtsServiceImpl {
   async synthesizeAndPlay(text: string): Promise<void> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     if (!apiBaseUrl) {
-      console.warn('[ElevenLabs TTS] VITE_API_BASE_URL が未設定です')
-      return
+      throw new Error('[ElevenLabs TTS] VITE_API_BASE_URL が未設定です')
     }
 
     const accessToken = await getIdToken()
     if (!accessToken) {
-      console.warn('[ElevenLabs TTS] 認証トークンがありません')
-      return
+      throw new Error('[ElevenLabs TTS] 認証トークンがありません')
     }
 
     const ttsText = this.stripUrls(text)
@@ -170,57 +221,42 @@ class ElevenLabsTtsServiceImpl {
     console.log(`[ElevenLabs TTS] チャンク分割: ${chunks.length} 件`)
 
     if (chunks.length <= 1) {
-      try {
-        const bytes = await this.synthesizeChunk(ttsText, apiBaseUrl, accessToken)
-        if (!bytes || this.aborted) return
-        await this.playAudioBytes(bytes)
-      } catch (e) {
-        console.warn('[ElevenLabs TTS] 音声合成/再生に失敗:', e)
-        this.stopVolumeLoop()
-        this.cleanupCurrent()
+      const bytes = await this.synthesizeChunk(ttsText, apiBaseUrl, accessToken)
+      if (this.aborted) return
+      if (!bytes) {
+        throw new Error('[ElevenLabs TTS] 音声合成に失敗しました')
       }
+      await this.playAudioBytes(bytes)
       return
     }
 
-    try {
-      const firstPromise = this.synthesizeChunk(chunks[0], apiBaseUrl, accessToken)
-      const restPromises = chunks.slice(1).map((chunk) =>
-        this.synthesizeChunk(chunk, apiBaseUrl, accessToken)
-      )
+    const firstPromise = this.synthesizeChunk(chunks[0], apiBaseUrl, accessToken)
+    const restPromises = chunks.slice(1).map((chunk) =>
+      this.synthesizeChunk(chunk, apiBaseUrl, accessToken)
+    )
 
-      const firstBytes = await firstPromise
-      if (!firstBytes || this.aborted) return
+    const firstBytes = await firstPromise
+    if (this.aborted) return
+    if (!firstBytes) {
+      throw new Error('[ElevenLabs TTS] 先行チャンクの音声合成に失敗しました')
+    }
 
-      console.log(`[ElevenLabs TTS] 先行チャンク再生開始（残り ${restPromises.length} チャンク並列取得中）`)
-      await this.playAudioBytes(firstBytes)
+    console.log(`[ElevenLabs TTS] 先行チャンク再生開始（残り ${restPromises.length} チャンク並列取得中）`)
+    await this.playAudioBytes(firstBytes)
 
-      const restResults = await Promise.all(restPromises)
-      for (const bytes of restResults) {
-        if (this.aborted) break
-        if (!bytes) continue
-        await this.playAudioBytes(bytes)
-      }
-    } catch (e) {
-      console.warn('[ElevenLabs TTS] チャンク再生エラー:', e)
-      this.stopVolumeLoop()
-      this.cleanupCurrent()
+    const restResults = await Promise.all(restPromises)
+    for (const bytes of restResults) {
+      if (this.aborted) break
+      if (!bytes) continue
+      await this.playAudioBytes(bytes)
     }
   }
 
   /**
-   * 音量エンベロープを事前計算（リップシンク用）
+   * AudioBuffer から音量エンベロープを計算（リップシンク用）
    */
-  private async computeVolumeEnvelope(audioBytes: Uint8Array): Promise<void> {
+  private computeVolumeEnvelopeFromBuffer(audioBuffer: AudioBuffer): void {
     try {
-      if (!this.audioContext) {
-        this.audioContext = new AudioContext()
-      }
-      if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume()
-      }
-
-      const copied = new Uint8Array(audioBytes).buffer
-      const audioBuffer = await this.audioContext.decodeAudioData(copied)
       const channelData = audioBuffer.getChannelData(0)
       const sampleRate = audioBuffer.sampleRate
       const samplesPerFrame = Math.floor(sampleRate / ElevenLabsTtsServiceImpl.ENVELOPE_FPS)
@@ -246,16 +282,19 @@ class ElevenLabsTtsServiceImpl {
   }
 
   /**
-   * rAF ループで音量を通知
+   * rAF ループで音量を通知（AudioContext.currentTime ベース）
    */
-  private startVolumeLoop(audio: HTMLAudioElement): void {
-    if (!this.volumeEnvelope || !this.volumeCallback) return
+  private startVolumeLoop(): void {
+    if (!this.volumeEnvelope || !this.volumeCallback || !this.audioContext) return
 
     const envelope = this.volumeEnvelope
     const fps = ElevenLabsTtsServiceImpl.ENVELOPE_FPS
+    const ctx = this.audioContext
+    const startTime = this.playbackStartTime
 
     const loop = () => {
-      const frameIndex = Math.floor(audio.currentTime * fps)
+      const elapsed = ctx.currentTime - startTime
+      const frameIndex = Math.floor(elapsed * fps)
       const volume = frameIndex < envelope.length ? envelope[frameIndex] : 0
       this.volumeCallback?.(volume)
       this.animationFrameId = requestAnimationFrame(loop)
@@ -281,9 +320,12 @@ class ElevenLabsTtsServiceImpl {
   stop(): void {
     this.aborted = true
     this.stopVolumeLoop()
-    if (this.currentAudio) {
-      this.currentAudio.pause()
-      this.currentAudio.currentTime = 0
+    if (this.currentSource) {
+      try {
+        this.currentSource.stop()
+      } catch {
+        // 既に停止済みの場合のエラーを無視
+      }
     }
     this.cleanupCurrent()
   }
@@ -293,11 +335,8 @@ class ElevenLabsTtsServiceImpl {
    */
   private cleanupCurrent(): void {
     this.volumeEnvelope = null
-    if (this.currentUrl) {
-      URL.revokeObjectURL(this.currentUrl)
-      this.currentUrl = null
-    }
-    this.currentAudio = null
+    this.currentSource = null
+    this._isSpeaking = false
   }
 }
 
