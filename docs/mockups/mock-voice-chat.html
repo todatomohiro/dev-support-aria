@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyAiba 音声会話モード モックアップ</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  /* ナビゲーション */
+  .nav { display: flex; justify-content: center; gap: 10px; padding: 14px; background: #1a1a2e; position: sticky; top: 0; z-index: 100; flex-wrap: wrap; }
+  .nav button { padding: 8px 18px; border: 2px solid #6c63ff; background: transparent; color: #fff; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+  .nav button.active { background: #6c63ff; }
+  .nav button:hover { background: #5a52d5; color: #fff; }
+
+  .section { display: none; max-width: 480px; margin: 0 auto; padding: 24px 16px; }
+  .section.active { display: block; }
+  .section-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 13px; color: #666; margin-bottom: 20px; line-height: 1.7; }
+
+  /* ========================================
+     モバイルアプリフレーム
+     ======================================== */
+  .phone-frame { width: 100%; max-width: 400px; margin: 0 auto; height: 780px; border-radius: 24px; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.15); background: #000; display: flex; flex-direction: column; position: relative; }
+
+  /* ステータスバー */
+  .status-bar { height: 48px; background: #1a1a2e; display: flex; justify-content: space-between; align-items: center; padding: 0 20px; color: #fff; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+
+  /* ヘッダー */
+  .app-header { height: 52px; background: #fff; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0; }
+  .app-header .back-btn { width: 32px; height: 32px; border: none; background: none; font-size: 18px; cursor: pointer; color: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .app-header .back-btn:hover { background: #f0f0f0; }
+  .app-header .title { font-size: 15px; font-weight: 700; flex: 1; }
+  .app-header .subtitle { font-size: 11px; color: #999; font-weight: 400; }
+
+  /* タブバー（マイAi-Ba内） */
+  .aiba-tabs { display: flex; background: #fff; border-bottom: 1px solid #e8e8e8; flex-shrink: 0; }
+  .aiba-tabs button { flex: 1; padding: 10px 0; font-size: 13px; font-weight: 600; border: none; background: none; cursor: pointer; color: #999; border-bottom: 2px solid transparent; transition: all 0.2s; }
+  .aiba-tabs button.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+
+  /* ========================================
+     セクション1: MyAiba タブ（会話ボタン追加版）
+     ======================================== */
+  .myaiba-content { flex: 1; overflow-y: auto; background: #f8f9fa; }
+
+  /* Live2D エリア */
+  .live2d-area { height: 260px; background: linear-gradient(135deg, #eef2ff 0%, #f0e6ff 100%); display: flex; align-items: center; justify-content: center; position: relative; }
+  .character-placeholder { width: 120px; height: 180px; background: rgba(0,0,0,0.04); border-radius: 60px 60px 30px 30px; }
+  .weather-badge { position: absolute; top: 12px; left: 12px; background: rgba(255,255,255,0.85); border-radius: 12px; padding: 6px 10px; font-size: 11px; display: flex; align-items: center; gap: 4px; backdrop-filter: blur(8px); }
+  .character-name { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.9); border-radius: 16px; padding: 4px 16px; font-size: 12px; font-weight: 600; backdrop-filter: blur(8px); }
+
+  /* 会話開始ボタン */
+  .voice-start-section { padding: 20px 16px; }
+  .voice-start-btn { width: 100%; padding: 16px; border: none; border-radius: 16px; background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; transition: all 0.2s; box-shadow: 0 4px 16px rgba(59,130,246,0.3); }
+  .voice-start-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(59,130,246,0.4); }
+  .voice-start-btn:active { transform: translateY(0); }
+  .voice-start-btn .mic-icon { width: 24px; height: 24px; }
+
+  .voice-start-hint { text-align: center; font-size: 12px; color: #999; margin-top: 10px; }
+
+  /* キャラクター選択グリッド */
+  .model-section { padding: 0 16px 16px; }
+  .model-section-title { font-size: 13px; font-weight: 700; color: #666; margin-bottom: 12px; padding-left: 2px; }
+  .model-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .model-card { border-radius: 16px; border: 2px solid #e0e0e0; overflow: hidden; cursor: pointer; transition: all 0.2s; background: #fff; }
+  .model-card:hover { border-color: #93c5fd; }
+  .model-card.selected { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+  .model-thumb { height: 80px; background: linear-gradient(135deg, #dbeafe, #e8d5ff); display: flex; align-items: center; justify-content: center; position: relative; }
+  .model-thumb .mini-char { width: 36px; height: 50px; background: rgba(0,0,0,0.05); border-radius: 18px 18px 10px 10px; }
+  .model-thumb .in-use { position: absolute; top: 4px; right: 4px; background: #22c55e; color: #fff; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 8px; }
+  .model-name { padding: 8px; font-size: 11px; font-weight: 600; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ========================================
+     セクション2: 音声会話モード（待機中）
+     ======================================== */
+  .voice-screen { flex: 1; display: flex; flex-direction: column; background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); position: relative; overflow: hidden; }
+
+  /* 背景パーティクル */
+  .particles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .particle { position: absolute; border-radius: 50%; background: rgba(99, 102, 241, 0.15); }
+
+  /* キャラクターエリア（大きく表示） */
+  .voice-character { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+  .voice-char-placeholder { width: 160px; height: 240px; background: rgba(255,255,255,0.05); border-radius: 80px 80px 40px 40px; }
+
+  /* 接続ステータス */
+  .connection-status { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 6px 16px; display: flex; align-items: center; gap: 6px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .status-dot.connected { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+  .status-dot.connecting { background: #eab308; animation: pulse 1.5s infinite; }
+  .status-text { font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 500; }
+
+  /* 会話テキスト表示エリア */
+  .transcript-area { padding: 0 24px 16px; min-height: 80px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; }
+  .transcript-ai { font-size: 14px; color: rgba(255,255,255,0.9); line-height: 1.6; }
+  .transcript-ai .label { font-size: 11px; color: rgba(99,102,241,0.8); font-weight: 600; margin-bottom: 2px; }
+  .transcript-user { font-size: 14px; color: rgba(147,197,253,0.9); line-height: 1.6; text-align: right; }
+  .transcript-user .label { font-size: 11px; color: rgba(147,197,253,0.5); font-weight: 600; margin-bottom: 2px; }
+  .transcript-interim { font-size: 13px; color: rgba(255,255,255,0.4); font-style: italic; text-align: right; }
+
+  /* コントロールバー */
+  .voice-controls { padding: 16px 24px 32px; display: flex; align-items: center; justify-content: center; gap: 24px; position: relative; z-index: 10; }
+
+  .ctrl-btn { width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .ctrl-btn svg { width: 22px; height: 22px; }
+
+  .ctrl-btn.mute { background: rgba(255,255,255,0.1); color: #fff; }
+  .ctrl-btn.mute:hover { background: rgba(255,255,255,0.2); }
+  .ctrl-btn.mute.active { background: #ef4444; color: #fff; }
+
+  .mic-main { width: 72px; height: 72px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; position: relative; }
+  .mic-main.listening { background: #3b82f6; color: #fff; box-shadow: 0 0 0 0 rgba(59,130,246,0.4); animation: mic-pulse 2s infinite; }
+  .mic-main.idle { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.6); }
+  .mic-main svg { width: 28px; height: 28px; }
+
+  @keyframes mic-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(59,130,246,0.5); }
+    70% { box-shadow: 0 0 0 20px rgba(59,130,246,0); }
+    100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+  }
+
+  /* 音量インジケーター（マイク周りのリング） */
+  .volume-ring { position: absolute; inset: -6px; border-radius: 50%; border: 3px solid transparent; }
+  .volume-ring.active { border-color: rgba(59,130,246,0.6); animation: volume-pulse 0.3s ease-out; }
+
+  @keyframes volume-pulse {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.2); opacity: 0; }
+  }
+
+  .ctrl-btn.end-call { background: #ef4444; color: #fff; }
+  .ctrl-btn.end-call:hover { background: #dc2626; }
+
+  /* AI発話中のインジケーター */
+  .ai-speaking-indicator { display: flex; align-items: center; gap: 3px; position: absolute; top: -40px; left: 50%; transform: translateX(-50%); }
+  .ai-speaking-indicator .bar { width: 3px; border-radius: 2px; background: #818cf8; animation: speaking-bar 0.8s ease-in-out infinite; }
+  .ai-speaking-indicator .bar:nth-child(1) { height: 12px; animation-delay: 0s; }
+  .ai-speaking-indicator .bar:nth-child(2) { height: 20px; animation-delay: 0.15s; }
+  .ai-speaking-indicator .bar:nth-child(3) { height: 16px; animation-delay: 0.3s; }
+  .ai-speaking-indicator .bar:nth-child(4) { height: 24px; animation-delay: 0.1s; }
+  .ai-speaking-indicator .bar:nth-child(5) { height: 14px; animation-delay: 0.25s; }
+
+  @keyframes speaking-bar {
+    0%, 100% { transform: scaleY(0.4); }
+    50% { transform: scaleY(1); }
+  }
+
+  /* タイマー */
+  .call-timer { position: absolute; top: 16px; right: 16px; font-size: 12px; color: rgba(255,255,255,0.4); font-variant-numeric: tabular-nums; }
+
+  /* ========================================
+     セクション3: AI応答中の状態
+     ======================================== */
+
+  /* 感情バッジ（キャラの下） */
+  .emotion-badge { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(99,102,241,0.2); backdrop-filter: blur(8px); border-radius: 16px; padding: 4px 14px; font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 500; display: flex; align-items: center; gap: 4px; }
+
+  /* ========================================
+     セクション4: 会話終了サマリー
+     ======================================== */
+  .summary-screen { flex: 1; display: flex; flex-direction: column; background: #fff; overflow-y: auto; }
+  .summary-header { padding: 24px 20px 16px; text-align: center; }
+  .summary-header .icon { font-size: 40px; margin-bottom: 8px; }
+  .summary-header h2 { font-size: 18px; font-weight: 700; }
+  .summary-header .duration { font-size: 13px; color: #999; margin-top: 4px; }
+
+  .summary-content { padding: 0 20px 24px; }
+  .summary-card { background: #f8f9fa; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+  .summary-card h3 { font-size: 13px; font-weight: 700; color: #666; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .summary-card p { font-size: 13px; color: #333; line-height: 1.7; }
+  .summary-card .tag { display: inline-block; background: #e0e7ff; color: #4338ca; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; margin-right: 4px; margin-bottom: 4px; }
+
+  .summary-actions { padding: 0 20px 24px; display: flex; flex-direction: column; gap: 10px; }
+  .summary-btn { padding: 14px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
+  .summary-btn.primary { background: #3b82f6; color: #fff; }
+  .summary-btn.primary:hover { background: #2563eb; }
+  .summary-btn.secondary { background: #f0f0f0; color: #333; }
+  .summary-btn.secondary:hover { background: #e8e8e8; }
+
+  /* ========================================
+     セクション5: PC版レイアウト
+     ======================================== */
+  .pc-frame { width: 100%; max-width: 1000px; margin: 0 auto; height: 680px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); display: flex; background: #fff; }
+
+  .pc-sidebar { width: 260px; background: #f8f9fa; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; flex-shrink: 0; }
+  .pc-sidebar-header { padding: 14px 16px; border-bottom: 1px solid #e0e0e0; }
+  .pc-sidebar-header h3 { font-size: 14px; font-weight: 700; }
+
+  .pc-topic-list { flex: 1; overflow-y: auto; }
+  .pc-topic { padding: 10px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.15s; }
+  .pc-topic:hover { background: #f0f0f0; }
+  .pc-topic.active { background: #e0e7ff; }
+  .pc-topic .name { font-size: 13px; font-weight: 600; }
+  .pc-topic .meta { font-size: 11px; color: #999; margin-top: 2px; }
+
+  .pc-main { flex: 1; display: flex; flex-direction: column; }
+  .pc-main-header { height: 52px; border-bottom: 1px solid #e0e0e0; display: flex; align-items: center; padding: 0 20px; justify-content: space-between; }
+  .pc-main-header h2 { font-size: 15px; font-weight: 700; }
+
+  .pc-voice-area { flex: 1; display: flex; background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); }
+  .pc-character { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+  .pc-char-placeholder { width: 200px; height: 300px; background: rgba(255,255,255,0.05); border-radius: 100px 100px 50px 50px; }
+
+  .pc-transcript-panel { width: 320px; background: rgba(0,0,0,0.2); border-left: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; }
+  .pc-transcript-header { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: space-between; }
+  .pc-transcript-header h3 { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7); }
+  .pc-transcript-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  .pc-msg { max-width: 90%; }
+  .pc-msg.ai { align-self: flex-start; }
+  .pc-msg.user { align-self: flex-end; }
+  .pc-msg .bubble { padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.6; }
+  .pc-msg.ai .bubble { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
+  .pc-msg.user .bubble { background: rgba(59,130,246,0.3); color: rgba(255,255,255,0.9); }
+  .pc-msg .time { font-size: 10px; color: rgba(255,255,255,0.3); margin-top: 2px; padding: 0 4px; }
+
+  .pc-controls { padding: 16px 20px; display: flex; align-items: center; justify-content: center; gap: 20px; border-top: 1px solid rgba(255,255,255,0.05); }
+
+  /* ========================================
+     アニメーション
+     ======================================== */
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeIn 0.3s ease-out; }
+
+  /* ========================================
+     セクション6: 設計メモ
+     ======================================== */
+  .notes-section { max-width: 800px; }
+  .note-card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+  .note-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 10px; color: #1a1a2e; }
+  .note-card ul { padding-left: 20px; }
+  .note-card li { font-size: 13px; color: #444; line-height: 1.8; }
+  .note-card code { background: #f0f0f0; padding: 1px 6px; border-radius: 4px; font-size: 12px; font-family: 'SF Mono', monospace; }
+  .arch-diagram { background: #1a1a2e; color: #a5b4fc; padding: 16px; border-radius: 8px; font-family: 'SF Mono', monospace; font-size: 12px; line-height: 1.8; white-space: pre; overflow-x: auto; margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button class="active" onclick="showSection('s1')">マイAi-Ba（会話ボタン）</button>
+  <button onclick="showSection('s2')">音声会話: 待機中</button>
+  <button onclick="showSection('s3')">音声会話: AI応答中</button>
+  <button onclick="showSection('s4')">会話終了サマリー</button>
+  <button onclick="showSection('s5')">PC版レイアウト</button>
+  <button onclick="showSection('s6')">設計メモ</button>
+</nav>
+
+<!-- ========================================
+     セクション1: MyAibaタブ（会話ボタン追加）
+     ======================================== -->
+<div id="s1" class="section active">
+  <h2 class="section-title">マイAi-Ba タブ</h2>
+  <p class="section-desc">
+    Live2Dキャラクターの下に「話しかける」ボタンを配置。<br>
+    タップで音声会話モードに遷移する。キャラクター選択は下部に移動。
+  </p>
+
+  <div class="phone-frame">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>●●● Wi-Fi 🔋</span>
+    </div>
+    <div class="app-header">
+      <button class="back-btn">‹</button>
+      <div>
+        <div class="title">マイ Ai-Ba</div>
+      </div>
+    </div>
+    <div class="aiba-tabs">
+      <button class="active">マイAi-Ba</button>
+      <button>マイSkills</button>
+      <button>ショップ</button>
+      <button>スタジオ</button>
+    </div>
+
+    <div class="myaiba-content">
+      <!-- Live2D表示エリア -->
+      <div class="live2d-area">
+        <div class="weather-badge">☀️ 18°C</div>
+        <div class="character-placeholder"></div>
+        <div class="character-name">まお</div>
+      </div>
+
+      <!-- 会話開始ボタン -->
+      <div class="voice-start-section">
+        <button class="voice-start-btn" onclick="showSection('s2')">
+          <svg class="mic-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m14 0a7 7 0 00-14 0m14 0v1a7 7 0 01-14 0v-1m7 8v4m-4 0h8" />
+          </svg>
+          話しかける
+        </button>
+        <p class="voice-start-hint">タップして音声で会話を始めます</p>
+      </div>
+
+      <!-- キャラクター選択 -->
+      <div class="model-section">
+        <div class="model-section-title">キャラクター選択</div>
+        <div class="model-grid">
+          <div class="model-card selected">
+            <div class="model-thumb">
+              <div class="mini-char"></div>
+              <span class="in-use">使用中</span>
+            </div>
+            <div class="model-name">まお</div>
+          </div>
+          <div class="model-card">
+            <div class="model-thumb" style="background: linear-gradient(135deg, #fce7f3, #fde68a);">
+              <div class="mini-char"></div>
+            </div>
+            <div class="model-name">リコ</div>
+          </div>
+          <div class="model-card">
+            <div class="model-thumb" style="background: linear-gradient(135deg, #d1fae5, #bfdbfe);">
+              <div class="mini-char"></div>
+            </div>
+            <div class="model-name">ソラ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================
+     セクション2: 音声会話モード（ユーザー発話中）
+     ======================================== -->
+<div id="s2" class="section">
+  <h2 class="section-title">音声会話: ユーザー発話中</h2>
+  <p class="section-desc">
+    マイクが有効でユーザーの音声を聞いている状態。<br>
+    画面中央にキャラクター、下部にコントロール、テキストは控えめに表示。
+  </p>
+
+  <div class="phone-frame">
+    <div class="status-bar">
+      <span>9:42</span>
+      <span>●●● Wi-Fi 🔋</span>
+    </div>
+
+    <div class="voice-screen">
+      <!-- 背景パーティクル -->
+      <div class="particles">
+        <div class="particle" style="width: 120px; height: 120px; top: 10%; left: -20px; opacity: 0.3;"></div>
+        <div class="particle" style="width: 80px; height: 80px; top: 50%; right: -10px; opacity: 0.2;"></div>
+        <div class="particle" style="width: 60px; height: 60px; bottom: 20%; left: 30%; opacity: 0.15;"></div>
+      </div>
+
+      <!-- 接続ステータス -->
+      <div class="connection-status">
+        <div class="status-dot connected"></div>
+        <span class="status-text">接続中</span>
+      </div>
+
+      <!-- タイマー -->
+      <div class="call-timer">01:23</div>
+
+      <!-- キャラクター -->
+      <div class="voice-character">
+        <div class="voice-char-placeholder"></div>
+      </div>
+
+      <!-- 会話テキスト -->
+      <div class="transcript-area">
+        <div class="transcript-ai fade-in">
+          <div class="label">Ai-Ba</div>
+          おかえり、ともくん！今日も1日お疲れ様。何かあった？
+        </div>
+        <div class="transcript-interim">今日はちょっと疲れ...</div>
+      </div>
+
+      <!-- コントロール -->
+      <div class="voice-controls">
+        <button class="ctrl-btn mute" title="スピーカーミュート">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M12 18.75a.75.75 0 01-.75-.75V6a.75.75 0 011.3-.512l3.7 3.862H19a1.5 1.5 0 011.5 1.5v2.3a1.5 1.5 0 01-1.5 1.5h-2.75l-3.7 3.862A.75.75 0 0112 18.75z" />
+          </svg>
+        </button>
+
+        <button class="mic-main listening" title="マイク（発話中）">
+          <div class="volume-ring active"></div>
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8" />
+          </svg>
+        </button>
+
+        <button class="ctrl-btn end-call" title="会話終了" onclick="showSection('s4')">
+          <svg fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3.68 3.68a.75.75 0 011.06 0L12 10.94l7.26-7.26a.75.75 0 111.06 1.06L13.06 12l7.26 7.26a.75.75 0 11-1.06 1.06L12 13.06l-7.26 7.26a.75.75 0 01-1.06-1.06L10.94 12 3.68 4.74a.75.75 0 010-1.06z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================
+     セクション3: 音声会話モード（AI応答中）
+     ======================================== -->
+<div id="s3" class="section">
+  <h2 class="section-title">音声会話: AI応答中</h2>
+  <p class="section-desc">
+    AIが音声で応答している状態。音声波形インジケーターが表示され、<br>
+    マイクはミュート状態（AIの発話が終わると自動で戻る）。
+  </p>
+
+  <div class="phone-frame">
+    <div class="status-bar">
+      <span>9:43</span>
+      <span>●●● Wi-Fi 🔋</span>
+    </div>
+
+    <div class="voice-screen">
+      <div class="particles">
+        <div class="particle" style="width: 120px; height: 120px; top: 10%; left: -20px; opacity: 0.3;"></div>
+        <div class="particle" style="width: 80px; height: 80px; top: 50%; right: -10px; opacity: 0.2;"></div>
+      </div>
+
+      <div class="connection-status">
+        <div class="status-dot connected"></div>
+        <span class="status-text">接続中</span>
+      </div>
+
+      <div class="call-timer">02:15</div>
+
+      <!-- キャラクター + 感情バッジ -->
+      <div class="voice-character">
+        <div class="voice-char-placeholder"></div>
+        <div class="emotion-badge">😊 happy</div>
+      </div>
+
+      <!-- 会話テキスト -->
+      <div class="transcript-area">
+        <div class="transcript-user" style="margin-bottom: 4px;">
+          <div class="label">あなた</div>
+          今日はちょっと疲れたかな。午後のミーティングが長くて…
+        </div>
+        <div class="transcript-ai fade-in">
+          <div class="label">Ai-Ba</div>
+          お疲れ様〜。午後のミーティングが長いとほんと消耗するよね。明日の予定も確認しとく？あんまり詰まってなければゆっくり休めるし。
+        </div>
+      </div>
+
+      <!-- コントロール（AI発話中） -->
+      <div class="voice-controls">
+        <button class="ctrl-btn mute" title="スピーカーミュート">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M12 18.75a.75.75 0 01-.75-.75V6a.75.75 0 011.3-.512l3.7 3.862H19a1.5 1.5 0 011.5 1.5v2.3a1.5 1.5 0 01-1.5 1.5h-2.75l-3.7 3.862A.75.75 0 0112 18.75z" />
+          </svg>
+        </button>
+
+        <div style="position: relative;">
+          <!-- AI発話中インジケーター -->
+          <div class="ai-speaking-indicator">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+          </div>
+          <button class="mic-main idle" title="マイク（AI応答中）">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8" />
+            </svg>
+          </button>
+        </div>
+
+        <button class="ctrl-btn end-call" title="会話終了" onclick="showSection('s4')">
+          <svg fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3.68 3.68a.75.75 0 011.06 0L12 10.94l7.26-7.26a.75.75 0 111.06 1.06L13.06 12l7.26 7.26a.75.75 0 11-1.06 1.06L12 13.06l-7.26 7.26a.75.75 0 01-1.06-1.06L10.94 12 3.68 4.74a.75.75 0 010-1.06z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================
+     セクション4: 会話終了サマリー
+     ======================================== -->
+<div id="s4" class="section">
+  <h2 class="section-title">会話終了サマリー</h2>
+  <p class="section-desc">
+    音声会話終了後に表示。会話の要約と記憶への保存状況を確認できる。<br>
+    テキストチャットへの移行やトピック保存もここから。
+  </p>
+
+  <div class="phone-frame">
+    <div class="status-bar">
+      <span>9:48</span>
+      <span>●●● Wi-Fi 🔋</span>
+    </div>
+    <div class="app-header">
+      <button class="back-btn">‹</button>
+      <div class="title">音声会話の記録</div>
+    </div>
+
+    <div class="summary-screen">
+      <div class="summary-header">
+        <div class="icon">🎙️</div>
+        <h2>会話が終了しました</h2>
+        <div class="duration">通話時間: 5分23秒 ・ 8ターン</div>
+      </div>
+
+      <div class="summary-content">
+        <!-- 会話要約 -->
+        <div class="summary-card">
+          <h3>💬 会話の要約</h3>
+          <p>午後のミーティングで疲れた話から、明日の予定確認へ。明日は午前に1件のみで余裕がある日。週末の映画の相談をして「インターステラー」を候補に。</p>
+        </div>
+
+        <!-- 記憶に保存された事実 -->
+        <div class="summary-card">
+          <h3>🧠 記憶に保存</h3>
+          <p>
+            <span class="tag">事実</span> 週末に映画を観に行く予定がある<br>
+            <span class="tag">興味</span> インターステラーに興味あり
+          </p>
+        </div>
+
+        <!-- 感情トレンド -->
+        <div class="summary-card">
+          <h3>📊 感情の流れ</h3>
+          <div style="display: flex; align-items: center; gap: 4px; font-size: 20px; padding: 4px 0;">
+            <span>😔</span>
+            <span style="color: #ccc;">→</span>
+            <span>😊</span>
+            <span style="color: #ccc;">→</span>
+            <span>😆</span>
+          </div>
+          <p style="font-size: 12px; color: #999; margin-top: 4px;">疲れた状態から話すうちに楽しい気分に</p>
+        </div>
+      </div>
+
+      <div class="summary-actions">
+        <button class="summary-btn primary">トピックとして保存</button>
+        <button class="summary-btn secondary" onclick="showSection('s1')">マイAi-Baに戻る</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================
+     セクション5: PC版レイアウト
+     ======================================== -->
+<div id="s5" class="section" style="max-width: 1100px;">
+  <h2 class="section-title">PC版: 音声会話モード</h2>
+  <p class="section-desc">
+    PC版では左にトピック一覧、中央にキャラクター、右に会話テキストログを表示。<br>
+    キャラクターを大きく見ながら、テキストでも会話の流れを追える。
+  </p>
+
+  <div class="pc-frame">
+    <!-- サイドバー -->
+    <div class="pc-sidebar">
+      <div class="pc-sidebar-header">
+        <h3>トピック</h3>
+      </div>
+      <div class="pc-topic-list">
+        <div class="pc-topic active">
+          <div class="name">🎙️ 音声会話中…</div>
+          <div class="meta">今 ・ 5ターン</div>
+        </div>
+        <div class="pc-topic">
+          <div class="name">週末の映画について</div>
+          <div class="meta">昨日 ・ 12ターン</div>
+        </div>
+        <div class="pc-topic">
+          <div class="name">TypeScript の型パズル</div>
+          <div class="meta">3/10 ・ 8ターン</div>
+        </div>
+        <div class="pc-topic">
+          <div class="name">晩ごはんの献立相談</div>
+          <div class="meta">3/9 ・ 6ターン</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- メインエリア -->
+    <div class="pc-main">
+      <div class="pc-main-header">
+        <h2>🎙️ 音声会話</h2>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 12px; color: #999;">02:15</span>
+          <button style="padding: 6px 14px; border-radius: 8px; border: 1px solid #ef4444; background: none; color: #ef4444; font-size: 12px; font-weight: 600; cursor: pointer;">会話を終了</button>
+        </div>
+      </div>
+
+      <div class="pc-voice-area">
+        <!-- キャラクター（大きめ表示） -->
+        <div class="pc-character">
+          <div class="pc-char-placeholder"></div>
+          <div class="emotion-badge" style="bottom: 40px;">😊 happy</div>
+
+          <!-- コントロール（下部中央） -->
+          <div style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 16px; align-items: center;">
+            <button class="ctrl-btn mute" style="width: 44px; height: 44px;">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M12 18.75a.75.75 0 01-.75-.75V6a.75.75 0 011.3-.512l3.7 3.862H19a1.5 1.5 0 011.5 1.5v2.3a1.5 1.5 0 01-1.5 1.5h-2.75l-3.7 3.862A.75.75 0 0112 18.75z" />
+              </svg>
+            </button>
+            <button class="mic-main listening" style="width: 60px; height: 60px;">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 24px; height: 24px;">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8" />
+              </svg>
+            </button>
+            <button class="ctrl-btn end-call" style="width: 44px; height: 44px;">
+              <svg fill="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                <path d="M3.68 3.68a.75.75 0 011.06 0L12 10.94l7.26-7.26a.75.75 0 111.06 1.06L13.06 12l7.26 7.26a.75.75 0 11-1.06 1.06L12 13.06l-7.26 7.26a.75.75 0 01-1.06-1.06L10.94 12 3.68 4.74a.75.75 0 010-1.06z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- トランスクリプトパネル -->
+        <div class="pc-transcript-panel">
+          <div class="pc-transcript-header">
+            <h3>会話ログ</h3>
+            <span style="font-size: 11px; color: rgba(255,255,255,0.3);">8ターン</span>
+          </div>
+          <div class="pc-transcript-body">
+            <div class="pc-msg ai">
+              <div class="bubble">おかえり、ともくん！今日も1日お疲れ様。何かあった？</div>
+              <div class="time">9:42</div>
+            </div>
+            <div class="pc-msg user">
+              <div class="bubble">今日はちょっと疲れたかな。午後のミーティングが長くて…</div>
+              <div class="time">9:42</div>
+            </div>
+            <div class="pc-msg ai">
+              <div class="bubble">お疲れ様〜。午後のミーティングが長いとほんと消耗するよね。明日の予定も確認しとく？</div>
+              <div class="time">9:43</div>
+            </div>
+            <div class="pc-msg user">
+              <div class="bubble">うん、お願い！</div>
+              <div class="time">9:43</div>
+            </div>
+            <div class="pc-msg ai">
+              <div class="bubble">明日は午前に「チーム定例」が1件だけ。午後はフリーだからゆっくりできるよ！</div>
+              <div class="time">9:44</div>
+            </div>
+            <div class="pc-msg user">
+              <div class="bubble">よかった。週末は映画でも観に行こうかな</div>
+              <div class="time">9:45</div>
+            </div>
+            <div class="pc-msg ai">
+              <div class="bubble">いいね！何か観たいのある？最近だと「インターステラー」のIMAX再上映が話題だよ。</div>
+              <div class="time">9:45</div>
+            </div>
+            <div class="pc-msg user">
+              <div class="bubble" style="background: rgba(59,130,246,0.2); border: 1px dashed rgba(147,197,253,0.3);">
+                <span style="color: rgba(255,255,255,0.4); font-style: italic;">それ気になってた...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================
+     セクション6: 設計メモ
+     ======================================== -->
+<div id="s6" class="section notes-section" style="max-width: 800px;">
+  <h2 class="section-title">設計メモ</h2>
+  <p class="section-desc">実装時の技術的な参考情報</p>
+
+  <div class="note-card">
+    <h3>アーキテクチャ（案B強化版）</h3>
+    <div class="arch-diagram">
+┌─ MyAiba 音声会話モード ──────────────────────────────┐
+│                                                       │
+│  [マイク] → Web Speech API (STT)                      │
+│      ↓ テキスト確定                                    │
+│  [Lambda] → Bedrock ConverseStream (Haiku 4.5)        │
+│      ↓ テキスト差分（WebSocket chat_delta）             │
+│  [ElevenLabs] Streaming TTS → 音声チャンク              │
+│      ↓                                                │
+│  [スピーカー] + Live2D リップシンク                      │
+│                                                       │
+│  記憶: AgentCore Memory ✅ / 永久記憶 ✅ / 要約 ✅      │
+│  スキル: Calendar / Weather / Places / Tasks ✅        │
+│  想定レイテンシ: ~1.5秒（STT確定→音声再生開始）          │
+└───────────────────────────────────────────────────────┘</div>
+  </div>
+
+  <div class="note-card">
+    <h3>画面遷移フロー</h3>
+    <ul>
+      <li><code>/aiba</code> マイAi-Baタブ → 「話しかける」ボタン</li>
+      <li><code>/aiba/voice</code> 音声会話画面（フルスクリーン、ダークテーマ）</li>
+      <li>会話終了 → サマリー画面（トピック保存 or マイAi-Baに戻る）</li>
+      <li>トピック保存時 → <code>/themes/{themeId}</code> へ遷移（テキストチャットで続行可能）</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>TTS: ElevenLabs ストリーミング</h3>
+    <ul>
+      <li>WebSocket API: テキストチャンクを逐次送信 → 音声チャンク（base64 MP3）を逐次受信</li>
+      <li>LLM の <code>chat_delta</code> を句点で区切って ElevenLabs に流す</li>
+      <li>初回音声チャンクが届いた時点で即再生開始（バッファリング不要）</li>
+      <li>音量エンベロープ: 既存の <code>computeVolumeEnvelope</code> をチャンク単位に拡張</li>
+      <li>日本語対応ボイス: Multilingual v2 モデル（<code>eleven_multilingual_v2</code>）</li>
+      <li>APIキー管理: SSM Parameter Store → Lambda 環境変数</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>STT: Web Speech API（Phase 1）</h3>
+    <ul>
+      <li>既存の <code>useSpeechRecognition</code> hook をそのまま活用</li>
+      <li><code>continuous: true</code> + VAD でハンズフリー会話</li>
+      <li>確定テキストを即座に Lambda に送信</li>
+      <li>将来: Whisper API に切替可能（精度向上・iOS対応強化）</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>Live2D 連携</h3>
+    <ul>
+      <li>音声会話中もキャラクターの表情・モーションは通常通り制御</li>
+      <li>LLM の JSON レスポンスから <code>emotion</code> / <code>motion</code> を抽出</li>
+      <li>ElevenLabs 音声再生中: 音量エンベロープで口パク（リップシンク）</li>
+      <li>音声会話画面ではキャラクターを大きく表示（<code>h-[60vh]</code> 程度）</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>会話セッション管理</h3>
+    <ul>
+      <li>音声会話はメインセッション扱い（<code>sessionId</code> を共有）</li>
+      <li>会話中のメッセージは通常通り DynamoDB に保存（user/assistant 各 MSG#）</li>
+      <li>5ターンごとのローリング要約も通常通り起動</li>
+      <li>会話終了時: トピックとして保存可能 → テキストチャットで続行</li>
+      <li>サマリー画面: 会話要約 + 保存された記憶 + 感情の流れを表示</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>コスト見積もり</h3>
+    <ul>
+      <li>ElevenLabs: $0.15〜0.30/1000文字（Starter $5/mo = 30,000文字）</li>
+      <li>1回の音声会話（5分, 8ターン）: AI側 ~800文字 → ~$0.12〜0.24</li>
+      <li>1日2回 × 30日 = 月~48,000文字 → Scale プラン $22/mo（100,000文字）推奨</li>
+      <li>Bedrock (Haiku 4.5): 既存コストと同等（ストリーミングでも料金変わらず）</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>実装フェーズ</h3>
+    <ul>
+      <li><strong>Phase 1</strong>: 基本の音声会話ループ（STT → Bedrock Stream → ElevenLabs Stream → 再生）</li>
+      <li><strong>Phase 2</strong>: 会話終了サマリー + トピック保存 + Live2D連携</li>
+      <li><strong>Phase 3</strong>: PC版レイアウト（トランスクリプトパネル）</li>
+      <li><strong>Phase 4</strong>: 音声カスタマイズ（キャラクターごとの音声設定）</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const idx = ['s1','s2','s3','s4','s5','s6'].indexOf(id);
+  document.querySelectorAll('.nav button')[idx]?.classList.add('active');
+  window.scrollTo(0, 0);
+}
+</script>
+
+</body>
+</html>

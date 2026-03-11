@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen, StudioCamera, WeatherOverlay, SearchModal, ParticleBackground } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen, AibaAlphaScreen, VoiceChatScreen, VoiceChatSummary, StudioCamera, WeatherOverlay, SearchModal, ParticleBackground } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
@@ -134,7 +134,9 @@ function App() {
   }, [])
 
   // 現在のセッション名を判定（設計書: ヘッダーにはセッション名のみ表示）
-  const currentSessionName = location.pathname.startsWith('/aiba')
+  const currentSessionName = location.pathname.startsWith('/aiba-alpha')
+    ? 'マイ Ai-Ba (α)'
+    : location.pathname.startsWith('/aiba')
     ? 'Ai-Ba'
     : location.pathname.startsWith('/themes') && activeThemeId
       ? themeThemes.find(t => t.themeId === activeThemeId)?.themeName ?? 'トピック'
@@ -647,6 +649,9 @@ function App() {
                 <Route path="/themes/:themeId" element={<ThemeScreen />} />
                 <Route path="/themes" element={<ThemeScreen />} />
                 <Route path="/memos" element={<MemoScreen />} />
+                <Route path="/aiba-alpha/voice" element={<VoiceChatScreen />} />
+                <Route path="/aiba-alpha/summary" element={<VoiceChatSummary />} />
+                <Route path="/aiba-alpha" element={<AibaAlphaScreen />} />
                 <Route path="/aiba" element={<AibaScreen />} />
                 <Route path="*" element={
                   <div className="flex-1 flex flex-col min-h-0" style={{ fontSize: `${config.ui.fontSize}px` }}>
