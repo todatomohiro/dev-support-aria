@@ -46,24 +46,60 @@
   let aibaUserId = null
   let aibaApiUrl = null
 
-  // 起動時に chrome.storage からトークン読み込み
-  chrome.storage.local.get(['aibaToken', 'aibaUserId', 'aibaApiUrl'], (data) => {
-    if (data.aibaToken) {
-      aibaToken = data.aibaToken
-      aibaUserId = data.aibaUserId
-      aibaApiUrl = data.aibaApiUrl
-      LOG('Ai-Ba 認証トークン読み込み済み')
-      updateSaveTopicBtn()
+  /** JWT トークンが有効か検証する（期限切れチェック） */
+  function isTokenValid(token) {
+    if (!token) return false
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      // 5分のマージンを持たせる
+      return payload.exp * 1000 > Date.now() + 5 * 60 * 1000
+    } catch {
+      return false
     }
+  }
+
+  /** chrome.storage から最新トークンを取得して検証する */
+  async function refreshTokenFromStorage() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['aibaToken', 'aibaUserId', 'aibaApiUrl'], (data) => {
+        if (data.aibaToken && isTokenValid(data.aibaToken)) {
+          aibaToken = data.aibaToken
+          aibaUserId = data.aibaUserId
+          aibaApiUrl = data.aibaApiUrl
+          resolve(true)
+        } else {
+          // 期限切れトークンはクリア
+          if (data.aibaToken && !isTokenValid(data.aibaToken)) {
+            LOG('トークン期限切れ — Ai-Ba アプリを開いてリフレッシュしてください')
+          }
+          aibaToken = null
+          aibaUserId = null
+          resolve(false)
+        }
+      })
+    })
+  }
+
+  // 起動時に chrome.storage からトークン読み込み
+  refreshTokenFromStorage().then((ok) => {
+    if (ok) {
+      LOG('Ai-Ba 認証トークン読み込み済み')
+    }
+    updateSaveTopicBtn()
   })
 
-  // popup からの認証更新通知
+  // popup / app-bridge からの認証更新通知
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'aiba-auth-updated') {
-      aibaToken = message.token
-      aibaUserId = message.userId
-      aibaApiUrl = message.apiUrl
-      LOG('Ai-Ba 認証トークン更新')
+      if (isTokenValid(message.token)) {
+        aibaToken = message.token
+        aibaUserId = message.userId
+        aibaApiUrl = message.apiUrl
+        LOG('Ai-Ba 認証トークン更新')
+      } else {
+        LOG('受信したトークンが期限切れ')
+        aibaToken = null
+      }
       updateSaveTopicBtn()
     }
   })
@@ -99,9 +135,9 @@
     // Zoom: https://xxx.zoom.us/j/12345678
     const zoomMatch = url.match(/zoom\.us\/j\/(\d+)/)
     if (zoomMatch) return `zoom-${zoomMatch[1]}`
-    // Teams: https://teams.microsoft.com/...meetingId=xxx
-    const teamsMatch = url.match(/teams\.microsoft\.com.*[?&]meetingId=([^&]+)/)
-    if (teamsMatch) return `teams-${teamsMatch[1]}`
+    // Teams: https://teams.microsoft.com/...meetingId=xxx (各種ドメイン対応)
+    const teamsMatch = url.match(/teams\.(microsoft\.com|live\.com|cloud\.microsoft).*[?&]meetingId=([^&]+)/)
+    if (teamsMatch) return `teams-${teamsMatch[2]}`
     // フォールバック: ホスト + パス
     return `meeting-${location.hostname}-${location.pathname.replace(/\//g, '-')}`
   }
@@ -341,8 +377,14 @@
    * トークンがなければスキップ（手動のトピック保存ボタンで後から可能）。
    */
   async function autoCreateTopic() {
+    // トークンの有効性を再チェック（期限切れなら storage から再取得）
+    if (!aibaToken || !isTokenValid(aibaToken)) {
+      await refreshTokenFromStorage()
+    }
+
     if (!aibaToken || !aibaApiUrl) {
-      LOG('Ai-Ba 未連携 — トピック自動作成スキップ')
+      LOG('Ai-Ba 未連携 — トピック自動作成スキップ（ポップアップからログインしてください）')
+      tools.toast('Ai-Ba 未連携: ポップアップからログインしてください')
       return
     }
 
@@ -366,6 +408,12 @@
 
       if (!res.ok) {
         LOG('トピック自動作成失敗:', res.status, res.body)
+        if (res.status === 401 || res.status === 403) {
+          tools.toast('Ai-Ba 認証エラー: ポップアップから再ログインしてください')
+          aibaToken = null  // 無効なトークンをクリア
+        } else {
+          tools.toast(`トピック作成失敗 (${res.status})`)
+        }
         return
       }
 
@@ -482,12 +530,35 @@
   // meet-captions.js が RTC データチャネルを監視し、
   // speaker=実名 or "参加者" で CustomEvent を転送してくる。
 
+  /** messageKey → transcripts 配列のインデックス（確定済みエントリ更新用） */
+  const captionKeyToIndex = new Map()
+
   document.addEventListener('aiba-caption', (e) => {
     if (!captionEnabled) return
-    const { speaker, text, isFinal, timestamp } = e.detail
+    const { speaker, text, isFinal, timestamp, messageKey, action } = e.detail
+
+    // 確定済みエントリのテキスト更新（Meet が音声認識を修正した場合）
+    if (action === 'update' && messageKey) {
+      const idx = captionKeyToIndex.get(messageKey)
+      if (idx != null && idx < transcripts.length) {
+        const oldText = transcripts[idx].text
+        transcripts[idx].text = text
+        transcripts[idx].speaker = speaker
+        // UI も更新
+        const entryEl = document.querySelector(`#anTranscript .an-entry[data-idx="${idx}"]`)
+        if (entryEl) {
+          entryEl.innerHTML = entryHTML(transcripts[idx])
+        }
+        LOG(`字幕更新: "${oldText}" → "${text}"`)
+      }
+      return
+    }
 
     if (isFinal) {
-      addTranscript(speaker, text, timestamp, 'caption')
+      const idx = addTranscript(speaker, text, timestamp, 'caption')
+      if (messageKey && idx != null) {
+        captionKeyToIndex.set(messageKey, idx)
+      }
       removeInterim('caption')
     } else {
       updateInterim(`${speaker}: ${text}`, 'caption')
@@ -616,16 +687,17 @@
 
   function addTranscript(speaker, text, timestamp, source) {
     const panel = document.getElementById('aiba-noter-panel')
-    if (!panel) return
+    if (!panel) return null
     const tp = panel.querySelector('#anTranscript')
     const empty = panel.querySelector('#anEmpty')
 
     const entry = { speaker, text, timestamp, source }
     transcripts.push(entry)
+    const idx = transcripts.length - 1
 
     const el = document.createElement('div')
     el.className = 'an-entry'
-    el.dataset.idx = transcripts.length - 1
+    el.dataset.idx = idx
     el.innerHTML = entryHTML(entry)
     tp.appendChild(el)
 
@@ -641,6 +713,8 @@
     if (linkedThemeId && aibaToken) {
       streamBatchEntries.push(entry)
     }
+
+    return idx
   }
 
   /** 話者名からユニークな色を生成（HSL ベース） */
@@ -818,7 +892,13 @@
 
   /** バッファに溜まった字幕エントリを POST /meeting/transcript に送信 */
   async function flushStreamBatch() {
-    if (streamBatchEntries.length === 0 || !linkedThemeId || !aibaToken || !aibaApiUrl) return
+    if (streamBatchEntries.length === 0 || !linkedThemeId || !aibaApiUrl) return
+
+    // トークンの有効性を再チェック
+    if (!aibaToken || !isTokenValid(aibaToken)) {
+      await refreshTokenFromStorage()
+      if (!aibaToken) return
+    }
 
     const entries = [...streamBatchEntries]
     streamBatchEntries = []
@@ -841,8 +921,8 @@
         // 失敗した分を戻す
         streamBatchEntries.unshift(...entries)
       } else {
-        const data = await res.json()
-        LOG(`ストリーム送信完了: ${data.saved} 件`)
+        const data = JSON.parse(res.body || '{}')
+        LOG(`ストリーム送信完了: ${data.saved || entries.length} 件`)
       }
     } catch (err) {
       LOG('ストリーム送信エラー:', err.message)

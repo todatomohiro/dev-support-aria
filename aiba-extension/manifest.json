@@ -8,6 +8,9 @@
     "https://meet.google.com/*",
     "https://*.zoom.us/*",
     "https://teams.microsoft.com/*",
+    "https://*.teams.microsoft.com/*",
+    "https://teams.live.com/*",
+    "https://teams.cloud.microsoft/*",
     "https://*.lambda-url.ap-northeast-1.on.aws/*",
     "http://localhost:5173/*",
     "https://wpripgjmae.execute-api.ap-northeast-1.amazonaws.com/*"
@@ -20,7 +23,10 @@
       "matches": [
         "https://meet.google.com/*",
         "https://*.zoom.us/*",
-        "https://teams.microsoft.com/*"
+        "https://teams.microsoft.com/*",
+        "https://*.teams.microsoft.com/*",
+        "https://teams.live.com/*",
+        "https://teams.cloud.microsoft/*"
       ],
       "js": ["toolbar.js", "tool-camera.js", "tool-noter.js"],
       "css": ["toolbar.css"],
@@ -38,7 +44,7 @@
       "run_at": "document_start"
     },
     {
-      "matches": ["https://teams.microsoft.com/*", "https://*.teams.microsoft.com/*", "https://teams.live.com/*"],
+      "matches": ["https://teams.microsoft.com/*", "https://*.teams.microsoft.com/*", "https://teams.live.com/*", "https://teams.cloud.microsoft/*"],
       "js": ["teams-captions.js"],
       "run_at": "document_start"
     },
@@ -63,7 +69,7 @@
       "resources": ["meet-rtc-hook.js"]
     },
     {
-      "matches": ["https://teams.microsoft.com/*", "https://*.teams.microsoft.com/*", "https://teams.live.com/*"],
+      "matches": ["https://teams.microsoft.com/*", "https://*.teams.microsoft.com/*", "https://teams.live.com/*", "https://teams.cloud.microsoft/*"],
       "resources": ["teams-rtc-hook.js"]
     },
     {

@@ -18,6 +18,9 @@ const MEETING_PATTERNS = [
   /^https:\/\/meet\.google\.com\//,
   /^https:\/\/.*\.zoom\.us\//,
   /^https:\/\/teams\.microsoft\.com\//,
+  /^https:\/\/.*\.teams\.microsoft\.com\//,
+  /^https:\/\/teams\.live\.com\//,
+  /^https:\/\/teams\.cloud\.microsoft\//,
 ]
 
 // UI 要素

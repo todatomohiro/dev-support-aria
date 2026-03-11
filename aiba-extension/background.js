@@ -88,7 +88,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
 function forwardToContentScripts(message) {
   chrome.tabs.query(
-    { url: ['https://meet.google.com/*', 'https://*.zoom.us/*', 'https://teams.microsoft.com/*'] },
+    { url: ['https://meet.google.com/*', 'https://*.zoom.us/*', 'https://teams.microsoft.com/*', 'https://*.teams.microsoft.com/*', 'https://teams.live.com/*', 'https://teams.cloud.microsoft/*'] },
     (tabs) => {
       for (const tab of tabs) {
         chrome.tabs.sendMessage(tab.id, message).catch(() => {})
