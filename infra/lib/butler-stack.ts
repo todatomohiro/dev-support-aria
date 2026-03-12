@@ -381,7 +381,7 @@ export class ButlerStack extends cdk.Stack {
     }))
     groupsLeaveFn.addEnvironment('WEBSOCKET_ENDPOINT', wsStage.callbackUrl)
 
-    // TTS Lambda（Polly / ElevenLabs 切替対応 — DynamoDB 不要）
+    // TTS Lambda（Polly / Aivis 切替対応 — DynamoDB 不要）
     const ttsSynthesizeFn = new lambdaNode.NodejsFunction(this, 'TtsSynthesizeFn', {
       runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
@@ -421,11 +421,13 @@ export class ButlerStack extends cdk.Stack {
     const googleIosClientId = getSecret('GOOGLE_IOS_CLIENT_ID', 'GOOGLE_IOS_CLIENT_ID')
     const googlePlacesApiKey = getSecret('GOOGLE_PLACES_API_KEY', 'GOOGLE_PLACES_API_KEY')
     const braveSearchApiKey = getSecret('BRAVE_SEARCH_API_KEY', 'BRAVE_SEARCH_API_KEY')
-    const elevenlabsApiKey = getSecret('ELEVENLABS_API_KEY', 'ELEVENLABS_API_KEY')
+    const aivisApiKey = getSecret('AIVIS_API_KEY', 'AIVIS_API_KEY')
+    const aivisModelUuid = getSecret('AIVIS_MODEL_UUID', 'AIVIS_MODEL_UUID')
 
-    // TTS Lambda に ElevenLabs API キーを設定（provider 切替で使用）
-    ttsSynthesizeFn.addEnvironment('ELEVENLABS_API_KEY', elevenlabsApiKey)
-    // ElevenLabs API 呼び出しのためタイムアウトを延長
+    // TTS Lambda に API キーを設定（provider 切替で使用: polly / aivis）
+    ttsSynthesizeFn.addEnvironment('AIVIS_API_KEY', aivisApiKey)
+    ttsSynthesizeFn.addEnvironment('AIVIS_MODEL_UUID', aivisModelUuid)
+    // 外部 TTS API 呼び出しのためタイムアウトを延長
     ttsSynthesizeFn.addEnvironment('TIMEOUT_EXTENDED', 'true')
 
     // 要約 Lambda（Haiku 4.5 で会話ローリング要約を生成）
@@ -735,7 +737,7 @@ export class ButlerStack extends cdk.Stack {
     messagesResource.addMethod('GET', new apigateway.LambdaIntegration(messagesListFn), authMethodOptions)
     messagesResource.addMethod('POST', new apigateway.LambdaIntegration(messagesPutFn), authMethodOptions)
 
-    // /tts/synthesize（Polly / ElevenLabs — provider パラメータで切替）
+    // /tts/synthesize（Polly / Aivis — provider パラメータで切替）
     const ttsResource = api.root.addResource('tts')
     const ttsSynthesizeResource = ttsResource.addResource('synthesize')
     ttsSynthesizeResource.addMethod('POST', new apigateway.LambdaIntegration(ttsSynthesizeFn), authMethodOptions)

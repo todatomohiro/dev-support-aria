@@ -1,6 +1,5 @@
 import type { PlatformAdapter, Platform } from './types'
 import { webAdapter } from './webAdapter'
-import { tauriAdapter } from './tauriAdapter'
 import { capacitorAdapter } from './capacitorAdapter'
 
 export type { PlatformAdapter, Platform, SecureStorageKey, FileSelectOptions, SelectedFile } from './types'
@@ -9,11 +8,6 @@ export type { PlatformAdapter, Platform, SecureStorageKey, FileSelectOptions, Se
  * 現在のプラットフォームを検出
  */
 function detectPlatform(): Platform {
-  // Tauri環境の検出
-  if (typeof window !== 'undefined' && '__TAURI__' in window) {
-    return 'tauri'
-  }
-
   // Capacitor環境の検出
   if (
     typeof window !== 'undefined' &&
@@ -32,8 +26,6 @@ function detectPlatform(): Platform {
  */
 function getAdapter(platform: Platform): PlatformAdapter {
   switch (platform) {
-    case 'tauri':
-      return tauriAdapter
     case 'capacitor':
       return capacitorAdapter
     case 'web':
@@ -58,7 +50,7 @@ export const platformAdapter: PlatformAdapter = getAdapter(currentPlatform)
 export function isPlatformFeatureAvailable(feature: 'secureStorage' | 'fileSystem' | 'notifications'): boolean {
   switch (feature) {
     case 'secureStorage':
-      // Tauri/Capacitorでは完全なセキュアストレージが利用可能
+      // Capacitorでは完全なセキュアストレージが利用可能
       return currentPlatform !== 'web'
     case 'fileSystem':
       // 全プラットフォームで何らかのファイルアクセスが可能

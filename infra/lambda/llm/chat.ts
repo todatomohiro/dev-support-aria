@@ -1697,6 +1697,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let selectedModelId: string | undefined
   let includeDebug = false
   let streaming = false
+  let voiceMode = false
 
   try {
     const body = JSON.parse(event.body)
@@ -1731,6 +1732,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // ストリーミングモード
     if (body.streaming === true) {
       streaming = true
+    }
+
+    // 音声会話モード（短い応答を返す）
+    if (body.voiceMode === true) {
+      voiceMode = true
     }
 
     if (!message || typeof message !== 'string') {
@@ -1887,6 +1893,21 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     )
     enhancedSystemPrompt = systemBlocksToString(system)
     messages = toConverseMessages(history, message, imageBase64)
+  }
+
+  // 音声会話モード: 短く簡潔な応答を指示
+  if (voiceMode) {
+    system.push({
+      text: `<voice_mode>
+現在は音声会話モードです。以下のルールを最優先で守ってください：
+- 回答は1〜3文以内に収めること。長い説明は禁止
+- Markdown 記法（見出し・リスト・テーブル・太字・コードブロック等）は一切使わないこと
+- 口語的で自然な話し言葉で返答すること
+- 情報量より会話のテンポを重視すること
+- suggestedReplies は省略すること
+</voice_mode>`
+    })
+    console.log('[LLM] 音声会話モード: 短い応答を指示')
   }
 
   // ── ブリーフィングモード: ツールを事前呼び出し + 記憶コンテキストをプロンプトに注入 ──

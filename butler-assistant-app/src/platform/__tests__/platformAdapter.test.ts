@@ -2,29 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { webAdapter } from '../webAdapter'
 import type { PlatformAdapter } from '../types'
 
-// Tauri Store モック（共有 Map でラウンドトリップ対応）
-const tauriStoreData = new Map<string, unknown>()
-const mockStore = {
-  get: vi.fn(async (key: string) => tauriStoreData.get(key) ?? null),
-  set: vi.fn(async (key: string, value: unknown) => { tauriStoreData.set(key, value) }),
-  delete: vi.fn(async (key: string) => { tauriStoreData.delete(key) }),
-  save: vi.fn(async () => {}),
-}
-vi.mock('@tauri-apps/plugin-store', () => ({
-  load: vi.fn(async () => mockStore),
-}))
-
-// Tauri Opener モック
-const mockOpenUrl = vi.fn(async () => {})
-vi.mock('@tauri-apps/plugin-opener', () => ({
-  openUrl: mockOpenUrl,
-}))
-
-// Tauri Path API モック
-vi.mock('@tauri-apps/api/path', () => ({
-  appDataDir: vi.fn(async () => '/Users/test/Library/Application Support/com.butler-assistant.app'),
-}))
-
 // Capacitor Preferences モック（共有 Map でラウンドトリップ対応）
 const capacitorPrefsData = new Map<string, string>()
 const mockPreferences = {
@@ -54,8 +31,7 @@ vi.mock('@capacitor/clipboard', () => ({
   Clipboard: { write: mockClipboardWrite },
 }))
 
-// tauriAdapter / capacitorAdapter はモック設定後に import する
-const { tauriAdapter } = await import('../tauriAdapter')
+// capacitorAdapter はモック設定後に import する
 const { capacitorAdapter } = await import('../capacitorAdapter')
 
 describe('Platform Adapters', () => {
@@ -144,79 +120,6 @@ describe('Platform Adapters', () => {
     })
   })
 
-  describe('TauriAdapter', () => {
-    const adapter: PlatformAdapter = tauriAdapter
-
-    beforeEach(() => {
-      tauriStoreData.clear()
-      vi.clearAllMocks()
-    })
-
-    describe('getPlatform', () => {
-      it('tauriを返す', () => {
-        expect(adapter.getPlatform()).toBe('tauri')
-      })
-    })
-
-    describe('セキュアストレージ（Tauri Store）', () => {
-      it('データを保存して読み込める', async () => {
-        await adapter.saveSecureData('gemini-api-key', 'tauri-test-key')
-        const result = await adapter.loadSecureData('gemini-api-key')
-        expect(result).toBe('tauri-test-key')
-      })
-
-      it('保存時にstore.setとstore.saveが呼ばれる', async () => {
-        await adapter.saveSecureData('gemini-api-key', 'test-value')
-        expect(mockStore.set).toHaveBeenCalledWith('gemini-api-key', 'test-value')
-        expect(mockStore.save).toHaveBeenCalled()
-      })
-
-      it('読み込み時にstore.getが呼ばれる', async () => {
-        await adapter.loadSecureData('claude-api-key')
-        expect(mockStore.get).toHaveBeenCalledWith('claude-api-key')
-      })
-
-      it('存在しないキーはnullを返す', async () => {
-        const result = await adapter.loadSecureData('claude-api-key')
-        expect(result).toBeNull()
-      })
-
-      it('データを削除できる', async () => {
-        await adapter.saveSecureData('gemini-api-key', 'to-delete')
-        await adapter.deleteSecureData('gemini-api-key')
-        const result = await adapter.loadSecureData('gemini-api-key')
-        expect(result).toBeNull()
-      })
-
-      it('削除時にstore.deleteとstore.saveが呼ばれる', async () => {
-        await adapter.deleteSecureData('app-settings')
-        expect(mockStore.delete).toHaveBeenCalledWith('app-settings')
-        expect(mockStore.save).toHaveBeenCalled()
-      })
-    })
-
-    describe('getAppDataPath', () => {
-      it('Tauri Path APIからパスを取得する', async () => {
-        const path = await adapter.getAppDataPath()
-        expect(path).toBe('/Users/test/Library/Application Support/com.butler-assistant.app')
-      })
-    })
-
-    describe('openExternalUrl', () => {
-      it('Tauri Opener APIでURLを開く', async () => {
-        await adapter.openExternalUrl('https://example.com')
-        expect(mockOpenUrl).toHaveBeenCalledWith('https://example.com')
-      })
-    })
-
-    describe('saveFile', () => {
-      it('ファイル名を返す', async () => {
-        const result = await adapter.saveFile('test.txt', 'content')
-        expect(result).toBe('test.txt')
-      })
-    })
-  })
-
   describe('CapacitorAdapter', () => {
     const adapter: PlatformAdapter = capacitorAdapter
 
@@ -301,20 +204,17 @@ describe('Platform Adapters', () => {
   describe('アダプター間の一貫性', () => {
     const adapters: { name: string; adapter: PlatformAdapter }[] = [
       { name: 'web', adapter: webAdapter },
-      { name: 'tauri', adapter: tauriAdapter },
       { name: 'capacitor', adapter: capacitorAdapter },
     ]
 
     beforeEach(() => {
       localStorage.clear()
-      tauriStoreData.clear()
       capacitorPrefsData.clear()
       vi.clearAllMocks()
     })
 
     afterEach(() => {
       localStorage.clear()
-      tauriStoreData.clear()
       capacitorPrefsData.clear()
     })
 
@@ -335,7 +235,7 @@ describe('Platform Adapters', () => {
     it.each(adapters)('$name: getPlatformが文字列を返す', ({ adapter }) => {
       const platform = adapter.getPlatform()
       expect(typeof platform).toBe('string')
-      expect(['web', 'tauri', 'capacitor']).toContain(platform)
+      expect(['web', 'capacitor']).toContain(platform)
     })
 
     it.each(adapters)('$name: getAppDataPathがパスを返す', async ({ adapter }) => {

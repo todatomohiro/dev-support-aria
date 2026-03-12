@@ -45,12 +45,6 @@ const POC_ITEMS: readonly PocItem[] = [
     description: 'カメラで顔を映してLive2Dキャラクターを操作',
     icon: '🎭',
   },
-  {
-    path: '/poc/terminal',
-    title: 'Terminal UI',
-    description: 'PTY + xterm.js によるターミナル操作テスト',
-    icon: '>_',
-  },
 ]
 
 /**

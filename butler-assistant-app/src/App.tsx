@@ -21,7 +21,7 @@ import type { AuthView } from './auth'
 import { useAuthStore } from './auth'
 import { useThemeStore } from './stores/themeStore'
 import { ttsService } from './services/ttsService'
-import { AivisPoc, PollyPoc, SttPoc, GpsPoc, SentimentPoc, FaceTrackingPoc, TerminalPoc, PocIndex } from './poc'
+import { AivisPoc, PollyPoc, SttPoc, GpsPoc, SentimentPoc, FaceTrackingPoc, PocIndex } from './poc'
 import './App.css'
 
 function App() {
@@ -67,7 +67,10 @@ function App() {
   const setCurrentMotion = useAppStore((state) => state.setCurrentMotion)
   const expressionVersion = useAppStore((state) => state.expressionVersion)
 
-  const characterVisible = config.ui.characterVisible ?? true
+  const isThemeRoute = location.pathname.startsWith('/themes/') && location.pathname !== '/themes'
+  const characterVisible = isThemeRoute
+    ? (config.ui.themeCharacterVisible ?? true)
+    : (config.ui.characterVisible ?? true)
   const showLive2D = showLive2DRoute && characterVisible
 
   // 位置情報フック
@@ -376,16 +379,26 @@ function App() {
     setIsAuthModalOpen(true)
   }, [])
 
-  /** キャラクター表示/非表示トグル */
+  /** キャラクター表示/非表示トグル（メインチャット / トピックで独立） */
   const handleToggleCharacter = useCallback(() => {
-    const next = !(config.ui.characterVisible ?? true)
-    updateConfig({ ui: { ...config.ui, characterVisible: next } })
-    if (next) {
-      live2dRef.current?.startRendering()
+    if (isThemeRoute) {
+      const next = !(config.ui.themeCharacterVisible ?? true)
+      updateConfig({ ui: { ...config.ui, themeCharacterVisible: next } })
+      if (next) {
+        live2dRef.current?.startRendering()
+      } else {
+        live2dRef.current?.stopRendering()
+      }
     } else {
-      live2dRef.current?.stopRendering()
+      const next = !(config.ui.characterVisible ?? true)
+      updateConfig({ ui: { ...config.ui, characterVisible: next } })
+      if (next) {
+        live2dRef.current?.startRendering()
+      } else {
+        live2dRef.current?.stopRendering()
+      }
     }
-  }, [config.ui, updateConfig])
+  }, [config.ui, updateConfig, isThemeRoute])
 
   // エラークリアハンドラー
   const handleDismissError = useCallback(() => {
@@ -643,7 +656,6 @@ function App() {
                 <Route path="/poc/gps" element={<GpsPoc />} />
                 <Route path="/poc/sentiment" element={<SentimentPoc />} />
                 <Route path="/poc/face-tracking" element={<FaceTrackingPoc />} />
-                <Route path="/poc/terminal" element={<TerminalPoc />} />
                 <Route path="/groups/:groupId" element={<GroupChatScreen />} />
                 <Route path="/groups" element={<GroupChatScreen />} />
                 <Route path="/themes/:themeId" element={<ThemeScreen />} />

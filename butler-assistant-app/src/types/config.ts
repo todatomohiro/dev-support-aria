@@ -57,7 +57,7 @@ export const TOPIC_CATEGORIES: readonly TopicCategory[] = [
       },
       {
         key: 'ui_display', label: '画面表示について',
-        prompt: 'ユーザーはLive2D + LLM（Bedrock Claude）+ Amazon Polly TTSを活用したAIアシスタントアプリのUI・画面表示について相談しています。\nReact + Tailwind CSSによるコンポーネント設計、レスポンシブ対応（スマホ・デスクトップ）、ダークモード、アニメーション、Live2Dキャラクター表示との共存など、ユーザー体験を重視した具体的なUI改善案を提供してください。\nCapacitor（iOS）とTauri（デスクトップ）のクロスプラットフォーム対応も考慮してください。',
+        prompt: 'ユーザーはLive2D + LLM（Bedrock Claude）+ Amazon Polly TTSを活用したAIアシスタントアプリのUI・画面表示について相談しています。\nReact + Tailwind CSSによるコンポーネント設計、レスポンシブ対応（スマホ・デスクトップ）、ダークモード、アニメーション、Live2Dキャラクター表示との共存など、ユーザー体験を重視した具体的なUI改善案を提供してください。\nCapacitor（iOS）のクロスプラットフォーム対応も考慮してください。',
       },
       {
         key: 'ai_technology', label: '技術について',
@@ -102,8 +102,10 @@ export interface UIConfig {
   geolocationEnabled: boolean
   sentimentEnabled: boolean
   developerMode: boolean
-  /** Live2D キャラクターの表示/非表示（バッテリー節約用） */
+  /** Live2D キャラクターの表示/非表示 — メインチャット（バッテリー節約用） */
   characterVisible: boolean
+  /** Live2D キャラクターの表示/非表示 — トピックチャット */
+  themeCharacterVisible: boolean
   /** 生活リズム学習（操作時刻の記録）— デフォルトOFF */
   activityLoggingEnabled: boolean
 }
@@ -170,6 +172,7 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   sentimentEnabled: true,
   developerMode: false,
   characterVisible: true,
+  themeCharacterVisible: false,
   activityLoggingEnabled: false,
 }
 

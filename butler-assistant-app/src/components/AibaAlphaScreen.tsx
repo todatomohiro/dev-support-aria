@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router'
 import { useAuthStore } from '@/auth/authStore'
 import { useAppStore } from '@/stores'
 import { modelService } from '@/services/modelService'
-import { elevenLabsTtsService } from '@/services/elevenLabsTtsService'
+import { aivisTtsService } from '@/services/aivisTtsService'
+import { webSpeechTtsService } from '@/services/webSpeechTtsService'
 import type { ServerModel } from '@/services/modelService'
 import type { ModelReference } from '@/types'
 
@@ -73,7 +74,10 @@ export function AibaAlphaScreen() {
 
   /** 音声会話開始（ユーザージェスチャー内で AudioContext をアンロック） */
   const handleStartVoiceChat = async () => {
-    await elevenLabsTtsService.unlockAudio()
+    await Promise.all([
+      aivisTtsService.unlockAudio(),
+      webSpeechTtsService.unlockAudio(),
+    ])
     navigate('/aiba-alpha/voice')
   }
 

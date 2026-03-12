@@ -3,8 +3,25 @@ import { useNavigate } from 'react-router'
 import { useAppStore } from '@/stores'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { chatController } from '@/services/chatController'
-import { elevenLabsTtsService } from '@/services/elevenLabsTtsService'
+import { aivisTtsService } from '@/services/aivisTtsService'
+import { webSpeechTtsService } from '@/services/webSpeechTtsService'
 import { ttsService } from '@/services/ttsService'
+import { Live2DCanvas } from '@/components/Live2DCanvas'
+import type { Live2DCanvasHandle } from '@/components/Live2DCanvas'
+
+/** TTS プロバイダー種別 */
+type TtsProvider = 'webSpeech' | 'aivis'
+
+/** TTS サービスの共通インターフェース */
+interface StreamingTtsService {
+  readonly isSpeaking: boolean
+  unlockAudio(): Promise<void>
+  setVolumeCallback(cb: ((volume: number) => void) | null): void
+  startStreamingTts(getStreamingText: () => string): Promise<void>
+  finishStreamingTts(finalText: string): Promise<void>
+  synthesizeAndPlay(text: string): Promise<void>
+  stop(): void
+}
 
 /** 会話ターン */
 interface VoiceTurn {
@@ -28,6 +45,8 @@ const THINKING_TIMEOUT_MS = 60_000
 export function VoiceChatScreen() {
   const navigate = useNavigate()
   const streamingText = useAppStore((s) => s.streamingText)
+  const config = useAppStore((s) => s.config)
+  const currentMotion = useAppStore((s) => s.currentMotion)
 
   const [voiceState, setVoiceState] = useState<VoiceState>('connecting')
   const [turns, setTurns] = useState<VoiceTurn[]>([])
@@ -35,6 +54,15 @@ export function VoiceChatScreen() {
   const [isMuted, setIsMuted] = useState(false)
   const [currentEmotion] = useState('neutral')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  const live2dRef = useRef<Live2DCanvasHandle>(null)
+  const [ttsProvider, setTtsProvider] = useState<TtsProvider>('webSpeech')
+
+  /** 現在の TTS プロバイダーに対応するサービスを返す */
+  const ttsProviderRef = useRef<TtsProvider>('webSpeech')
+  const getTtsService = useCallback((): StreamingTtsService => {
+    return ttsProviderRef.current === 'webSpeech' ? webSpeechTtsService : aivisTtsService
+  }, [])
 
   const startTimeRef = useRef(Date.now())
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
@@ -68,6 +96,22 @@ export function VoiceChatScreen() {
     }
   }, [updateVoiceState])
 
+  // リップシンク: TTS 音量を Live2D の口パラメータに反映
+  useEffect(() => {
+    const volumeCb = (volume: number) => {
+      live2dRef.current?.setMouthOpenness(volume)
+    }
+    // 全 TTS サービスに同一コールバックを設定
+    aivisTtsService.setVolumeCallback(volumeCb)
+    webSpeechTtsService.setVolumeCallback(volumeCb)
+    ttsService.setVolumeCallback(volumeCb)
+    return () => {
+      aivisTtsService.setVolumeCallback(null)
+      webSpeechTtsService.setVolumeCallback(null)
+      ttsService.setVolumeCallback(null)
+    }
+  }, [])
+
   // クリーンアップ
   useEffect(() => {
     return () => {
@@ -77,17 +121,35 @@ export function VoiceChatScreen() {
     }
   }, [])
 
+  /** ストリーミング TTS が開始済みかどうか */
+  const streamingTtsStartedRef = useRef(false)
+
   /**
-   * TTS 再生（ElevenLabs 優先、失敗時 Polly フォールバック）
-   * 完了後に idle に戻す
+   * TTS 再生（選択プロバイダーのストリーミング TTS 優先、失敗時 Polly フォールバック）
+   * ストリーミング TTS が既に開始されている場合は finishStreamingTts で残りを flush。
+   * 開始されていない場合は一括モードで再生。
    */
   const playTts = useCallback((text: string) => {
-    console.log('[VoiceChat] TTS 開始:', text.slice(0, 30) + '...')
+    const svc = getTtsService()
+    console.log('[VoiceChat] TTS 応答確定:', text.slice(0, 30) + '...')
     updateVoiceState('speaking')
 
-    elevenLabsTtsService.synthesizeAndPlay(text)
+    if (streamingTtsStartedRef.current) {
+      // ストリーミング TTS 実行中 → 残りテキストを flush して完了を待つ
+      console.log('[VoiceChat] ストリーミング TTS の残りを flush')
+      streamingTtsStartedRef.current = false
+      svc.finishStreamingTts(text)
+        .catch((e) => {
+          console.warn('[VoiceChat] ストリーミング TTS flush 失敗:', e)
+        })
+      // processAudioQueue の完了で idle に戻る（startStreamingTts の Promise 経由）
+      return
+    }
+
+    // ストリーミング TTS 未開始 → 一括モードで再生（選択プロバイダー → Polly フォールバック）
+    svc.synthesizeAndPlay(text)
       .catch((e) => {
-        console.warn('[VoiceChat] ElevenLabs 失敗、Polly にフォールバック:', e.message)
+        console.warn('[VoiceChat] TTS 失敗、Polly にフォールバック:', e.message)
         return ttsService.synthesizeAndPlay(text)
       })
       .catch((e) => {
@@ -99,7 +161,30 @@ export function VoiceChatScreen() {
           updateVoiceState('idle')
         }
       })
-  }, [updateVoiceState])
+  }, [updateVoiceState, getTtsService])
+
+  // ストリーミング TTS: thinking 中に streamingText が到着したら即座に TTS 開始
+  useEffect(() => {
+    if (voiceState !== 'thinking') return
+    if (!streamingText || streamingText.length < 5) return
+    if (streamingTtsStartedRef.current) return
+
+    // streamingText が届き始めた → ストリーミング TTS を開始
+    streamingTtsStartedRef.current = true
+    console.log('[VoiceChat] ストリーミング TTS 開始（streamingText 検出）')
+    updateVoiceState('speaking')
+
+    getTtsService().startStreamingTts(() => useAppStore.getState().streamingText ?? '')
+      .catch((e) => {
+        console.warn('[VoiceChat] ストリーミング TTS エラー:', e)
+      })
+      .finally(() => {
+        if (!isEndingRef.current) {
+          console.log('[VoiceChat] ストリーミング TTS 全再生完了 → idle')
+          updateVoiceState('idle')
+        }
+      })
+  }, [voiceState, streamingText, updateVoiceState, getTtsService])
 
   // Zustand subscribe でメッセージを監視
   // ※ MAX_MESSAGE_HISTORY で配列長が一定になるため、最後のメッセージ ID で検出
@@ -160,6 +245,7 @@ export function VoiceChatScreen() {
       timestamp: Date.now(),
     }])
     setErrorMessage(null)
+    streamingTtsStartedRef.current = false
     updateVoiceState('thinking')
 
     // thinking タイムアウトを設定
@@ -174,7 +260,7 @@ export function VoiceChatScreen() {
       }
     }, THINKING_TIMEOUT_MS)
 
-    chatController.sendMessage(text.trim()).catch((error) => {
+    chatController.sendMessage(text.trim(), undefined, true).catch((error) => {
       console.error('[VoiceChat] sendMessage エラー:', error)
       if (thinkingTimerRef.current) {
         clearTimeout(thinkingTimerRef.current)
@@ -235,7 +321,8 @@ export function VoiceChatScreen() {
   /** 会話終了 */
   const handleEndCall = useCallback(() => {
     isEndingRef.current = true
-    elevenLabsTtsService.stop()
+    webSpeechTtsService.stop()
+    aivisTtsService.stop()
     ttsService.stop()
     if (sttStatus === 'listening') {
       toggleListening()
@@ -280,19 +367,46 @@ export function VoiceChatScreen() {
             {voiceState === 'connecting' ? '接続中...' : voiceState === 'error' ? 'エラー' : '接続中'}
           </span>
         </div>
-        <span className="text-xs text-white/40 tabular-nums font-medium">
-          {formatTime(elapsedSeconds)}
-        </span>
+        <div className="flex items-center gap-2">
+          {/* TTS 切替ボタン */}
+          <button
+            onClick={() => {
+              // 切替前に両方のサービスを停止してリセット
+              webSpeechTtsService.stop()
+              aivisTtsService.stop()
+              ttsService.stop()
+              streamingTtsStartedRef.current = false
+              const next: TtsProvider = ttsProvider === 'webSpeech' ? 'aivis' : 'webSpeech'
+              setTtsProvider(next)
+              ttsProviderRef.current = next
+              // speaking 中に切替えた場合は idle に戻す
+              if (voiceStateRef.current === 'speaking') {
+                updateVoiceState('idle')
+              }
+            }}
+            className="bg-white/10 backdrop-blur-sm rounded-full px-2.5 py-1 text-[10px] text-white/50 font-medium hover:bg-white/20 transition-colors"
+            title={`TTS: ${ttsProvider === 'webSpeech' ? 'ブラウザ音声' : 'Aivis'}`}
+          >
+            {ttsProvider === 'webSpeech' ? 'Browser' : 'Aivis'}
+          </button>
+          <span className="text-xs text-white/40 tabular-nums font-medium">
+            {formatTime(elapsedSeconds)}
+          </span>
+        </div>
       </div>
 
-      {/* キャラクターエリア（大きく表示） */}
-      <div className="flex-1 flex items-center justify-center relative">
-        {/* TODO: Live2D キャンバスをここに配置 */}
-        <div className="w-40 h-60 bg-white/5 rounded-[80px_80px_40px_40px]" />
+      {/* キャラクターエリア（Live2D 表示） */}
+      <div className="flex-1 flex items-center justify-center relative overflow-hidden">
+        <Live2DCanvas
+          ref={live2dRef}
+          modelPath={config.model.currentModelId}
+          currentMotion={currentMotion}
+          className="absolute inset-0"
+        />
 
         {/* 感情バッジ */}
         {currentEmotion !== 'neutral' && (
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-indigo-500/20 backdrop-blur-sm rounded-full px-3 py-1 text-xs text-white/60 font-medium">
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-indigo-500/20 backdrop-blur-sm rounded-full px-3 py-1 text-xs text-white/60 font-medium z-10">
             {currentEmotion}
           </div>
         )}

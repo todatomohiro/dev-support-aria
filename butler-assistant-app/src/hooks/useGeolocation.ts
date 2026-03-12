@@ -22,7 +22,7 @@ const GEOLOCATION_TIMEOUT = 10000
  * GPS 位置情報取得カスタムフック
  *
  * navigator.geolocation.getCurrentPosition() を使用して現在地を取得する。
- * Web / Capacitor WebView / Tauri WebView 共通で動作する。
+ * Web / Capacitor WebView 共通で動作する。
  */
 export function useGeolocation(): UseGeolocationResult {
   const [location, setLocation] = useState<UserLocation | null>(null)

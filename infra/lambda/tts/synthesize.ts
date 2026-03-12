@@ -3,16 +3,13 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 
 const polly = new PollyClient({})
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY ?? ''
-/** ElevenLabs デフォルトボイスID（Aria — 多言語対応の女性ボイス） */
-const ELEVENLABS_DEFAULT_VOICE_ID = 'EXAVITQu4vr4xnSDxMaL'
-/** ElevenLabs デフォルトモデル（多言語 v2 — 日本語対応） */
-const ELEVENLABS_DEFAULT_MODEL_ID = 'eleven_multilingual_v2'
+const AIVIS_API_KEY = process.env.AIVIS_API_KEY ?? ''
+const AIVIS_DEFAULT_MODEL_UUID = process.env.AIVIS_MODEL_UUID ?? ''
 
 /**
- * POST /tts/synthesize — 音声合成（Polly / ElevenLabs 切替対応）
+ * POST /tts/synthesize — 音声合成（Polly / Aivis 切替対応）
  *
- * body.provider === 'elevenlabs' の場合は ElevenLabs API、それ以外は Polly を使用。
+ * body.provider で切替: 'aivis' | デフォルト(Polly)
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const userId = event.requestContext.authorizer?.claims?.sub
@@ -36,9 +33,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response(400, { error: 'text is required' })
     }
 
-    // ElevenLabs ルート
-    if (provider === 'elevenlabs') {
-      return await synthesizeElevenLabs(text, body)
+    // Aivis ルート
+    if (provider === 'aivis') {
+      return await synthesizeAivis(text, body)
     }
 
     // Polly ルート（デフォルト）
@@ -83,11 +80,11 @@ async function synthesizePolly(text: string, body: { voiceId?: string; engine?: 
 }
 
 /**
- * ElevenLabs で音声合成
+ * Aivis Cloud API で音声合成
  */
-async function synthesizeElevenLabs(text: string, body: { voiceId?: string; modelId?: string; speed?: number }): Promise<APIGatewayProxyResult> {
-  if (!ELEVENLABS_API_KEY) {
-    return response(500, { error: 'ElevenLabs API key not configured' })
+async function synthesizeAivis(text: string, body: { modelUuid?: string; speakingRate?: number; pitch?: number }): Promise<APIGatewayProxyResult> {
+  if (!AIVIS_API_KEY) {
+    return response(500, { error: 'Aivis API key not configured' })
   }
 
   // テキスト長制限（コスト対策: 1リクエストあたり最大1000文字）
@@ -95,49 +92,45 @@ async function synthesizeElevenLabs(text: string, body: { voiceId?: string; mode
     return response(400, { error: 'text must be 1000 characters or less' })
   }
 
-  const voiceId = typeof body.voiceId === 'string' ? body.voiceId : ELEVENLABS_DEFAULT_VOICE_ID
-  const modelId = typeof body.modelId === 'string' ? body.modelId : ELEVENLABS_DEFAULT_MODEL_ID
-  const speed = typeof body.speed === 'number' ? Math.max(0.5, Math.min(2, body.speed)) : 1
+  const modelUuid = typeof body.modelUuid === 'string' ? body.modelUuid : AIVIS_DEFAULT_MODEL_UUID
+  if (!modelUuid) {
+    return response(500, { error: 'Aivis model UUID not configured' })
+  }
+
+  const speakingRate = typeof body.speakingRate === 'number' ? Math.max(0.5, Math.min(2, body.speakingRate)) : 1
+  const pitch = typeof body.pitch === 'number' ? Math.max(-1, Math.min(1, body.pitch)) : 0
 
   try {
-    const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
-      {
-        method: 'POST',
-        headers: {
-          'xi-api-key': ELEVENLABS_API_KEY,
-          'Content-Type': 'application/json',
-          'Accept': 'audio/mpeg',
-        },
-        body: JSON.stringify({
-          text,
-          model_id: modelId,
-          language_code: 'ja',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-            style: 0,
-            speed,
-            use_speaker_boost: true,
-          },
-        }),
-      }
-    )
+    const res = await fetch('https://api.aivis-project.com/v1/tts/synthesize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${AIVIS_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model_uuid: modelUuid,
+        text,
+        output_format: 'mp3',
+        speaking_rate: speakingRate,
+        pitch,
+      }),
+    })
 
     if (!res.ok) {
       const errorText = await res.text().catch(() => 'Unknown error')
-      console.error('[TTS/ElevenLabs] API エラー:', res.status, errorText)
+      console.error('[TTS/Aivis] API エラー:', res.status, errorText)
       return response(res.status === 429 ? 429 : 500, {
-        error: `ElevenLabs API error: ${res.status}`,
+        error: `Aivis API error: ${res.status}`,
       })
     }
 
+    // Aivis は blob（バイナリ）を返すので base64 に変換
     const arrayBuffer = await res.arrayBuffer()
     const audio = Buffer.from(arrayBuffer).toString('base64')
 
     return response(200, { audio, format: 'mp3' })
   } catch (error) {
-    console.error('[TTS/ElevenLabs] 音声合成エラー:', error)
+    console.error('[TTS/Aivis] 音声合成エラー:', error)
     return response(500, { error: 'Speech synthesis failed' })
   }
 }

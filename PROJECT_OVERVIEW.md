@@ -12,14 +12,14 @@
 | 状態管理 | Zustand |
 | Live2D 描画 | PixiJS 7 + pixi-live2d-display |
 | LLM | Amazon Bedrock（Claude Haiku 4.5 / Sonnet 4.6 / Opus 4.6）Converse API + Tool Use |
-| 音声合成 | Amazon Polly |
+| 音声合成 | Amazon Polly / Aivis Cloud API / Web Speech API（マルチプロバイダー） |
 | 音声認識 | Web Speech API + VAD（Voice Activity Detection） |
 | 認証 | Amazon Cognito + AWS Amplify（SRP 認証フロー） |
 | バックエンド | AWS Lambda (Node.js 22) x 35関数 + API Gateway (REST + WebSocket) |
 | DB | DynamoDB（GSI×2、TTL、ポイントインタイム復旧） |
 | インフラ管理 | AWS CDK (TypeScript) |
 | マルチプラットフォーム | Web / Tauri 2（デスクトップ）/ Capacitor 8（iOS） |
-| テスト | Vitest + jsdom（719テスト / 48ファイル）+ fast-check（プロパティベーステスト） |
+| テスト | Vitest + jsdom（793テスト / 52ファイル）+ fast-check（プロパティベーステスト） |
 
 ## 主要機能
 
@@ -30,13 +30,14 @@
 - **WebSocket ストリーミング**: REST トリガー + WebSocket プッシュでリアルタイムタイプライター表示（メイン・トピック両対応）
 - **画像送信**: ファイル選択 or カメラ撮影 → base64 → Bedrock ImageBlock（JPEG/PNG/GIF/WebP 自動判定）
 - 送信画像はチャットバブル内にサムネイル表示（240x180px）
-- 音声入力（VAD 対応・自動送信）→ AI 応答 → 音声読み上げ（Polly）の一連のフロー
+- 音声入力（VAD 対応・自動送信）→ AI 応答 → 音声読み上げ（Polly / Aivis / Web Speech）の一連のフロー
 - Markdown レンダリング対応の応答表示
 - **キャラクター表示切替**: Live2D の表示/非表示をトグル可能（非表示時は GPU 節約、天気は折りたたみバーで継続表示）
 
 ### 2. スキル（Tool Use）
 LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 - **Google カレンダー**（予定の確認・作成）— Google OAuth 連携
+- **Google Tasks**（ToDo の一覧・作成・完了）— Google OAuth 連携、ブリーフィング時に1週間以内のToDoを自動取得
 - **場所検索**（Google Places API）— 地図表示付き
 - **Web 検索**（Brave Search API）
 - **天気予報**（Open-Meteo API）— API キー不要
@@ -261,11 +262,24 @@ EventBridge rate(15 minutes) → sessionFinalizer Lambda
 - アイドル自律行動: motion1〜motion6 の設定済みモーションからランダム再生（15秒後初回→100秒後30秒間隔ループ）
 - S3 + CloudFront CDN 配信
 
-### 7. MCP（Model Context Protocol）連携
+### 7. マイAi-Ba(α) 音声会話
+- STT → LLM → TTS のリアルタイム音声会話パイプライン
+- TTS プロバイダー切替: Aivis Cloud（高品質）/ Web Speech API（ゼロレイテンシ）
+- ストリーミング TTS: LLM 応答のストリーミング中に文単位で先行音声合成・再生
+- リップシンク: TTS 音量コールバック → Live2D 口パラメーター連動
+- iOS Safari 対応: AudioContext アンロック + ユーザージェスチャー要件
+- フルスクリーンダークテーマ UI（VoiceChatScreen）
+
+### 8. Bedrock Guardrails コンテンツモデレーション
+- 有害コンテンツ（暴力・誹謗中傷・犯罪助長・性的・プロンプトインジェクション）をブロック
+- CDK: CfnGuardrail + CfnGuardrailVersion（6カテゴリフィルタ）
+- stopReason === 'guardrail_intervened' 検出でメッセージ保存・記憶保存をすべてスキップ
+
+### 9. MCP（Model Context Protocol）連携
 - 外部 MCP サーバーとの接続
 - LLM が MCP ツールを動的に利用可能
 
-### 8. プロアクティブ機能（ブリーフィング・天気・コンテキスト引き継ぎ）
+### 10. プロアクティブ機能（ブリーフィング・天気・コンテキスト引き継ぎ）
 
 AI がユーザーの操作を待たずに自発的に情報を提供する機能群。3つのサブ機能で構成される。
 
@@ -565,7 +579,7 @@ useWeatherIcon hook
   → Live2D キャンバス左上に SVG アイコン + 気温表示
 ```
 
-### 9. セキュリティ設計
+### 11. セキュリティ設計
 - システムプロンプトはバックエンド（Lambda）で完全生成。フロントエンドに漏洩しない
 - API キーは SSM Parameter Store で管理
 - Prompt Caching（cachePoint 2箇所）でコスト最適化
@@ -575,7 +589,7 @@ useWeatherIcon hook
 
 ```
 butler-assistant-app/     ← メインアプリ（React + Vite）
-├── コンポーネント 35個 / サービス 20個 / フック 11個 / ストア 3個
+├── コンポーネント 38個 / サービス 23個 / フック 11個 / ストア 3個
 ├── プラットフォーム抽象化（Web / Tauri / Capacitor）
 ├── Live2D レンダリング + フェイストラッキング（MediaPipe + Kalidokit）
 └── PoC（音声認識、GPS、感情分析、フェイストラッキング、ターミナル等）
@@ -586,8 +600,8 @@ butler-admin-app/         ← 管理画面（React + Cognito TOTP MFA）
 └── CloudFront + S3 ホスティング
 
 infra/                    ← AWS インフラ（CDK）
-├── Lambda 35関数（LLM, スキル, テーマ, 会話, フレンド, グループ, 管理等）
-├── DynamoDB / Cognito / API Gateway / EventBridge / AgentCore Memory
+├── Lambda 35+関数（LLM, スキル, テーマ, 会話, フレンド, グループ, 管理等）、20ディレクトリ
+├── DynamoDB / Cognito / API Gateway / EventBridge / AgentCore Memory / Bedrock Guardrails
 └── CloudFront + S3（管理画面 + モデル CDN）
 
 aiba-extension/           ← Chrome 拡張機能（Manifest V3）
@@ -602,7 +616,7 @@ aiba-extension/           ← Chrome 拡張機能（Manifest V3）
 butler-assistant-app/          # フロントエンド（React + Vite + TypeScript）
 ├── src/
 │   ├── auth/               # 認証（Cognito + AWS Amplify）
-│   ├── components/         # React コンポーネント 35個（PascalCase.tsx）
+│   ├── components/         # React コンポーネント 38個（PascalCase.tsx）
 │   │   ├── ChatUI.tsx          # メインチャットUI
 │   │   ├── ThemeChat.tsx       # トピック別チャット
 │   │   ├── GroupChat.tsx       # グループチャット
@@ -610,6 +624,9 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── ModelSelector.tsx   # モデル選択
 │   │   ├── StudioCamera.tsx    # スタジオカメラ（フェイストラッキング）
 │   │   ├── AibaScreen.tsx      # メイン画面
+│   │   ├── AibaAlphaScreen.tsx # マイAi-Ba(α) エントリーポイント
+│   │   ├── VoiceChatScreen.tsx # 音声会話画面（STT→LLM→TTS）
+│   │   ├── VoiceChatSummary.tsx # 音声会話サマリー
 │   │   ├── ThemeScreen.tsx     # トピック画面
 │   │   ├── MemoScreen.tsx      # メモ画面（展開時Markdownレンダリング）
 │   │   ├── MapView.tsx         # 地図表示（Leaflet）
@@ -630,7 +647,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── useBriefing.ts          # プロアクティブ・ブリーフィング
 │   │   ├── useWeatherIcon.ts       # 天気アイコン表示（Open-Meteo API）
 │   │   └── useActivityLogger.ts    # アクティビティログ
-│   ├── services/           # ビジネスロジック 20個（camelCase.ts、index.ts 除く）
+│   ├── services/           # ビジネスロジック 23個（camelCase.ts、index.ts 除く）
 │   │   ├── llmClient.ts        # LLM (Bedrock Claude) 通信
 │   │   ├── chatController.ts   # チャットコントローラー
 │   │   ├── responseParser.ts   # LLM レスポンスパーサー
@@ -639,6 +656,9 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── modelService.ts     # モデル一覧取得
 │   │   ├── motionController.ts # モーション制御
 │   │   ├── ttsService.ts       # 音声合成 (Amazon Polly)
+│   │   ├── aivisTtsService.ts # 音声合成 (Aivis Cloud API + ストリーミング + リップシンク)
+│   │   ├── webSpeechTtsService.ts # 音声合成 (Web Speech API + ストリーミング)
+│   │   ├── activityPatternService.ts # アクティビティパターン分析
 │   │   ├── themeService.ts     # トピック管理
 │   │   ├── memoService.ts      # メモ管理
 │   │   ├── friendService.ts    # フレンド管理
@@ -665,13 +685,16 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 └── ios/                    # Capacitor 8 iOS
 
 butler-admin-app/              # 管理画面（React + Cognito TOTP MFA）
-├── src/components/         # コンポーネント 14個
+├── src/components/         # コンポーネント 18個
 │   ├── UserTable.tsx           # ユーザー一覧
 │   ├── UserDetail.tsx          # ユーザー詳細
 │   ├── ModelManagement.tsx     # Live2Dモデル管理
 │   ├── ModelCharacterEditor.tsx # キャラクター編集
 │   ├── ModelMappingEditor.tsx  # 感情・モーション マッピング
 │   ├── ModelPreview.tsx        # モデルプレビュー
+│   ├── UserActivityViewer.tsx  # ユーザーアクティビティ
+│   ├── UserMemoryViewer.tsx   # ユーザー記憶ビューア
+│   ├── ConfirmDialog.tsx      # 確認ダイアログ
 │   └── ...
 ├── src/auth/               # 認証（Cognito TOTP MFA）
 └── src/services/           # 管理API クライアント
@@ -682,10 +705,12 @@ infra/
     ├── llm/                # LLM チャット
     │   ├── chat.ts             # メインハンドラー（システムプロンプト生成・Prompt Caching・ブリーフィング・画像対応）
     │   ├── models.ts           # Bedrock モデル ID 一元管理（BACKGROUND_MODEL_ID, CHAT_MODEL_ID_MAP）
-    │   ├── skills/             # スキル実装 7ファイル
+    │   ├── skills/             # スキル実装 9ファイル
     │   │   ├── toolDefinitions.ts  # ツール定義
     │   │   ├── index.ts            # スキルルーティング
     │   │   ├── googleCalendar.ts   # Googleカレンダー
+    │   │   ├── googleTasks.ts      # Google Tasks（ToDo管理）
+    │   │   ├── googleTasksFormatter.ts # Tasks フォーマッター
     │   │   ├── places.ts           # 場所検索（Google Places）
     │   │   ├── webSearch.ts        # Web検索（Brave Search）
     │   │   ├── weather.ts          # 天気予報（Open-Meteo）
@@ -704,10 +729,13 @@ infra/
     ├── memos/              # メモ管理（save, list, delete）
     ├── settings/           # 設定 get/put
     ├── messages/           # メッセージ list/put
-    ├── tts/                # 音声合成（Amazon Polly）
+    ├── tts/                # 音声合成（Amazon Polly / Aivis Cloud）
     ├── admin/              # 管理機能（me, usersList, usersDetail, usersRole, models/*)
     ├── models/             # モデル一覧（ユーザー向け）
+    ├── meeting/            # ミーティング管理
     ├── meeting-noter/      # ミーティングノート
+    ├── search/             # 検索
+    ├── users/              # ユーザー管理
     └── transcribe/         # 音声ストリームURL
 
 aiba-extension/            # Chrome 拡張機能（Manifest V3）
@@ -917,18 +945,32 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 **エンドポイント**: `POST /tts/synthesize`
 **通信方式**: 同期 HTTP
 **処理**: フロントエンドから fire-and-forget で呼び出し（chatController から非同期実行）
+**デュアルプロバイダー**: リクエストの `provider` フィールドで切替
 
 ```json
-// リクエスト
-{ "text": "読み上げテキスト", "voiceId": "Tomoko", "engine": "neural" }
+// リクエスト（Polly — デフォルト）
+{ "text": "読み上げテキスト", "voiceId": "Kazuha", "engine": "neural" }
 
-// レスポンス
-{ "audioContent": "base64エンコードされた音声データ" }
+// リクエスト（Aivis Cloud）
+{ "text": "読み上げテキスト", "provider": "aivis" }
+
+// レスポンス（共通）
+{ "audioContent": "base64エンコードされた音声データ（MP3）" }
 ```
+
+**フロントエンド TTS サービス（3種）**:
+
+| サービス | プロバイダー | 特徴 |
+|---------|------------|------|
+| `ttsService` | Amazon Polly（Lambda経由） | 標準 TTS、チャット応答の読み上げ |
+| `aivisTtsService` | Aivis Cloud API（Lambda経由） | 高品質、ストリーミング TTS、リップシンク対応 |
+| `webSpeechTtsService` | ブラウザ内蔵 SpeechSynthesis | ゼロレイテンシ、ネットワーク不要 |
 
 - URL を除去してから送信（`stripUrls()`）
 - 前の再生を停止してから新しい音声を再生
 - base64 → Uint8Array → AudioBuffer → AudioContext で再生
+- ストリーミング TTS: LLM ストリーミング中に文単位で先行合成・再生（aivisTtsService, webSpeechTtsService）
+- リップシンク: 音量コールバック → Live2D 口パラメーター連動
 
 ### メモリイベント API
 
@@ -1003,11 +1045,11 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
     → システムプロンプト構築 + Prompt Caching
     → lastBriefingContext があれば <recent_briefing_context> タグで注入
     → Bedrock Claude Haiku 4.5（Converse API + Tool Use）
-    → ツール実行（カレンダー / 天気 / 検索 / メモ等）
+    → ツール実行（カレンダー / Tasks / 天気 / 検索 / メモ等）
     → WebSocket chat_delta でテキスト差分をリアルタイム送信
     → WebSocket chat_complete で完了通知（メタデータ付き）
   → chat_delta → タイプライター表示
-  → chat_complete → emotion 表情変更 / motion モーション再生 + Polly TTS 音声再生
+  → chat_complete → emotion 表情変更 / motion モーション再生 + TTS 音声再生（Polly / Aivis / Web Speech）
   → fire-and-forget: AgentCore Memory に中期記憶保存
   → 5ターンごと: ローリング要約 Lambda 非同期起動
   → 15分無操作: EventBridge → 永久事実自動抽出
@@ -1033,7 +1075,8 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 | DynamoDB | `butler-assistant`（PK/SK + GSI×2、ポイントインタイム復旧、TTL） |
 | Cognito | ユーザープール + SPA クライアント（SRP）+ 管理画面用（TOTP MFA） |
 | API Gateway | REST（Cognito 認可）+ WebSocket（JWT 認証） |
-| Lambda x 35 | Node.js 22 / ARM_64（デフォルト 10秒、LLM: 90秒） |
+| Lambda x 35+ | Node.js 22 / ARM_64（デフォルト 10秒、LLM: 90秒）、20ディレクトリ |
+| Bedrock Guardrails | コンテンツモデレーション（6カテゴリフィルタ） |
 | EventBridge | `rate(15 minutes)` → sessionFinalizer |
 | AgentCore Memory | 中期記憶（SEMANTIC + USER_PREFERENCE） |
 | CloudFront + S3 | 管理画面ホスティング + モデル CDN |
@@ -1043,14 +1086,14 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 | 項目 | 数量 |
 |------|------|
-| フロントエンド コンポーネント | 35個 |
+| フロントエンド コンポーネント | 38個 |
 | カスタムフック | 11個 |
-| サービス | 20個 |
+| サービス | 23個 |
 | Zustand ストア | 3個 |
-| Lambda 関数 | 35+個（19ディレクトリ） |
-| LLM スキル | 7種（カレンダー×2、場所検索、Web検索、天気、メモ×4） |
-| テスト | 719テスト / 48ファイル |
-| 管理画面 コンポーネント | 14個 |
+| Lambda 関数 | 35+個（20ディレクトリ） |
+| LLM スキル | 9種（カレンダー×2、Tasks×3、場所検索、Web検索、天気、メモ×4） |
+| テスト | 793テスト / 52ファイル |
+| 管理画面 コンポーネント | 18個 |
 | Chrome 拡張 | 10ファイル |
 | 型定義ファイル | 10個 |
 | 対応プラットフォーム | 3種（Web / Tauri / Capacitor iOS） |

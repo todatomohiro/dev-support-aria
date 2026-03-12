@@ -1,7 +1,7 @@
 # CLAUDE.md ― Ai-Ba（アイバ）
 
 > **Ai-Ba**（アイバ）— 「AI」＋「相棒（Aibou）」の造語。
-> Live2D + LLM（Bedrock Claude Haiku 4.5）+ Amazon Polly TTS を活用した、ユーザーをサポートするクロスプラットフォーム対応のAIチャットアシスタントアプリ
+> Live2D + LLM（Bedrock Claude Haiku 4.5 / Sonnet 4.6 / Opus 4.6）+ マルチ TTS（Amazon Polly / Aivis Cloud / Web Speech API）を活用した、ユーザーをサポートするクロスプラットフォーム対応のAIチャットアシスタントアプリ
 
 ## クイックリファレンス
 
@@ -44,7 +44,7 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 ├── src/
 │   ├── auth/               # 認証（Cognito + AWS Amplify）
 │   ├── components/         # React コンポーネント（PascalCase.tsx）
-│   ├── hooks/              # カスタムフック（useSpeechRecognition, useCamera, useWebSocket, useGeolocation, useBriefing, useWeatherIcon, useActivityLogger）
+│   ├── hooks/              # カスタムフック 11個（useSpeechRecognition, useVAD, useCamera, useWebSocket, useGeolocation, useBriefing, useWeatherIcon, useActivityLogger, useGroupPolling, useThemePolling, useQRScanner）
 │   ├── services/           # ビジネスロジック（camelCase.ts）
 │   ├── stores/             # Zustand 状態管理（appStore, themeStore, groupChatStore）
 │   ├── types/              # 型定義・エラークラス・サービスインターフェース
@@ -62,7 +62,7 @@ infra/
     ├── llm/                # LLM チャット（Bedrock Converse + Tool Use + Prompt Caching + 3層記憶）
     │   ├── chat.ts         #   メインハンドラー（システムプロンプト生成・Prompt Caching・画像対応）
     │   ├── models.ts      #   Bedrock モデル ID 一元管理（BACKGROUND_MODEL_ID, CHAT_MODEL_ID_MAP）
-    │   ├── skills/         #   スキル実装（Calendar, Places, Web Search, Weather）
+    │   ├── skills/         #   スキル実装（Calendar, Tasks, Places, Web Search, Weather）
     │   ├── summarize.ts    #   ローリング要約（models.ts の BACKGROUND_MODEL_ID を使用）
     │   ├── extractFacts.ts #   永久事実抽出（models.ts の BACKGROUND_MODEL_ID を使用）
     │   └── sessionFinalizer.ts # セッション終了検出（EventBridge 15分ルール）
@@ -78,9 +78,12 @@ infra/
     ├── models/             # モデル一覧（ユーザー向け）
     ├── settings/           # 設定 get/put
     ├── messages/           # メッセージ list/put
-    ├── tts/                # 音声合成 synthesize（Amazon Polly）
+    ├── tts/                # 音声合成 synthesize（Amazon Polly / Aivis Cloud）
     ├── admin/              # 管理機能（me, usersList, usersDetail, usersRole, models/*）
+    ├── meeting/            # ミーティング管理
     ├── meeting-noter/      # ミーティングノート
+    ├── search/             # 検索
+    ├── users/              # ユーザー管理
     └── transcribe/         # 音声ストリームURL
 docs/
 └── mockups/                   # UIモックアップHTML（モック作成時は必ずここに配置）
@@ -132,7 +135,7 @@ export const responseParser = new ResponseParserImpl()
 
 ## テスト
 
-- **Vitest** + **jsdom** 環境（719テスト / 48ファイル）
+- **Vitest** + **jsdom** 環境（793テスト / 52ファイル）
 - セットアップ: `src/__tests__/setup.ts`（Live2D SDK・PixiJS のモック定義済み）
 - プロパティベーステスト: `fast-check`（`@fast-check/vitest`）、最低100回実行
 
@@ -167,7 +170,7 @@ test.prop([fc.string()])(
   │   ↓ DynamoDB からプロフィール・永久記憶・モデルメタデータを並列取得 → systemPrompt に注入
   │   ↓ Prompt Caching: 静的プロンプト → cachePoint → ユーザー固有 → cachePoint → 動的コンテキスト
   │   ↓ Bedrock Claude Haiku 4.5（Converse API + Tool Use）
-  │   ↓ ツール実行: list_events / create_event / search_places / web_search / get_weather
+  │   ↓ ツール実行: list_events / create_event / list_tasks / create_task / complete_task / search_places / web_search / get_weather
   │   ↓ WebSocket で chat_delta（テキスト差分）をリアルタイム送信
   │   ↓ メッセージ保存 + 5ターンごとに要約 Lambda 非同期起動
   │   → chat_complete イベント（メタデータ付き）で完了通知
@@ -207,9 +210,10 @@ test.prop([fc.string()])(
 - **セキュリティ**: フロントエンドに API キー・システムプロンプトは存在しない
 - モデル ID 管理: `infra/lambda/llm/models.ts`（全 Lambda で共有、モデル更新時はここを変更）
 - LLM Lambda: `infra/lambda/llm/chat.ts`
-- スキル定義: `infra/lambda/llm/skills/toolDefinitions.ts`
+- スキル定義: `infra/lambda/llm/skills/toolDefinitions.ts`（9ファイル）
 - スキルルーティング: `infra/lambda/llm/skills/index.ts`（`executeSkill()`）
 - トークン管理: `infra/lambda/llm/skills/tokenManager.ts`（Google OAuth）
+- Google Tasks: `infra/lambda/llm/skills/googleTasks.ts`（list/create/complete + ブリーフィング連携）
 - デバッグ情報（`enhancedSystemPrompt`）は `includeDebug=true`（開発者モード）時のみ返却
 
 ### マルチモデル設定反映
@@ -313,7 +317,8 @@ Cognito + Amplify（SRP 認証フロー）。`src/auth/` に集約。
 | DynamoDB | `butler-assistant`（PK/SK + GSI1/GSI2、ポイントインタイム復旧、TTL） |
 | Cognito | ユーザープール + SPA クライアント（SRP 認証）+ 管理画面用クライアント（TOTP MFA） |
 | API Gateway | REST（Cognito 認可）+ WebSocket（JWT 認証） |
-| Lambda x 35+ | Node.js 22.x / ARM_64（デフォルト 10秒、LLM: 90秒） |
+| Lambda x 35+ | Node.js 22.x / ARM_64（デフォルト 10秒、LLM: 90秒）、20ディレクトリ |
+| Bedrock Guardrails | コンテンツモデレーション（暴力/誹謗中傷/犯罪助長/性的/プロンプトインジェクション） |
 | EventBridge | `rate(15 minutes)` → sessionFinalizer |
 | AgentCore Memory | 中期記憶（SEMANTIC + USER_PREFERENCE ストラテジー） |
 | CloudFront + S3 | 管理画面ホスティング（カスタムドメイン） |

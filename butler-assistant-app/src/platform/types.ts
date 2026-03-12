@@ -1,7 +1,7 @@
 /**
  * プラットフォーム種別
  */
-export type Platform = 'web' | 'tauri' | 'capacitor'
+export type Platform = 'web' | 'capacitor'
 
 /**
  * ファイル選択オプション

@@ -126,7 +126,7 @@ class ChatControllerImpl {
   /**
    * メッセージを送信し、レスポンスを処理
    */
-  async sendMessage(content: string, imageBase64?: string): Promise<void> {
+  async sendMessage(content: string, imageBase64?: string, voiceMode?: boolean): Promise<void> {
     const store = useAppStore.getState()
 
     // 空メッセージはスキップ
@@ -160,7 +160,7 @@ class ChatControllerImpl {
     const useStreaming = wsService.isConnected()
     if (useStreaming) {
       try {
-        await this.sendMessageStreaming(content.trim(), imageBase64, briefingContext ?? undefined)
+        await this.sendMessageStreaming(content.trim(), imageBase64, briefingContext ?? undefined, voiceMode)
       } catch (error) {
         await this.handleError(error)
       } finally {
@@ -173,7 +173,7 @@ class ChatControllerImpl {
       // LLMにメッセージを送信（sessionId でサーバー側コンテキスト構築）
       const structuredResponse = await measurePerformanceAsync(
         'LLM送信→レスポンス受信',
-        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode, undefined, briefingContext ?? undefined)
+        () => llmClient.sendMessage(content.trim(), store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode, undefined, briefingContext ?? undefined, voiceMode)
       )
 
       // アシスタントメッセージを作成
@@ -219,7 +219,7 @@ class ChatControllerImpl {
    * ストリーミングモードでメッセージを送信
    * REST で送信し、WebSocket 経由でリアルタイムにテキストを受信
    */
-  private async sendMessageStreaming(content: string, imageBase64?: string, briefingContext?: string): Promise<void> {
+  private async sendMessageStreaming(content: string, imageBase64?: string, briefingContext?: string, voiceMode?: boolean): Promise<void> {
     const store = useAppStore.getState()
 
     // ストリーミング状態を初期化
@@ -337,7 +337,7 @@ class ChatControllerImpl {
       wsService.onChatStream(handleStreamEvent)
 
       // REST リクエストを送信（streaming: true）
-      llmClient.sendMessage(content, store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode, true, briefingContext)
+      llmClient.sendMessage(content, store.sessionId, imageBase64, undefined, store.currentLocation ?? undefined, undefined, store.config.ui.developerMode, true, briefingContext, voiceMode)
         .then(() => {
           // REST 成功（202）後、ストリーミングタイムアウト監視を開始
           if (!completed) {
