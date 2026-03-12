@@ -8,11 +8,26 @@ import { getIdToken } from '@/auth'
  * AudioQueue で順次再生することで体感レスポンスを大幅に短縮する。
  * iOS Safari 対応のため AudioContext + AudioBufferSourceNode で再生。
  */
+/** 感情→ speakingRate/pitch マッピング（Aivis Cloud API パラメータ） */
+const EMOTION_AIVIS_MAP: Record<string, { speakingRate: number; pitch: number }> = {
+  neutral:     { speakingRate: 1.0,  pitch: 0 },
+  happy:       { speakingRate: 1.1,  pitch: 0.05 },
+  excited:     { speakingRate: 1.15, pitch: 0.1 },
+  sad:         { speakingRate: 0.9,  pitch: -0.08 },
+  angry:       { speakingRate: 1.05, pitch: -0.05 },
+  thinking:    { speakingRate: 0.9,  pitch: 0 },
+  surprised:   { speakingRate: 1.1,  pitch: 0.1 },
+  embarrassed: { speakingRate: 1.0,  pitch: 0.03 },
+  troubled:    { speakingRate: 0.9,  pitch: -0.05 },
+}
+
 class AivisTtsServiceImpl {
   /** Web Audio コンテキスト（iOS 対応のため共有） */
   private audioContext: AudioContext | null = null
   /** 現在再生中の AudioBufferSourceNode */
   private currentSource: AudioBufferSourceNode | null = null
+  /** 現在の感情（ストリーミング TTS 用） */
+  private currentEmotion: string = 'neutral'
   /** 再生開始時刻（AudioContext.currentTime ベース） */
   private playbackStartTime = 0
   /** 事前計算済み音量エンベロープ（60fps 間隔） */
@@ -38,6 +53,8 @@ class AivisTtsServiceImpl {
   private streamingResolve: (() => void) | null = null
   /** ストリーミング TTS のキュー投入完了フラグ */
   private streamingEnqueueDone = false
+  /** 世代カウンター（旧キュープロセッサを無効化するため） */
+  private generation = 0
 
   private static readonly ENVELOPE_FPS = 60
 
@@ -100,21 +117,24 @@ class AivisTtsServiceImpl {
   }
 
   /**
-   * 文末区切りで完了した文を抽出する
+   * 句・文末区切りで完了したフレーズを抽出する
    *
-   * streamingText を監視し、文末（。！？\n）で区切られた完成文を返す。
-   * まだ文末に達していない部分は次回に持ち越す。
+   * streamingText を監視し、文末（。！？\n）または読点（、）で区切られた
+   * 完成フレーズを返す。読点レベルで分割することで TTS 開始を早め、
+   * 体感レスポンスを短縮する。短すぎるフレーズは次のフレーズと結合。
    */
   private extractCompleteSentences(text: string, sentLength: number): { sentences: string[]; newSentLength: number } {
     const remaining = text.slice(sentLength)
     if (!remaining) return { sentences: [], newSentLength: sentLength }
 
-    // 文末パターンで分割（区切り文字を保持）
-    const parts = remaining.split(/(?<=[。！？\n])/g)
+    // 句読点・文末パターンで分割（区切り文字を保持）
+    const parts = remaining.split(/(?<=[。！？\n、])/g)
 
-    // 最後のパーツが文末で終わっていない場合は未完成 → 保留
     const sentences: string[] = []
     let consumed = 0
+    let buffer = ''
+    let bufferConsumed = 0
+
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i].trim()
       if (!part) {
@@ -122,22 +142,35 @@ class AivisTtsServiceImpl {
         continue
       }
 
-      // 最後のパーツが文末で終わっていなければ保留
-      if (i === parts.length - 1 && !/[。！？\n]$/.test(parts[i])) {
+      // 最後のパーツが区切り文字で終わっていなければ保留
+      if (i === parts.length - 1 && !/[。！？\n、]$/.test(parts[i])) {
         break
       }
 
-      sentences.push(part)
-      consumed += parts[i].length
+      buffer += part
+      bufferConsumed += parts[i].length
+
+      // 短すぎるフレーズは結合（最低8文字、ただし文末なら即出力）
+      const isEndOfSentence = /[。！？\n]$/.test(parts[i])
+      if (buffer.length >= 8 || isEndOfSentence) {
+        sentences.push(buffer)
+        buffer = ''
+        consumed += bufferConsumed
+        bufferConsumed = 0
+      }
     }
 
+    // buffer に残ったテキストは consumed に含めない（次回に持ち越し）
     return { sentences, newSentLength: sentLength + consumed }
   }
 
   /**
    * 単一チャンクの Aivis TTS 合成（Lambda プロキシ経由）
    */
-  private async synthesizeChunk(text: string, apiBaseUrl: string, accessToken: string): Promise<Uint8Array | null> {
+  private async synthesizeChunk(text: string, apiBaseUrl: string, accessToken: string, emotion?: string): Promise<Uint8Array | null> {
+    const emo = emotion ?? this.currentEmotion
+    const params = EMOTION_AIVIS_MAP[emo] ?? EMOTION_AIVIS_MAP.neutral
+
     try {
       const res = await fetch(`${apiBaseUrl}/tts/synthesize`, {
         method: 'POST',
@@ -145,7 +178,12 @@ class AivisTtsServiceImpl {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ text, provider: 'aivis' }),
+        body: JSON.stringify({
+          text,
+          provider: 'aivis',
+          speakingRate: params.speakingRate,
+          pitch: params.pitch,
+        }),
       })
 
       if (!res.ok) {
@@ -181,6 +219,8 @@ class AivisTtsServiceImpl {
 
   /**
    * 音声バイナリを AudioContext 経由で再生し、完了まで待機
+   *
+   * onended が発火しない場合のフォールバックタイマー付き。
    */
   private async playAudioBytes(bytes: Uint8Array): Promise<void> {
     const ctx = await this.ensureAudioContext()
@@ -201,23 +241,36 @@ class AivisTtsServiceImpl {
     this.startVolumeLoop()
 
     await new Promise<void>((resolve) => {
-      source.onended = () => {
+      let resolved = false
+      const done = () => {
+        if (resolved) return
+        resolved = true
         this.stopVolumeLoop()
         this.currentSource = null
         resolve()
       }
+      source.onended = done
+      // フォールバック: 音声の長さ + 2秒後に強制 resolve（onended 未発火対策）
+      const fallbackMs = (audioBuffer.duration + 2) * 1000
+      setTimeout(done, fallbackMs)
     })
   }
 
   /**
    * オーディオキューを順次再生するループ
+   *
+   * 世代カウンター（generation）で旧ループを無効化し、
+   * 連続会話時の競合状態を防止する。
    */
   private async processAudioQueue(): Promise<void> {
     if (this.isPlayingQueue) return
     this.isPlayingQueue = true
 
+    const myGeneration = this.generation
+
     while (this.audioQueue.length > 0 || !this.streamingEnqueueDone) {
-      if (this.aborted) break
+      // aborted または世代が変わっていたら即座に抜ける
+      if (this.aborted || this.generation !== myGeneration) break
 
       const bytes = this.audioQueue.shift()
       if (bytes) {
@@ -226,7 +279,13 @@ class AivisTtsServiceImpl {
         // キューが空だが、まだ追加される可能性がある → 少し待つ
         await new Promise((r) => setTimeout(r, 100))
       }
+
+      // playAudioBytes 完了後にも世代チェック（再生中に stop → 新セッション開始の場合）
+      if (this.generation !== myGeneration) break
     }
+
+    // 自分の世代でなければ状態を触らない（新しいキュープロセッサに委譲）
+    if (this.generation !== myGeneration) return
 
     this.isPlayingQueue = false
     this._isSpeaking = false
@@ -246,7 +305,8 @@ class AivisTtsServiceImpl {
    *
    * @returns 全再生が完了したら resolve する Promise
    */
-  async startStreamingTts(getStreamingText: () => string): Promise<void> {
+  async startStreamingTts(getStreamingText: () => string, emotion?: string): Promise<void> {
+    this.currentEmotion = emotion ?? 'neutral'
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     if (!apiBaseUrl) {
       throw new Error('[Aivis TTS] VITE_API_BASE_URL が未設定です')
@@ -258,13 +318,14 @@ class AivisTtsServiceImpl {
     }
 
     this.stop()
+    this.generation++
     this.aborted = false
     this.audioQueue = []
     this.isPlayingQueue = false
     this.streamingSentLength = 0
     this.streamingEnqueueDone = false
 
-    console.log('[Aivis TTS] ストリーミング TTS 開始')
+    console.log('[Aivis TTS] ストリーミング TTS 開始 (gen=' + this.generation + ')')
 
     return new Promise<void>((resolve) => {
       this.streamingResolve = resolve
@@ -304,8 +365,9 @@ class AivisTtsServiceImpl {
    * chat_complete 後に呼ばれ、未送信の残りテキストを TTS に投入して
    * キューへの追加を完了する。
    */
-  async finishStreamingTts(finalText: string): Promise<void> {
+  async finishStreamingTts(finalText: string, emotion?: string): Promise<void> {
     this.stopStreamingWatcher()
+    if (emotion) this.currentEmotion = emotion
 
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     const accessToken = await getIdToken()
@@ -327,10 +389,13 @@ class AivisTtsServiceImpl {
 
   /**
    * テキストを非同期で合成し、結果をオーディオキューに追加
+   *
+   * 合成完了時に世代が変わっていたら結果を破棄する。
    */
   private enqueueSynthesis(text: string, apiBaseUrl: string, accessToken: string): void {
+    const gen = this.generation
     this.synthesizeChunk(text, apiBaseUrl, accessToken).then((bytes) => {
-      if (bytes && !this.aborted) {
+      if (bytes && !this.aborted && this.generation === gen) {
         this.audioQueue.push(bytes)
       }
     })
@@ -351,7 +416,8 @@ class AivisTtsServiceImpl {
    *
    * ストリーミング TTS が使えない場合のフォールバック。
    */
-  async synthesizeAndPlay(text: string): Promise<void> {
+  async synthesizeAndPlay(text: string, emotion?: string): Promise<void> {
+    this.currentEmotion = emotion ?? 'neutral'
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     if (!apiBaseUrl) {
       throw new Error('[Aivis TTS] VITE_API_BASE_URL が未設定です')
@@ -366,6 +432,7 @@ class AivisTtsServiceImpl {
     if (!ttsText) return
 
     this.stop()
+    this.generation++
     this.aborted = false
 
     // 文単位に分割
@@ -502,6 +569,7 @@ class AivisTtsServiceImpl {
    */
   stop(): void {
     this.aborted = true
+    this.generation++
     this.stopStreamingWatcher()
     this.stopVolumeLoop()
     this.audioQueue = []

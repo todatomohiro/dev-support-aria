@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>音声会話 + カメラ映像送信 モックアップ</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  /* ナビゲーション */
+  .nav { display: flex; justify-content: center; gap: 10px; padding: 14px; background: #1a1a2e; position: sticky; top: 0; z-index: 100; flex-wrap: wrap; }
+  .nav button { padding: 8px 18px; border: 2px solid #6c63ff; background: transparent; color: #fff; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+  .nav button.active { background: #6c63ff; }
+  .nav button:hover { background: #5a52d5; color: #fff; }
+
+  .section { display: none; max-width: 480px; margin: 0 auto; padding: 24px 16px; }
+  .section.active { display: block; }
+  .section-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 13px; color: #666; margin-bottom: 20px; line-height: 1.7; }
+
+  /* フォンフレーム */
+  .phone-frame { width: 100%; max-width: 400px; margin: 0 auto; height: 780px; border-radius: 24px; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.15); background: #000; display: flex; flex-direction: column; position: relative; }
+  .status-bar { height: 48px; background: #1a1a2e; display: flex; justify-content: space-between; align-items: center; padding: 0 20px; color: #fff; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+
+  /* 音声会話画面 */
+  .voice-screen { flex: 1; display: flex; flex-direction: column; background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); position: relative; overflow: hidden; }
+
+  /* 背景パーティクル */
+  .particles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .particle { position: absolute; border-radius: 50%; }
+
+  /* ヘッダーバー */
+  .header-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; flex-shrink: 0; position: relative; z-index: 10; }
+  .header-left { display: flex; align-items: center; gap: 6px; }
+  .header-right { display: flex; align-items: center; gap: 6px; }
+  .status-pill { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 5px 12px; display: flex; align-items: center; gap: 5px; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+  .status-label { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 500; }
+  .header-btn { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 5px 10px; font-size: 10px; color: rgba(255,255,255,0.5); font-weight: 600; border: none; cursor: pointer; transition: background 0.2s; }
+  .header-btn:hover { background: rgba(255,255,255,0.2); }
+  .header-btn.active-cam { background: rgba(59,130,246,0.3); color: rgba(147,197,253,0.9); border: 1px solid rgba(59,130,246,0.4); }
+  .call-timer { font-size: 12px; color: rgba(255,255,255,0.4); font-variant-numeric: tabular-nums; font-weight: 500; }
+
+  /* キャラクターエリア */
+  .voice-character { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+  .voice-char-placeholder { width: 160px; height: 240px; background: rgba(255,255,255,0.05); border-radius: 80px 80px 40px 40px; }
+
+  /* 感情バッジ */
+  .emotion-badge { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(99,102,241,0.2); backdrop-filter: blur(8px); border-radius: 16px; padding: 4px 14px; font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 500; }
+
+  /* ========================================
+     カメラプレビュー（PiP）
+     ======================================== */
+  .camera-pip { position: absolute; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 2px solid rgba(255,255,255,0.15); z-index: 20; transition: all 0.3s ease; }
+  .camera-pip.top-right { top: 8px; right: 12px; width: 110px; height: 148px; }
+  .camera-pip.bottom-left { bottom: 8px; left: 12px; width: 110px; height: 148px; }
+
+  .camera-feed { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  /* カメラ映像の模擬表示 */
+  .camera-mock { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; }
+  .camera-mock.front { background: linear-gradient(135deg, #2d1b4e 0%, #1a1a3e 50%, #0f1729 100%); }
+  .camera-mock.back { background: linear-gradient(135deg, #1a3a2a 0%, #2a4a3a 50%, #1a2e2a 100%); }
+
+  /* 顔シルエット（フロントカメラ） */
+  .face-silhouette { width: 50px; height: 60px; border-radius: 50% 50% 45% 45%; background: rgba(255,255,255,0.08); position: relative; }
+  .face-silhouette::after { content: ''; position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); width: 70px; height: 30px; border-radius: 50% 50% 0 0; background: rgba(255,255,255,0.06); }
+
+  /* 風景（バックカメラ） */
+  .scene-mock { width: 100%; height: 100%; position: relative; overflow: hidden; }
+  .scene-desk { position: absolute; bottom: 0; left: 0; right: 0; height: 55%; background: linear-gradient(180deg, #3a4a3a 0%, #2a3a2a 100%); }
+  .scene-monitor { position: absolute; bottom: 40%; left: 50%; transform: translateX(-50%); width: 60px; height: 40px; background: #1a2a3a; border-radius: 3px; border: 2px solid #4a5a6a; }
+  .scene-monitor::after { content: ''; position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); width: 12px; height: 8px; background: #4a5a6a; }
+  .scene-cup { position: absolute; bottom: 38%; right: 15px; width: 14px; height: 18px; background: #6a7a8a; border-radius: 2px 2px 3px 3px; }
+  .scene-keyboard { position: absolute; bottom: 32%; left: 50%; transform: translateX(-50%); width: 55px; height: 12px; background: #3a4a5a; border-radius: 2px; }
+
+  /* カメラ切替ボタン（PiP 内） */
+  .camera-switch-btn { position: absolute; bottom: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.2); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
+  .camera-switch-btn:hover { background: rgba(0,0,0,0.7); border-color: rgba(255,255,255,0.4); }
+  .camera-switch-btn svg { width: 14px; height: 14px; }
+
+  /* カメラ状態インジケーター */
+  .camera-indicator { position: absolute; top: 6px; left: 6px; display: flex; align-items: center; gap: 3px; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); border-radius: 8px; padding: 2px 6px; }
+  .camera-indicator .rec-dot { width: 5px; height: 5px; border-radius: 50%; background: #ef4444; animation: rec-blink 1.5s infinite; }
+  .camera-indicator .cam-label { font-size: 8px; color: rgba(255,255,255,0.7); font-weight: 600; letter-spacing: 0.5px; }
+
+  @keyframes rec-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* ========================================
+     会話テキスト表示
+     ======================================== */
+  .transcript-area { padding: 0 20px 12px; min-height: 90px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; flex-shrink: 0; position: relative; z-index: 10; }
+  .transcript-ai { font-size: 14px; color: rgba(255,255,255,0.9); line-height: 1.6; }
+  .transcript-ai .label { font-size: 11px; color: rgba(99,102,241,0.8); font-weight: 600; margin-bottom: 2px; }
+  .transcript-user { font-size: 14px; color: rgba(147,197,253,0.9); line-height: 1.6; text-align: right; }
+  .transcript-user .label { font-size: 11px; color: rgba(147,197,253,0.5); font-weight: 600; margin-bottom: 2px; }
+  .transcript-interim { font-size: 13px; color: rgba(255,255,255,0.4); font-style: italic; text-align: right; }
+
+  /* ========================================
+     コントロールバー
+     ======================================== */
+  .voice-controls { padding: 12px 20px 28px; display: flex; align-items: center; justify-content: center; gap: 20px; position: relative; z-index: 10; flex-shrink: 0; }
+  .ctrl-btn { width: 48px; height: 48px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .ctrl-btn svg { width: 20px; height: 20px; }
+  .ctrl-btn.mute { background: rgba(255,255,255,0.1); color: #fff; }
+  .ctrl-btn.mute:hover { background: rgba(255,255,255,0.2); }
+  .ctrl-btn.camera { background: rgba(255,255,255,0.1); color: #fff; position: relative; }
+  .ctrl-btn.camera:hover { background: rgba(255,255,255,0.2); }
+  .ctrl-btn.camera.on { background: rgba(59,130,246,0.3); color: #93c5fd; border: 1px solid rgba(59,130,246,0.4); }
+  .ctrl-btn.end-call { background: #ef4444; color: #fff; }
+  .ctrl-btn.end-call:hover { background: #dc2626; }
+
+  .mic-main { width: 68px; height: 68px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; position: relative; }
+  .mic-main.listening { background: #3b82f6; color: #fff; box-shadow: 0 0 0 0 rgba(59,130,246,0.4); animation: mic-pulse 2s infinite; }
+  .mic-main.idle { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.6); }
+  .mic-main.thinking { background: rgba(245,158,11,0.2); color: #fbbf24; }
+  .mic-main svg { width: 26px; height: 26px; }
+
+  @keyframes mic-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(59,130,246,0.5); }
+    70% { box-shadow: 0 0 0 20px rgba(59,130,246,0); }
+    100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+  }
+
+  /* AI発話中インジケーター */
+  .ai-speaking-indicator { display: flex; align-items: center; gap: 3px; position: absolute; top: -36px; left: 50%; transform: translateX(-50%); }
+  .ai-speaking-indicator .bar { width: 3px; border-radius: 2px; background: #818cf8; animation: speaking-bar 0.8s ease-in-out infinite; }
+  .ai-speaking-indicator .bar:nth-child(1) { height: 12px; animation-delay: 0s; }
+  .ai-speaking-indicator .bar:nth-child(2) { height: 20px; animation-delay: 0.15s; }
+  .ai-speaking-indicator .bar:nth-child(3) { height: 16px; animation-delay: 0.3s; }
+  .ai-speaking-indicator .bar:nth-child(4) { height: 24px; animation-delay: 0.1s; }
+  .ai-speaking-indicator .bar:nth-child(5) { height: 14px; animation-delay: 0.25s; }
+
+  @keyframes speaking-bar {
+    0%, 100% { transform: scaleY(0.4); }
+    50% { transform: scaleY(1); }
+  }
+
+  /* ========================================
+     設計メモ
+     ======================================== */
+  .notes-section { max-width: 800px; }
+  .note-card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+  .note-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 10px; color: #1a1a2e; }
+  .note-card ul { padding-left: 20px; }
+  .note-card li { font-size: 13px; color: #444; line-height: 1.8; }
+  .note-card code { background: #f0f0f0; padding: 1px 6px; border-radius: 4px; font-size: 12px; font-family: 'SF Mono', monospace; }
+  .arch-diagram { background: #1a1a2e; color: #a5b4fc; padding: 16px; border-radius: 8px; font-family: 'SF Mono', monospace; font-size: 11px; line-height: 1.8; white-space: pre; overflow-x: auto; margin: 12px 0; }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeIn 0.3s ease-out; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button class="active" onclick="showSection('s1')">カメラOFF</button>
+  <button onclick="showSection('s2')">カメラON（前面）</button>
+  <button onclick="showSection('s3')">カメラON（背面）</button>
+  <button onclick="showSection('s4')">AI応答中（背面）</button>
+  <button onclick="showSection('s5')">設計メモ</button>
+</nav>
+
+<!-- ========================================
+     セクション1: カメラ OFF（従来通り）
+     ======================================== -->
+<div id="s1" class="section active">
+  <h2 class="section-title">カメラ OFF（従来通り）</h2>
+  <p class="section-desc">
+    カメラボタンをタップするとカメラが起動。<br>
+    コントロールバーにカメラボタンを追加（ミュートの隣）。
+  </p>
+
+  <div class="phone-frame">
+    <div class="status-bar">
+      <span>9:42</span>
+      <span style="letter-spacing: 1px;">... Wi-Fi</span>
+    </div>
+
+    <div class="voice-screen">
+      <div class="particles">
+        <div class="particle" style="width: 120px; height: 120px; top: 10%; left: -20px; background: rgba(99,102,241,0.1);"></div>
+        <div class="particle" style="width: 80px; height: 80px; top: 50%; right: -10px; background: rgba(99,102,241,0.06);"></div>
+        <div class="particle" style="width: 60px; height: 60px; bottom: 20%; left: 30%; background: rgba(139,92,246,0.08);"></div>
+      </div>
+
+      <!-- ヘッダー -->
+      <div class="header-bar">
+        <div class="header-left">
+          <div class="status-pill">
+            <div class="status-dot"></div>
+            <span class="status-label">接続中</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <button class="header-btn">日本語</button>
+          <button class="header-btn">Browser</button>
+          <span class="call-timer">01:23</span>
+        </div>
+      </div>
+
+      <!-- キャラクター -->
+      <div class="voice-character">
+        <div class="voice-char-placeholder"></div>
+      </div>
+
+      <!-- 会話テキスト -->
+      <div class="transcript-area">
+        <div class="transcript-ai fade-in">
+          <div class="label">Ai-Ba</div>
+          おかえり！今日も1日お疲れ様。何かあった？
+        </div>
+        <div class="transcript-interim">今日はちょっと...</div>
+      </div>
+
+      <!-- コントロール -->
+      <div class="voice-controls">
+        <button class="ctrl-btn mute" title="マイクミュート">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+        </button>
+
+        <!-- カメラボタン（OFF） -->
+        <button class="ctrl-btn camera" title="カメラ OFF" onclick="showSection('s2')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+
+        <button class="mic-main listening" title="マイク（発話中）">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8" />
+          </svg>
+        </button>
+
+        <button class="ctrl-btn end-call" title="会話終了">
+          <svg fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3.68 3.68a.75.75 0 011.06 0L12 10.94l7.26-7.26a.75.75 0 111.06 1.06L13.06 12l7.26 7.26a.75.75 0 11-1.06 1.06L12 13.06l-7.26 7.26a.75.75 0 01-1.06-1.06L10.94 12 3.68 4.74a.75.75 0 010-1.06z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================
+     セクション2: カメラ ON（前面カメラ）
+     ======================================== -->
+<div id="s2" class="section">
+  <h2 class="section-title">カメラ ON（前面カメラ）</h2>
+  <p class="section-desc">
+    前面カメラ（インカメラ）ON。自分の顔が映る。<br>
+    PiP 右下の回転アイコンで前面/背面を切り替え。<br>
+    音声送信時に自動でフレームをキャプチャして LLM に送信。
+  </p>
+
+  <div class="phone-frame">
+    <div class="status-bar">
+      <span>9:42</span>
+      <span style="letter-spacing: 1px;">... Wi-Fi</span>
+    </div>
+
+    <div class="voice-screen">
+      <div class="particles">
+        <div class="particle" style="width: 120px; height: 120px; top: 10%; left: -20px; background: rgba(99,102,241,0.1);"></div>
+        <div class="particle" style="width: 80px; height: 80px; top: 50%; right: -10px; background: rgba(99,102,241,0.06);"></div>
+      </div>
+
+      <!-- ヘッダー -->
+      <div class="header-bar">
+        <div class="header-left">
+          <div class="status-pill">
+            <div class="status-dot"></div>
+            <span class="status-label">接続中</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <button class="header-btn">日本語</button>
+          <button class="header-btn">Browser</button>
+          <span class="call-timer">01:45</span>
+        </div>
+      </div>
+
+      <!-- キャラクター -->
+      <div class="voice-character">
+        <div class="voice-char-placeholder"></div>
+
+        <!-- カメラ PiP（右上） -->
+        <div class="camera-pip top-right">
+          <div class="camera-mock front">
+            <div class="face-silhouette"></div>
+          </div>
+          <!-- カメラ状態 -->
+          <div class="camera-indicator">
+            <div class="rec-dot"></div>
+            <span class="cam-label">前面</span>
+          </div>
+          <!-- 前面/背面切替ボタン -->
+          <button class="camera-switch-btn" title="カメラ切替" onclick="showSection('s3')">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 会話テキスト -->
+      <div class="transcript-area">
+        <div class="transcript-ai fade-in">
+          <div class="label">Ai-Ba</div>
+          おかえり！今日も1日お疲れ様。何かあった？
+        </div>
+        <div class="transcript-user fade-in" style="margin-top: 4px;">
+          <div class="label">あなた</div>
+          今日はちょっと疲れたかな
+        </div>
+      </div>
+
+      <!-- コントロール -->
+      <div class="voice-controls">
+        <button class="ctrl-btn mute" title="マイクミュート">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+        </button>
+
+        <!-- カメラボタン（ON） -->
+        <button class="ctrl-btn camera on" title="カメラ ON" onclick="showSection('s1')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+
+        <button class="mic-main listening" title="マイク（発話中）">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8" />
+          </svg>
+        </button>
+
+        <button class="ctrl-btn end-call" title="会話終了">
+          <svg fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3.68 3.68a.75.75 0 011.06 0L12 10.94l7.26-7.26a.75.75 0 111.06 1.06L13.06 12l7.26 7.26a.75.75 0 11-1.06 1.06L12 13.06l-7.26 7.26a.75.75 0 01-1.06-1.06L10.94 12 3.68 4.74a.75.75 0 010-1.06z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================
+     セクション3: カメラ ON（背面カメラ）
+     ======================================== -->
+<div id="s3" class="section">
+  <h2 class="section-title">カメラ ON（背面カメラ）</h2>
+  <p class="section-desc">
+    背面カメラに切替。周囲の風景や物を AI に見せられる。<br>
+    例: 料理、ペット、作業環境、外の景色など。<br>
+    AI はキャプチャ画像を認識して会話に反映する。
+  </p>
+
+  <div class="phone-frame">
+    <div class="status-bar">
+      <span>9:43</span>
+      <span style="letter-spacing: 1px;">... Wi-Fi</span>
+    </div>
+
+    <div class="voice-screen">
+      <div class="particles">
+        <div class="particle" style="width: 120px; height: 120px; top: 10%; left: -20px; background: rgba(99,102,241,0.1);"></div>
+        <div class="particle" style="width: 80px; height: 80px; top: 50%; right: -10px; background: rgba(99,102,241,0.06);"></div>
+      </div>
+
+      <!-- ヘッダー -->
+      <div class="header-bar">
+        <div class="header-left">
+          <div class="status-pill">
+            <div class="status-dot"></div>
+            <span class="status-label">接続中</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <button class="header-btn">日本語</button>
+          <button class="header-btn">Browser</button>
+          <span class="call-timer">02:10</span>
+        </div>
+      </div>
+
+      <!-- キャラクター -->
+      <div class="voice-character">
+        <div class="voice-char-placeholder"></div>
+
+        <!-- カメラ PiP（右上） — 背面カメラ -->
+        <div class="camera-pip top-right">
+          <div class="camera-mock back">
+            <div class="scene-mock">
+              <div class="scene-desk"></div>
+              <div class="scene-monitor"></div>
+              <div class="scene-cup"></div>
+              <div class="scene-keyboard"></div>
+            </div>
+          </div>
+          <!-- カメラ状態 -->
+          <div class="camera-indicator">
+            <div class="rec-dot"></div>
+            <span class="cam-label">背面</span>
+          </div>
+          <!-- 前面/背面切替ボタン -->
+          <button class="camera-switch-btn" title="カメラ切替" onclick="showSection('s2')">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 会話テキスト -->
+      <div class="transcript-area">
+        <div class="transcript-user fade-in">
+          <div class="label">あなた</div>
+          ちょっとこれ見て
+        </div>
+        <div class="transcript-interim">...</div>
+      </div>
+
+      <!-- コントロール -->
+      <div class="voice-controls">
+        <button class="ctrl-btn mute" title="マイクミュート">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+        </button>
+
+        <!-- カメラボタン（ON） -->
+        <button class="ctrl-btn camera on" title="カメラ ON" onclick="showSection('s1')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+
+        <button class="mic-main listening" title="マイク（発話中）">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8" />
+          </svg>
+        </button>
+
+        <button class="ctrl-btn end-call" title="会話終了">
+          <svg fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3.68 3.68a.75.75 0 011.06 0L12 10.94l7.26-7.26a.75.75 0 111.06 1.06L13.06 12l7.26 7.26a.75.75 0 11-1.06 1.06L12 13.06l-7.26 7.26a.75.75 0 01-1.06-1.06L10.94 12 3.68 4.74a.75.75 0 010-1.06z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================
+     セクション4: AI 応答中（背面カメラ + 画像認識）
+     ======================================== -->
+<div id="s4" class="section">
+  <h2 class="section-title">AI 応答中（背面カメラで画像認識）</h2>
+  <p class="section-desc">
+    背面カメラの映像を認識して会話に反映。<br>
+    デスク周りが映っていることを認識し、作業環境について言及。<br>
+    PiP は speaking 中も表示されたまま。
+  </p>
+
+  <div class="phone-frame">
+    <div class="status-bar">
+      <span>9:43</span>
+      <span style="letter-spacing: 1px;">... Wi-Fi</span>
+    </div>
+
+    <div class="voice-screen">
+      <div class="particles">
+        <div class="particle" style="width: 120px; height: 120px; top: 10%; left: -20px; background: rgba(99,102,241,0.1);"></div>
+        <div class="particle" style="width: 80px; height: 80px; top: 50%; right: -10px; background: rgba(99,102,241,0.06);"></div>
+      </div>
+
+      <!-- ヘッダー -->
+      <div class="header-bar">
+        <div class="header-left">
+          <div class="status-pill">
+            <div class="status-dot"></div>
+            <span class="status-label">接続中</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <button class="header-btn">日本語</button>
+          <button class="header-btn">Browser</button>
+          <span class="call-timer">02:30</span>
+        </div>
+      </div>
+
+      <!-- キャラクター -->
+      <div class="voice-character">
+        <div class="voice-char-placeholder"></div>
+        <div class="emotion-badge">happy</div>
+
+        <!-- カメラ PiP（右上） — 背面カメラ -->
+        <div class="camera-pip top-right">
+          <div class="camera-mock back">
+            <div class="scene-mock">
+              <div class="scene-desk"></div>
+              <div class="scene-monitor"></div>
+              <div class="scene-cup"></div>
+              <div class="scene-keyboard"></div>
+            </div>
+          </div>
+          <div class="camera-indicator">
+            <div class="rec-dot"></div>
+            <span class="cam-label">背面</span>
+          </div>
+          <button class="camera-switch-btn" title="カメラ切替">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 会話テキスト -->
+      <div class="transcript-area">
+        <div class="transcript-user" style="margin-bottom: 4px;">
+          <div class="label">あなた</div>
+          ちょっとこれ見て
+        </div>
+        <div class="transcript-ai fade-in">
+          <div class="label">Ai-Ba</div>
+          おっ、作業デスクだね！モニターにキーボード、コーヒーも置いてある。いい感じの環境じゃん！今日もここでお仕事してたの？
+        </div>
+      </div>
+
+      <!-- コントロール -->
+      <div class="voice-controls">
+        <button class="ctrl-btn mute" title="マイクミュート">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+        </button>
+
+        <button class="ctrl-btn camera on" title="カメラ ON">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+
+        <div style="position: relative;">
+          <div class="ai-speaking-indicator">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+          </div>
+          <button class="mic-main idle" title="マイク（AI応答中）">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8" />
+            </svg>
+          </button>
+        </div>
+
+        <button class="ctrl-btn end-call" title="会話終了">
+          <svg fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3.68 3.68a.75.75 0 011.06 0L12 10.94l7.26-7.26a.75.75 0 111.06 1.06L13.06 12l7.26 7.26a.75.75 0 11-1.06 1.06L12 13.06l-7.26 7.26a.75.75 0 01-1.06-1.06L10.94 12 3.68 4.74a.75.75 0 010-1.06z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================
+     セクション5: 設計メモ
+     ======================================== -->
+<div id="s5" class="section notes-section" style="max-width: 800px;">
+  <h2 class="section-title">設計メモ</h2>
+  <p class="section-desc">カメラ映像送信機能の技術設計</p>
+
+  <div class="note-card">
+    <h3>データフロー</h3>
+    <div class="arch-diagram">
+┌─ 音声会話 + カメラ映像送信 ────────────────────────────┐
+│                                                       │
+│  [カメラ] → useCamera hook                            │
+│      ↓ video stream (PiP プレビュー表示)               │
+│      ↓ captureFrame() → JPEG base64 (512px, 0.7q)    │
+│                                                       │
+│  [マイク] → Web Speech API (STT)                      │
+│      ↓ テキスト確定                                    │
+│      ↓ + カメラ ON なら captureFrame() を添付          │
+│                                                       │
+│  chatController.sendMessage(text, imageBase64, true)  │
+│      ↓                                                │
+│  Lambda /llm/chat                                     │
+│      ↓ detectImageFormat() → Bedrock ImageBlock       │
+│      ↓ Bedrock Converse API (テキスト + 画像)          │
+│      ↓ WebSocket chat_delta → TTS → スピーカー         │
+│                                                       │
+│  コスト: 画像 ~1,000-2,000 tokens/枚 (512px JPEG)     │
+│  レイテンシ: +100-200ms (base64エンコード+転送)         │
+└───────────────────────────────────────────────────────┘</div>
+  </div>
+
+  <div class="note-card">
+    <h3>UI 設計ポイント</h3>
+    <ul>
+      <li><strong>カメラ ON/OFF</strong>: コントロールバーにカメラアイコンボタンを追加</li>
+      <li><strong>PiP プレビュー</strong>: 右上に小窓 (110x148px) でカメラ映像を表示</li>
+      <li><strong>前面/背面切替</strong>: PiP 右下の回転アイコンで <code>facingMode</code> を切替</li>
+      <li><strong>カメラ状態表示</strong>: PiP 左上に赤点滅 + 「前面」/「背面」ラベル</li>
+      <li><strong>キャプチャタイミング</strong>: STT 確定時に自動キャプチャ（毎ターン1枚）</li>
+      <li><strong>PiP 位置</strong>: Live2D キャラクターと重ならないよう右上に配置</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>前面/背面カメラ切替</h3>
+    <ul>
+      <li><code>useCamera</code> の <code>facingMode</code> を <code>'user'</code> / <code>'environment'</code> で切替</li>
+      <li>切替時は一旦 <code>stop()</code> → <code>start(newFacingMode)</code></li>
+      <li>PC (Webカメラのみ) の場合は切替ボタンを非表示</li>
+      <li><code>navigator.mediaDevices.enumerateDevices()</code> で複数カメラの有無を検出</li>
+      <li>デバイスが1台のみの場合は切替ボタンを disabled に</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>既存インフラとの整合性</h3>
+    <ul>
+      <li><code>useCamera</code> hook: 既に <code>captureFrame()</code> (JPEG 512px base64) を実装済み</li>
+      <li><code>chatController.sendMessage</code>: 第2引数 <code>imageBase64</code> 対応済み</li>
+      <li><code>llmClient</code>: REST body に <code>imageBase64</code> を含めて送信済み</li>
+      <li>Lambda: <code>detectImageFormat()</code> + <code>toConverseMessages()</code> で Bedrock に画像送信済み</li>
+      <li><strong>新規実装不要のレイヤー</strong>: llmClient, Lambda, Bedrock 連携はすべて既存コードで対応可能</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>注意事項</h3>
+    <ul>
+      <li><strong>getUserMedia と SpeechSynthesis</strong>: <code>useCamera</code> の <code>getUserMedia({video: true})</code> は video のみなので audio activation token への影響は少ないが、要検証</li>
+      <li><strong>トークンコスト</strong>: 512px JPEG で約 1,000〜2,000 tokens/枚。10ターン会話で +10,000〜20,000 tokens</li>
+      <li><strong>プライバシー</strong>: カメラ映像は base64 で Lambda に送信 → Bedrock で処理。DynamoDB にはテキストのみ保存（画像は保存しない）</li>
+      <li><strong>バッテリー</strong>: カメラ常時 ON はバッテリー消費大。省電力のため OFF がデフォルト</li>
+      <li><strong>iOS Capacitor</strong>: WKWebView でのカメラアクセスは既に <code>useCamera</code> で対応済み</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>実装ステップ</h3>
+    <ul>
+      <li><strong>Step 1</strong>: <code>useCamera</code> に <code>facingMode</code> 切替機能を追加</li>
+      <li><strong>Step 2</strong>: VoiceChatScreen にカメラ ON/OFF ボタン + PiP プレビューを追加</li>
+      <li><strong>Step 3</strong>: <code>handleSpeechResult</code> でカメラ ON 時に <code>captureFrame()</code> → <code>sendMessage(text, imageBase64)</code></li>
+      <li><strong>Step 4</strong>: PiP 内に前面/背面切替ボタンを追加（複数カメラ検出時のみ表示）</li>
+      <li><strong>Step 5</strong>: SpeechSynthesis との競合テスト（video-only getUserMedia の影響確認）</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const idx = ['s1','s2','s3','s4','s5'].indexOf(id);
+  document.querySelectorAll('.nav button')[idx]?.classList.add('active');
+  window.scrollTo(0, 0);
+}
+</script>
+
+</body>
+</html>

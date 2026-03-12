@@ -78,7 +78,11 @@ describe('チャットフロー統合テスト', () => {
           undefined,
           undefined,
           undefined,
-          false
+          false,
+          undefined,
+          undefined,
+          undefined,
+          undefined
         )
       })
     })

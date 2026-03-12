@@ -1698,6 +1698,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let includeDebug = false
   let streaming = false
   let voiceMode = false
+  let userMood: string | undefined
 
   try {
     const body = JSON.parse(event.body)
@@ -1737,6 +1738,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 音声会話モード（短い応答を返す）
     if (body.voiceMode === true) {
       voiceMode = true
+    }
+
+    // ユーザーの音声感情（音声会話モードのみ）
+    if (typeof body.userMood === 'string' && ['calm', 'excited', 'low', 'tense', 'neutral'].includes(body.userMood)) {
+      userMood = body.userMood
     }
 
     if (!message || typeof message !== 'string') {
@@ -1900,11 +1906,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     system.push({
       text: `<voice_mode>
 現在は音声会話モードです。以下のルールを最優先で守ってください：
-- 回答は1〜3文以内に収めること。長い説明は禁止
+- 回答は1〜3文以内に収めること。長い説明は禁止。どうしても詳しく答えたい場合は「詳しく聞きたい？」と確認してから
 - Markdown 記法（見出し・リスト・テーブル・太字・コードブロック等）は一切使わないこと
-- 口語的で自然な話し言葉で返答すること
+- 口語的で自然な話し言葉で返答すること。書き言葉は避ける
 - 情報量より会話のテンポを重視すること
 - suggestedReplies は省略すること
+- 相槌や感情表現を適度に入れること（「うんうん」「なるほど！」「えー、そうなんだ」など）
+- ユーザーの入力は音声認識（STT）による可能性が高い。誤変換や文法の乱れは自然に補完して理解すること
+- 数字やURLの読み上げは避ける（「3つ」→「みっつ」、URLは省略）
+${userMood && userMood !== 'neutral' ? `
+ユーザーの声の調子: ${userMood}
+- calm（穏やか）: 落ち着いたトーンで寄り添う
+- excited（興奮）: 一緒に盛り上がる、テンション高めに
+- low（落ち込み）: 優しく気遣い、無理に明るくしない
+- tense（緊張）: リラックスさせるよう穏やかに対応` : ''}
 </voice_mode>`
     })
     console.log('[LLM] 音声会話モード: 短い応答を指示')

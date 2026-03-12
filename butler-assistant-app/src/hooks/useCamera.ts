@@ -3,6 +3,9 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 /** カメラの状態 */
 export type CameraStatus = 'inactive' | 'starting' | 'active' | 'error'
 
+/** カメラの向き */
+export type FacingMode = 'user' | 'environment'
+
 /** useCamera の戻り値 */
 export interface UseCameraResult {
   /** video 要素にバインドする ref */
@@ -14,9 +17,15 @@ export interface UseCameraResult {
   /** 現在のフレームを JPEG base64 でキャプチャ（data: プレフィックスなし） */
   captureFrame: () => string | null
   /** カメラを開始 */
-  start: () => Promise<void>
+  start: (facing?: FacingMode) => Promise<void>
   /** カメラを停止 */
   stop: () => void
+  /** 前面/背面を切り替える */
+  toggleFacing: () => Promise<void>
+  /** 現在のカメラの向き */
+  facingMode: FacingMode
+  /** 複数カメラが利用可能か */
+  hasMultipleCameras: boolean
 }
 
 /** キャプチャ画像の最大幅（トークンコスト抑制） */
@@ -33,6 +42,9 @@ export function useCamera(): UseCameraResult {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [status, setStatus] = useState<CameraStatus>('inactive')
   const [error, setError] = useState<string | null>(null)
+  const [facingMode, setFacingMode] = useState<FacingMode>('environment')
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false)
+  const facingModeRef = useRef<FacingMode>('environment')
 
   /** カメラストリームを停止 */
   const stop = useCallback(() => {
@@ -48,7 +60,7 @@ export function useCamera(): UseCameraResult {
   }, [])
 
   /** カメラストリームを開始 */
-  const start = useCallback(async () => {
+  const start = useCallback(async (facing?: FacingMode) => {
     // ブラウザ対応チェック
     if (!navigator.mediaDevices?.getUserMedia) {
       setError('このブラウザはカメラに対応していません')
@@ -56,6 +68,7 @@ export function useCamera(): UseCameraResult {
       return
     }
 
+    const targetFacing = facing ?? facingModeRef.current
     setStatus('starting')
     setError(null)
 
@@ -67,11 +80,22 @@ export function useCamera(): UseCameraResult {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: targetFacing, width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       })
 
       streamRef.current = stream
+      facingModeRef.current = targetFacing
+      setFacingMode(targetFacing)
+
+      // 複数カメラの検出
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const videoDevices = devices.filter((d) => d.kind === 'videoinput')
+        setHasMultipleCameras(videoDevices.length > 1)
+      } catch {
+        // enumerateDevices 未対応でも続行
+      }
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream
@@ -118,6 +142,12 @@ export function useCamera(): UseCameraResult {
     }
   }, [])
 
+  /** 前面/背面カメラを切り替える */
+  const toggleFacing = useCallback(async () => {
+    const next: FacingMode = facingModeRef.current === 'user' ? 'environment' : 'user'
+    await start(next)
+  }, [start])
+
   /** 現在のフレームをキャプチャし JPEG base64 を返す */
   const captureFrame = useCallback((): string | null => {
     const video = videoRef.current
@@ -153,5 +183,5 @@ export function useCamera(): UseCameraResult {
     }
   }, [])
 
-  return { videoRef, status, error, captureFrame, start, stop }
+  return { videoRef, status, error, captureFrame, start, stop, toggleFacing, facingMode, hasMultipleCameras }
 }

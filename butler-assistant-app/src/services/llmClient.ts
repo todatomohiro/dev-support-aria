@@ -216,7 +216,7 @@ class LLMClientImpl implements LLMClientService {
   /**
    * Lambda /llm/chat を経由して Bedrock Claude にメッセージを送信
    */
-  async sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey, debug?: boolean, streaming?: boolean, lastBriefingContext?: string, voiceMode?: boolean): Promise<StructuredResponse> {
+  async sendMessage(message: string, sessionId: string, imageBase64?: string, themeId?: string, userLocation?: UserLocation, modelKey?: ModelKey, debug?: boolean, streaming?: boolean, lastBriefingContext?: string, voiceMode?: boolean, userMood?: string): Promise<StructuredResponse> {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     const accessToken = await getIdToken()
 
@@ -247,6 +247,7 @@ class LLMClientImpl implements LLMClientService {
           ...(streaming ? { streaming: true } : {}),
           ...(lastBriefingContext ? { lastBriefingContext } : {}),
           ...(voiceMode ? { voiceMode: true } : {}),
+          ...(userMood ? { userMood } : {}),
         }),
       })
 

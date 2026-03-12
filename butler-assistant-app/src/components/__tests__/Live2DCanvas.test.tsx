@@ -193,17 +193,17 @@ describe('Live2DCanvas', () => {
 
       await act(() => Promise.resolve())
 
-      // smile モーション（group: '', index: 1）
+      // happy モーション（group: '', index: 0）
       rerender(
         <Live2DCanvas
           modelPath="/models/test.model3.json"
-          currentMotion="smile"
+          currentMotion="happy"
         />
       )
 
       await act(() => Promise.resolve())
 
-      expect(mockStartMotion).toHaveBeenCalledWith('', 1)
+      expect(mockStartMotion).toHaveBeenCalledWith('', 0)
     })
 
     it('未定義モーションはデフォルト(Idle)にフォールバックする', async () => {

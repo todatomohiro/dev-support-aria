@@ -5,6 +5,29 @@ import type { Message, AppConfig, AppError, UserLocation } from '@/types'
 import { DEFAULT_UI_CONFIG, DEFAULT_USER_PROFILE } from '@/types'
 import { MAX_MESSAGE_HISTORY } from '@/utils/performance'
 
+/** 画像の保持期間（1日 = 24時間） */
+const IMAGE_EXPIRY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * メッセージ配列から期限切れの画像を除去する
+ *
+ * imageBase64 が含まれるメッセージのうち、timestamp が IMAGE_EXPIRY_MS より古いものは
+ * imageBase64 を undefined に置き換える。テキストはそのまま保持。
+ */
+function stripExpiredImages(messages: Message[]): Message[] {
+  const cutoff = Date.now() - IMAGE_EXPIRY_MS
+  let changed = false
+  const result = messages.map((msg) => {
+    if (msg.imageBase64 && msg.timestamp < cutoff) {
+      changed = true
+      const { imageBase64: _, ...rest } = msg
+      return rest
+    }
+    return msg
+  })
+  return changed ? result : messages
+}
+
 /**
  * グローバルアプリケーション状態
  */
@@ -78,6 +101,7 @@ export interface AppState {
   setLastBriefingContext: (context: string | null) => void
   clearMessages: () => void
   resetSession: () => void
+  removeMessageImage: (messageId: string) => void
 }
 
 /**
@@ -132,6 +156,16 @@ export const useAppStore = create<AppState>()(
       clearMessages: () => set({ messages: [], messagesCursor: null, hasEarlierMessages: false, sessionId: uuidv4() }),
 
       resetSession: () => set({ sessionId: uuidv4() }),
+
+      // 指定メッセージの画像を削除
+      removeMessageImage: (messageId: string) =>
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === messageId && msg.imageBase64
+              ? (() => { const { imageBase64: _, ...rest } = msg; return rest })()
+              : msg
+          ),
+        })),
 
       // 過去メッセージを先頭に追加（重複排除）
       prependMessages: (newMessages: Message[]) =>
@@ -218,6 +252,15 @@ export const useAppStore = create<AppState>()(
         activeModelMeta: state.activeModelMeta,
         // messagesCursor, hasEarlierMessages, isLoadingEarlier は永続化不要（毎回サーバーから取得）
       }),
+      // localStorage から復元時に期限切れ画像（1日超）を除去
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          const cleaned = stripExpiredImages(state.messages)
+          if (cleaned !== state.messages) {
+            state.messages = cleaned
+          }
+        }
+      },
     }
   )
 )

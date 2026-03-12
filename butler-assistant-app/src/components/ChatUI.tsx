@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Message } from '@/types'
+import { useAppStore } from '@/stores'
 import { ttsService } from '@/services/ttsService'
 import { memoService } from '@/services/memoService'
 import { formatRelativeTimestamp } from '@/utils'
@@ -1008,12 +1009,24 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
       >
         <div className="max-w-[85%] sm:max-w-[70%] rounded-lg p-2 sm:p-3 bg-blue-600 text-white">
           {message.imageBase64 && (
-            <img
-              src={`data:image/jpeg;base64,${message.imageBase64}`}
-              alt="送信画像"
-              className="max-w-[240px] max-h-[180px] rounded-md mb-1.5 object-cover"
-              data-testid="message-image"
-            />
+            <div className="relative group/img mb-1.5 inline-block">
+              <img
+                src={`data:image/jpeg;base64,${message.imageBase64}`}
+                alt="送信画像"
+                className="max-w-[240px] max-h-[180px] rounded-md object-cover"
+                data-testid="message-image"
+              />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  useAppStore.getState().removeMessageImage(message.id)
+                }}
+                className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white/80 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs"
+                title="画像を削除"
+              >
+                x
+              </button>
+            </div>
           )}
           <p className="whitespace-pre-wrap">{linkifyContent(message.content, true)}</p>
           <div className="flex items-center justify-end mt-1">

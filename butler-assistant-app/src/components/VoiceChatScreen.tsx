@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useAppStore } from '@/stores'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+import { useCamera } from '@/hooks/useCamera'
 import { chatController } from '@/services/chatController'
 import { aivisTtsService } from '@/services/aivisTtsService'
 import { webSpeechTtsService } from '@/services/webSpeechTtsService'
@@ -12,14 +13,27 @@ import type { Live2DCanvasHandle } from '@/components/Live2DCanvas'
 /** TTS プロバイダー種別 */
 type TtsProvider = 'webSpeech' | 'aivis'
 
+/** STT 言語オプション */
+interface SttLangOption {
+  code: string
+  label: string
+}
+
+const STT_LANGUAGES: readonly SttLangOption[] = [
+  { code: 'ja-JP', label: '日本語' },
+  { code: 'en-US', label: 'English' },
+  { code: 'zh-CN', label: '中文' },
+  { code: 'ko-KR', label: '한국어' },
+]
+
 /** TTS サービスの共通インターフェース */
 interface StreamingTtsService {
   readonly isSpeaking: boolean
   unlockAudio(): Promise<void>
   setVolumeCallback(cb: ((volume: number) => void) | null): void
-  startStreamingTts(getStreamingText: () => string): Promise<void>
-  finishStreamingTts(finalText: string): Promise<void>
-  synthesizeAndPlay(text: string): Promise<void>
+  startStreamingTts(getStreamingText: () => string, emotion?: string): Promise<void>
+  finishStreamingTts(finalText: string, emotion?: string): Promise<void>
+  synthesizeAndPlay(text: string, emotion?: string): Promise<void>
   stop(): void
 }
 
@@ -33,8 +47,8 @@ interface VoiceTurn {
 
 type VoiceState = 'connecting' | 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
 
-/** 応答待ちタイムアウト（60秒） */
-const THINKING_TIMEOUT_MS = 60_000
+/** 応答待ちタイムアウト（30秒 — 音声会話では短めに） */
+const THINKING_TIMEOUT_MS = 30_000
 
 /**
  * マイAi-Ba(α) — 音声会話画面
@@ -52,11 +66,25 @@ export function VoiceChatScreen() {
   const [turns, setTurns] = useState<VoiceTurn[]>([])
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [isMuted, setIsMuted] = useState(false)
-  const [currentEmotion] = useState('neutral')
+  const [currentEmotion, setCurrentEmotion] = useState('neutral')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const live2dRef = useRef<Live2DCanvasHandle>(null)
   const [ttsProvider, setTtsProvider] = useState<TtsProvider>('webSpeech')
+  const [sttLang, setSttLang] = useState('ja-JP')
+  const [cameraEnabled, setCameraEnabled] = useState(false)
+
+  // カメラ
+  const {
+    videoRef: cameraVideoRef,
+    status: cameraStatus,
+    captureFrame,
+    start: startCamera,
+    stop: stopCamera,
+    toggleFacing,
+    facingMode: cameraFacing,
+    hasMultipleCameras,
+  } = useCamera()
 
   /** 現在の TTS プロバイダーに対応するサービスを返す */
   const ttsProviderRef = useRef<TtsProvider>('webSpeech')
@@ -90,6 +118,7 @@ export function VoiceChatScreen() {
       setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000))
     }, 1000)
     const connectTimer = setTimeout(() => updateVoiceState('idle'), 800)
+
     return () => {
       clearInterval(timerRef.current)
       clearTimeout(connectTimer)
@@ -129,25 +158,35 @@ export function VoiceChatScreen() {
    * ストリーミング TTS が既に開始されている場合は finishStreamingTts で残りを flush。
    * 開始されていない場合は一括モードで再生。
    */
-  const playTts = useCallback((text: string) => {
+  const playTts = useCallback((text: string, emotion?: string) => {
     const svc = getTtsService()
-    console.log('[VoiceChat] TTS 応答確定:', text.slice(0, 30) + '...')
+    console.log('[VoiceChat] TTS 応答確定:', text.slice(0, 30) + '...', emotion ? `emotion=${emotion}` : '')
     updateVoiceState('speaking')
 
     if (streamingTtsStartedRef.current) {
       // ストリーミング TTS 実行中 → 残りテキストを flush して完了を待つ
       console.log('[VoiceChat] ストリーミング TTS の残りを flush')
       streamingTtsStartedRef.current = false
-      svc.finishStreamingTts(text)
+      svc.finishStreamingTts(text, emotion)
         .catch((e) => {
-          console.warn('[VoiceChat] ストリーミング TTS flush 失敗:', e)
+          // not-allowed 等でストリーミング TTS 失敗 → Polly にフォールバック
+          console.warn('[VoiceChat] ストリーミング TTS flush 失敗、Polly にフォールバック:', e.message)
+          return ttsService.synthesizeAndPlay(text)
         })
-      // processAudioQueue の完了で idle に戻る（startStreamingTts の Promise 経由）
+        .catch((e) => {
+          console.warn('[VoiceChat] TTS すべて失敗:', e)
+        })
+        .finally(() => {
+          if (!isEndingRef.current) {
+            console.log('[VoiceChat] TTS 完了 → idle')
+            updateVoiceState('idle')
+          }
+        })
       return
     }
 
     // ストリーミング TTS 未開始 → 一括モードで再生（選択プロバイダー → Polly フォールバック）
-    svc.synthesizeAndPlay(text)
+    svc.synthesizeAndPlay(text, emotion)
       .catch((e) => {
         console.warn('[VoiceChat] TTS 失敗、Polly にフォールバック:', e.message)
         return ttsService.synthesizeAndPlay(text)
@@ -211,14 +250,25 @@ export function VoiceChatScreen() {
         // chatController の TTS を止める（二重再生防止）
         ttsService.stop()
 
+        // rawResponse から emotion を抽出
+        let emotion = 'neutral'
+        if (lastMsg.rawResponse) {
+          try {
+            const parsed = JSON.parse(lastMsg.rawResponse)
+            if (parsed.emotion) emotion = parsed.emotion
+          } catch { /* ignore */ }
+        }
+        setCurrentEmotion(emotion)
+
         setErrorMessage(null)
         setTurns((prev) => [...prev, {
           role: 'assistant',
           text: lastMsg.content,
           timestamp: Date.now(),
+          emotion,
         }])
 
-        playTts(lastMsg.content)
+        playTts(lastMsg.content, emotion)
       } else if (lastMsg.role === 'user') {
         // ユーザーメッセージは無視（handleSpeechResult で既に追加済み）
       }
@@ -227,14 +277,22 @@ export function VoiceChatScreen() {
     return () => { unsubscribe() }
   }, [playTts])
 
-  // STT 確定テキストのハンドラー
+  // STT 確定テキストのハンドラー（バージイン対応）
   const handleSpeechResult = useCallback((text: string) => {
     if (!text.trim() || isMuted) return
 
     const current = voiceStateRef.current
-    if (current === 'thinking' || current === 'speaking') {
-      console.log('[VoiceChat] thinking/speaking 中のため入力を無視:', text.trim())
+    if (current === 'thinking') {
+      console.log('[VoiceChat] thinking 中のため入力を無視:', text.trim())
       return
+    }
+
+    // バージイン: speaking 中にユーザーが話し始めたら TTS を停止して新しい入力を受け付ける
+    if (current === 'speaking') {
+      console.log('[VoiceChat] バージイン: speaking 中に新しい入力を検出 → TTS 停止')
+      getTtsService().stop()
+      ttsService.stop()
+      streamingTtsStartedRef.current = false
     }
 
     console.log('[VoiceChat] 音声入力確定:', text.trim())
@@ -260,7 +318,13 @@ export function VoiceChatScreen() {
       }
     }, THINKING_TIMEOUT_MS)
 
-    chatController.sendMessage(text.trim(), undefined, true).catch((error) => {
+    // カメラ ON 時はフレームをキャプチャして画像を添付
+    const imageBase64 = cameraEnabled && cameraStatus === 'active' ? captureFrame() : null
+    if (imageBase64) {
+      console.log(`[VoiceChat] カメラ画像キャプチャ (${Math.round(imageBase64.length / 1024)}KB)`)
+    }
+
+    chatController.sendMessage(text.trim(), imageBase64 ?? undefined, true).catch((error) => {
       console.error('[VoiceChat] sendMessage エラー:', error)
       if (thinkingTimerRef.current) {
         clearTimeout(thinkingTimerRef.current)
@@ -269,14 +333,14 @@ export function VoiceChatScreen() {
       setErrorMessage('送信に失敗しました。もう一度お試しください。')
       updateVoiceState('idle')
     })
-  }, [isMuted, updateVoiceState])
+  }, [isMuted, updateVoiceState, cameraEnabled, cameraStatus, captureFrame])
 
   const {
     status: sttStatus,
     interimText,
     toggleListening,
   } = useSpeechRecognition({
-    lang: 'ja-JP',
+    lang: sttLang,
     continuous: true,
     onResult: handleSpeechResult,
   })
@@ -300,9 +364,10 @@ export function VoiceChatScreen() {
     }
   }, [voiceState, sttStatus, isMuted, toggleListening])
 
-  // thinking/speaking 中はSTTを停止して重複送信を防止
+  // thinking 中はSTTを停止して重複送信を防止
+  // speaking 中はバージインのためSTTを維持する
   useEffect(() => {
-    if ((voiceState === 'thinking' || voiceState === 'speaking') && sttStatus === 'listening') {
+    if (voiceState === 'thinking' && sttStatus === 'listening') {
       toggleListening()
     }
   }, [voiceState, sttStatus, toggleListening])
@@ -324,6 +389,7 @@ export function VoiceChatScreen() {
     webSpeechTtsService.stop()
     aivisTtsService.stop()
     ttsService.stop()
+    stopCamera()
     if (sttStatus === 'listening') {
       toggleListening()
     }
@@ -332,7 +398,7 @@ export function VoiceChatScreen() {
     }
     clearInterval(timerRef.current)
     navigate('/aiba-alpha/summary', { state: { turns, elapsedSeconds } })
-  }, [navigate, turns, elapsedSeconds, sttStatus, toggleListening])
+  }, [navigate, turns, elapsedSeconds, sttStatus, toggleListening, stopCamera])
 
   /** タイマー表示 */
   const formatTime = (seconds: number) => {
@@ -368,6 +434,24 @@ export function VoiceChatScreen() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {/* STT 言語切替 */}
+          <button
+            onClick={() => {
+              const currentIdx = STT_LANGUAGES.findIndex((l) => l.code === sttLang)
+              const nextIdx = (currentIdx + 1) % STT_LANGUAGES.length
+              const nextLang = STT_LANGUAGES[nextIdx]
+              // STT を一旦停止して言語を変更
+              if (sttStatus === 'listening') {
+                toggleListening()
+              }
+              setSttLang(nextLang.code)
+              console.log(`[VoiceChat] STT 言語変更: ${nextLang.label} (${nextLang.code})`)
+            }}
+            className="bg-white/10 backdrop-blur-sm rounded-full px-2.5 py-1 text-[10px] text-white/50 font-medium hover:bg-white/20 transition-colors"
+            title={`STT: ${STT_LANGUAGES.find((l) => l.code === sttLang)?.label}`}
+          >
+            {STT_LANGUAGES.find((l) => l.code === sttLang)?.label}
+          </button>
           {/* TTS 切替ボタン */}
           <button
             onClick={() => {
@@ -404,10 +488,52 @@ export function VoiceChatScreen() {
           className="absolute inset-0"
         />
 
+        {/* カメラ PiP プレビュー */}
+        {cameraEnabled && (
+          <div className="absolute top-2 right-3 w-[110px] h-[148px] rounded-2xl overflow-hidden shadow-lg border-2 border-white/15 z-20">
+            <video
+              ref={cameraVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`w-full h-full object-cover ${cameraFacing === 'user' ? 'scale-x-[-1]' : ''}`}
+            />
+            {/* カメラ状態インジケーター */}
+            {cameraStatus === 'active' && (
+              <div className="absolute top-1.5 left-1.5 flex items-center gap-1 bg-black/50 backdrop-blur-sm rounded-md px-1.5 py-0.5">
+                <div className="w-[5px] h-[5px] rounded-full bg-red-500 animate-pulse" />
+                <span className="text-[8px] text-white/70 font-semibold tracking-wider">
+                  {cameraFacing === 'user' ? '前面' : '背面'}
+                </span>
+              </div>
+            )}
+            {/* 前面/背面切替ボタン */}
+            {hasMultipleCameras && (
+              <button
+                onClick={toggleFacing}
+                className="absolute bottom-1.5 right-1.5 w-7 h-7 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center hover:bg-black/70 transition-colors"
+                title="カメラ切替"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            )}
+            {/* ローディング */}
+            {cameraStatus === 'starting' && (
+              <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 感情バッジ */}
         {currentEmotion !== 'neutral' && (
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-indigo-500/20 backdrop-blur-sm rounded-full px-3 py-1 text-xs text-white/60 font-medium z-10">
-            {currentEmotion}
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
+            <div className="bg-indigo-500/20 backdrop-blur-sm rounded-full px-3 py-1 text-xs text-white/60 font-medium">
+              {currentEmotion}
+            </div>
           </div>
         )}
       </div>
@@ -464,6 +590,32 @@ export function VoiceChatScreen() {
           )}
         </button>
 
+        {/* カメラ ON/OFF */}
+        <button
+          onClick={() => {
+            if (cameraEnabled) {
+              stopCamera()
+              setCameraEnabled(false)
+            } else {
+              setCameraEnabled(true)
+              startCamera().catch((e) => {
+                console.warn('[VoiceChat] カメラ起動失敗:', e)
+                setCameraEnabled(false)
+              })
+            }
+          }}
+          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+            cameraEnabled
+              ? 'bg-blue-500/30 text-blue-300 border border-blue-500/40'
+              : 'bg-white/10 text-white hover:bg-white/20'
+          }`}
+          title={cameraEnabled ? 'カメラOFF' : 'カメラON'}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+
         {/* メインマイクボタン */}
         <div className="relative">
           {/* AI発話中インジケーター */}
@@ -484,6 +636,9 @@ export function VoiceChatScreen() {
           )}
           <button
             onClick={() => {
+              // ユーザージェスチャーコンテキストで TTS をアンロック
+              webSpeechTtsService.unlockAudio()
+              aivisTtsService.unlockAudio()
               if (voiceState === 'idle' || voiceState === 'listening') {
                 toggleListening()
               }

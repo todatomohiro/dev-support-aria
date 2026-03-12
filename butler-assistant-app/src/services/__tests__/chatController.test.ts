@@ -133,6 +133,8 @@ describe('ChatController', () => {
         undefined,
         false,
         undefined,
+        undefined,
+        undefined,
         undefined
       )
 
@@ -160,6 +162,8 @@ describe('ChatController', () => {
         undefined,
         false,
         undefined,
+        undefined,
+        undefined,
         undefined
       )
     })
@@ -182,6 +186,8 @@ describe('ChatController', () => {
         undefined,
         undefined,
         false,
+        undefined,
+        undefined,
         undefined,
         undefined
       )
@@ -327,8 +333,8 @@ describe('ChatController', () => {
 
       await chatController.sendMessage('テスト')
 
-      expect(mockMotionController.playMotion).toHaveBeenCalledWith('bow')
-      expect(useAppStore.getState().currentMotion).toBe('bow')
+      expect(mockMotionController.playMotion).toHaveBeenCalledWith('troubled')
+      expect(useAppStore.getState().currentMotion).toBe('troubled')
     })
 
     it('RateLimitError時に適切なモーションが再生される', async () => {
@@ -336,7 +342,7 @@ describe('ChatController', () => {
 
       await chatController.sendMessage('テスト')
 
-      expect(mockMotionController.playMotion).toHaveBeenCalledWith('nervous')
+      expect(mockMotionController.playMotion).toHaveBeenCalledWith('sad')
     })
 
     it('APIError時に適切なモーションが再生される', async () => {
@@ -344,7 +350,7 @@ describe('ChatController', () => {
 
       await chatController.sendMessage('テスト')
 
-      expect(mockMotionController.playMotion).toHaveBeenCalledWith('bow')
+      expect(mockMotionController.playMotion).toHaveBeenCalledWith('troubled')
     })
 
     it('ParseError時に適切なモーションが再生される', async () => {
@@ -352,7 +358,7 @@ describe('ChatController', () => {
 
       await chatController.sendMessage('テスト')
 
-      expect(mockMotionController.playMotion).toHaveBeenCalledWith('confused')
+      expect(mockMotionController.playMotion).toHaveBeenCalledWith('surprised')
     })
 
     it('エラー時にエラーメッセージがアシスタントメッセージとして追加される', async () => {
