@@ -487,6 +487,7 @@ const PLAN_COMPARISON = [
   { feature: '月間利用回数', freeDetail: '300回', premiumDetail: '1,000回', platinumDetail: '無制限' },
   { feature: 'Premium モード月間', freeDetail: '—', premiumDetail: '60回', platinumDetail: '200回' },
   { feature: 'キャラクター', freeDetail: '2体+購入', premiumDetail: '標準全+購入', platinumDetail: '標準全+購入' },
+  { feature: '詳細な記憶', freeDetail: '2日間', premiumDetail: '5日間', platinumDetail: '7日間' },
   { feature: '音声品質', freeDetail: '電子', premiumDetail: '電子', platinumDetail: 'ナチュラル' },
 ] as const
 

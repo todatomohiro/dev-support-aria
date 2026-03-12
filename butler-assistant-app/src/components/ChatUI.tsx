@@ -372,6 +372,9 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
       onSendMessage(inputText.trim(), image)
       setInputText('')
       setSelectedImage(null)
+      // 送信後にスクロールを最下部へ移動し、入力欄にフォーカスを戻す
+      scrollToBottomImmediate()
+      requestAnimationFrame(() => textareaRef.current?.focus())
     }
   }
 

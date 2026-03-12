@@ -22,9 +22,10 @@ import {
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda'
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
-import { checkRateLimit, incrementUsage, buildRateLimitMessage } from './rateLimiter'
+import { checkRateLimit, incrementUsage, buildRateLimitMessage, getUserPlan } from './rateLimiter'
 import { executeSkill } from './skills'
-import { TOOL_DEFINITIONS, MEMO_TOOL_DEFINITIONS } from './skills/toolDefinitions'
+import { BASE_TOOL_DEFINITIONS, GOOGLE_TOOL_DEFINITIONS, MEMO_TOOL_DEFINITIONS } from './skills/toolDefinitions'
+import { getGoogleTokens } from './skills/tokenManager'
 import type { MCPToolDefinition } from '../mcp/mcpClient'
 
 const bedrock = new BedrockRuntimeClient({})
@@ -47,9 +48,9 @@ const MODEL_ID_MAP = CHAT_MODEL_ID_MAP
 
 /** モデルキーごとの推論設定 */
 const MODEL_INFERENCE_CONFIG: Record<string, { maxTokens: number; imageMaxTokens: number }> = {
-  haiku: { maxTokens: 2048, imageMaxTokens: 2048 },
-  sonnet: { maxTokens: 2048, imageMaxTokens: 4096 },
-  opus: { maxTokens: 4096, imageMaxTokens: 4096 },
+  haiku: { maxTokens: 1024, imageMaxTokens: 2048 },
+  sonnet: { maxTokens: 1536, imageMaxTokens: 2048 },
+  opus: { maxTokens: 2048, imageMaxTokens: 4096 },
 }
 /** サブカテゴリキー → 日本語ラベルのマッピング */
 const SUBCATEGORY_LABELS: Record<string, string> = {
@@ -550,9 +551,9 @@ function detectImageFormat(bytes: Buffer): 'jpeg' | 'png' | 'gif' | 'webp' {
 /** imageBase64 の最大サイズ（5MB = 約 6.67MB の base64 文字列） */
 const MAX_IMAGE_BASE64_LENGTH = Math.ceil(5 * 1024 * 1024 * 4 / 3)
 /** 要約を生成する間隔（ターン数） */
-const SUMMARY_INTERVAL = 5
+const SUMMARY_INTERVAL = 3
 /** セッションから取得する直近メッセージ数 */
-const RECENT_MESSAGES_LIMIT = 20
+const RECENT_MESSAGES_LIMIT = 10
 
 /**
  * AgentCore Memory からユーザーに関する記憶を検索（生レコード配列）
@@ -850,6 +851,18 @@ async function updateSessionAndMaybeSummarize(
 }
 
 /**
+ * アシスタントメッセージから JSON メタデータ（emotion, motion, mapData 等）を除去
+ * テキスト部分のみを残し、履歴のトークン消費を削減する
+ */
+function stripAssistantJsonMetadata(text: string): string {
+  // JSON オブジェクト開始位置を検出（LLM 出力は「テキスト + JSON」形式）
+  const jsonStart = text.search(/\{[\s]*"/)
+  if (jsonStart <= 0) return text
+  // JSON 部分を除去してテキスト部分のみ返す
+  return text.substring(0, jsonStart).trimEnd()
+}
+
+/**
  * フロントエンドの会話履歴を Converse API 形式に変換
  */
 function toConverseMessages(
@@ -859,7 +872,13 @@ function toConverseMessages(
 ): BedrockMessage[] {
   const messages: BedrockMessage[] = history.map((m) => {
     // タイムスタンプはユーザーメッセージにのみ付与（assistantに付けるとLLMが応答に含めてしまう）
-    const text = m.createdAt && m.role === 'user' ? `[${toJSTDateTimeString(m.createdAt)}] ${m.content}` : m.content
+    let text = m.content
+    if (m.role === 'user' && m.createdAt) {
+      text = `[${toJSTDateTimeString(m.createdAt)}] ${text}`
+    } else if (m.role === 'assistant') {
+      // A4: アシスタント履歴から JSON メタデータを除去してトークン節約
+      text = stripAssistantJsonMetadata(text)
+    }
     return {
       role: m.role as 'user' | 'assistant',
       content: [{ text }],
@@ -1338,9 +1357,17 @@ async function updateBriefingReaction(userId: string, briefingSK: string, reacti
 /**
  * DynamoDB から過去セッションの要約を取得し、日付ごとにグループ化（直近7日間）
  */
+/** プラン別の過去セッション参照日数 */
+const PLAN_SESSION_LOOKBACK_DAYS: Record<string, number> = {
+  free: 2,
+  paid: 5,
+  platinum: 7,
+}
+
 async function getRecentSessionSummaries(
   userId: string,
-  currentSessionId: string
+  currentSessionId: string,
+  lookbackDays = 7
 ): Promise<PastSessionGroup[]> {
   try {
     const result = await dynamo.send(new QueryCommand({
@@ -1353,7 +1380,7 @@ async function getRecentSessionSummaries(
     }))
 
     const now = new Date()
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const sevenDaysAgo = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000).toISOString()
     const todayKey = toJSTDateKey(now.toISOString())
     // 昨日の日付キーを計算
     const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
@@ -1713,6 +1740,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   let streaming = false
   let voiceMode = false
   let userMood: string | undefined
+  let hasGoogleOAuth = false
 
   try {
     const body = JSON.parse(event.body)
@@ -1878,13 +1906,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`[LLM] セッションモード: sessionId=${sessionId}${themeId ? `, themeId=${themeId}` : ''}`)
 
-    // テーマコンテキストとMCP接続を並列取得（themeId がある場合のみ）
-    const [themeCtx, mcpConnResult] = await Promise.all([
+    // テーマコンテキスト・MCP接続・Google OAuth を並列取得
+    const [themeCtx, mcpConnResult, googleTokens, userPlan] = await Promise.all([
       themeId ? getThemeContext(userId, themeId) : Promise.resolve(null),
       themeId ? getMCPConnection(userId, themeId) : Promise.resolve(null),
+      getGoogleTokens(userId),
+      getUserPlan(userId),
     ])
     themeContext = themeCtx
     mcpConn = mcpConnResult
+    hasGoogleOAuth = googleTokens !== null
+    const lookbackDays = PLAN_SESSION_LOOKBACK_DAYS[userPlan] ?? 7
 
     // お題ありトピックでは過去セッション要約・ブリーフィングコンテキストを除外
     // （会話の焦点がブレるのを防止。free / 未設定は従来通り継承）
@@ -1895,7 +1927,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       getSessionContext(userId, sessionId, { msgPK, sessionSK: sessionRecordSK }),
       isTopicWithCategory
         ? Promise.resolve([])
-        : getRecentSessionSummaries(userId, sessionId),
+        : getRecentSessionSummaries(userId, sessionId, lookbackDays),
     ])
     sessionTurnsSinceSummary = sessionContext.turnsSinceSummary
     sessionSummary = sessionContext.summary
@@ -1950,6 +1982,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       : toConverseMessages(sessionContext.recentMessages, message, imageBase64)
   } else {
     // 既存フロー: フロントエンドからの history をそのまま使用
+    // Google OAuth 接続チェック（条件付きツール注入用）
+    try {
+      const googleTokens = await getGoogleTokens(userId)
+      hasGoogleOAuth = googleTokens !== null
+    } catch {
+      hasGoogleOAuth = false
+    }
     system = buildSystemContentBlocks(
       staticPrompt,
       userStaticPrompt,
@@ -1997,10 +2036,12 @@ ${userMood && userMood !== 'neutral' ? `
 
     // 中期記憶 + 過去セッション要約を並列取得（ブリーフィングの「記憶クロスオーバー」用）
     // 2つの検索クエリで「話題系」と「感情・状況系」の記憶を幅広く取得
+    const briefingPlan = await getUserPlan(userId).catch(() => 'free' as const)
+    const briefingLookbackDays = PLAN_SESSION_LOOKBACK_DAYS[briefingPlan] ?? 7
     const [briefingMemoryTopics, briefingMemoryEmotions, briefingPastSessions, briefingSessionContext, todayBriefingLogs] = await Promise.all([
       retrieveMemoryRecords(userId, '最近の会話の話題や気になっていたこと').catch(() => []),
       retrieveMemoryRecords(userId, 'ユーザーが悩んでいたこと、楽しみにしていること、頑張っていること').catch(() => []),
-      sessionId ? getRecentSessionSummaries(userId, sessionId).catch(() => []) : Promise.resolve([]),
+      sessionId ? getRecentSessionSummaries(userId, sessionId, briefingLookbackDays).catch(() => []) : Promise.resolve([]),
       sessionId ? getSessionContext(userId, sessionId).catch(() => ({ summary: '', checkpoints: [], recentMessages: [], turnsSinceSummary: 0, totalTurns: 0, sessionCreatedAt: '' })) : Promise.resolve(null),
       getTodayBriefingLogs(userId),
     ])
@@ -2201,13 +2242,20 @@ ${briefingParts.join('\n\n')}
     console.log(`[Briefing] フェーズ: ${phaseLabel}(${phaseType}), 消化済み: ${isPhaseConsumed}, コンテキスト: ${briefingParts.length} 件（${memorySources.join(', ') || 'なし'}）`)
   }
 
-  // MCP ツールを動的注入（接続が有効な場合のみ）
-  const mcpTools = mcpConn && !mcpConn.isExpired
-    ? mcpConn.tools.map((t) => convertMCPToolToBedrock(t))
-    : []
-
-  const toolConfig: ToolConfiguration = {
-    tools: [...TOOL_DEFINITIONS, ...MEMO_TOOL_DEFINITIONS, ...mcpTools],
+  // ツール定義の条件付き組み立て
+  let toolConfig: ToolConfiguration | undefined
+  if (voiceMode) {
+    // 音声会話モード: ツールなし（レイテンシ優先）
+    toolConfig = undefined
+    console.log('[LLM] 音声モード: ツール定義を除外')
+  } else {
+    const mcpTools = mcpConn && !mcpConn.isExpired
+      ? mcpConn.tools.map((t) => convertMCPToolToBedrock(t))
+      : []
+    const googleTools = hasGoogleOAuth ? GOOGLE_TOOL_DEFINITIONS : []
+    const tools = [...BASE_TOOL_DEFINITIONS, ...googleTools, ...MEMO_TOOL_DEFINITIONS, ...mcpTools]
+    toolConfig = { tools }
+    console.log(`[LLM] ツール定義: ${tools.length} 個 (base:${BASE_TOOL_DEFINITIONS.length}, google:${googleTools.length}, memo:${MEMO_TOOL_DEFINITIONS.length}, mcp:${mcpTools.length})`)
   }
 
   try {

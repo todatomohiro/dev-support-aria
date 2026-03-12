@@ -18,8 +18,8 @@
 | バックエンド | AWS Lambda (Node.js 22) x 35関数 + API Gateway (REST + WebSocket) |
 | DB | DynamoDB（GSI×2、TTL、ポイントインタイム復旧） |
 | インフラ管理 | AWS CDK (TypeScript) |
-| マルチプラットフォーム | Web / Tauri 2（デスクトップ）/ Capacitor 8（iOS） |
-| テスト | Vitest + jsdom（793テスト / 52ファイル）+ fast-check（プロパティベーステスト） |
+| マルチプラットフォーム | Web / Capacitor 8（iOS） |
+| テスト | Vitest + jsdom（780テスト / 329スイート）+ fast-check（プロパティベーステスト） |
 
 ## 主要機能
 
@@ -49,7 +49,7 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 |----|--------|---------|------|
 | 永久記憶 | DynamoDB `PERMANENT_FACTS` | 無期限 | FACTS（客観的事実 最大40件）+ PREFERENCES（対話設定 最大15件）各50文字 |
 | 中期記憶 | Amazon Bedrock AgentCore Memory | 30日 | 会話トピック・コンテキスト（セマンティック検索） |
-| 短期記憶 | DynamoDB `SESSION#` + `MSG#` | 7日（TTL） | セッション内会話履歴・ローリング要約・チェックポイント |
+| 短期記憶 | DynamoDB `SESSION#` + `MSG#` | 7日（TTL） | 直近10件の会話履歴・3ターンごとのローリング要約・チェックポイント |
 
 #### 3-1. 永久記憶（Permanent Memory）
 
@@ -174,13 +174,13 @@ LLM がユーザーの意図に応じて自動的にツールを呼び出す:
 | テーマメッセージ | `PK=USER#{userId}#THEME#{themeId}`, `SK=MSG#{timestamp}#{role}` | 同上（テーマ別名前空間） |
 
 **ローリング要約** (`summarize.ts`):
-- **トリガー**: 5ターンごとに chat Lambda が非同期起動（`InvocationType: 'Event'`）
+- **トリガー**: 3ターンごとに chat Lambda が非同期起動（`InvocationType: 'Event'`）
 - **処理**: LLM（BACKGROUND_MODEL_ID）に「前回の要約 + 新しい会話」を送信 → 500文字以内の統合要約を生成
 - **セグメント要約**: 同時に当該区間のみのキーワード（2〜3個）+ 300文字以内の要約を生成 → チェックポイントとして保存
 - **セッションレコード更新**: `summary`, `turnsSinceSummary=0`, `lastSummarizedAt` を書き戻し
 
 **LLM への提供**:
-- 直近10メッセージ: `getSessionContext()` で `MSG#` をソートキー降順で取得 → Converse API の messages に含める
+- 直近10メッセージ: `getSessionContext()` で `MSG#` をソートキー降順で取得（`RECENT_MESSAGES_LIMIT=10`） → Converse API の messages に含める
 - ローリング要約: `<current_session_summary>` タグで動的コンテキストに含める
 - チェックポイント: `<session_checkpoints>` タグで時系列表示（`[MM/DD HH:MM キーワード] 要約`）
 
@@ -233,12 +233,12 @@ EventBridge rate(15 minutes) → sessionFinalizer Lambda
   4. DynamoDB GLOBAL_MODEL#{modelId} → ModelMeta
 
 逐次取得:
-  5. getSessionContext（セッション要約 + 直近10メッセージ + チェックポイント）
+  5. getSessionContext（セッション要約 + 直近10メッセージ（RECENT_MESSAGES_LIMIT=10） + チェックポイント）
   6. getRecentSessionSummaries（過去7日のセッション要約）
 
 レスポンス後の非同期処理:
   - メッセージ保存（DynamoDB MSG#）
-  - ターンカウント更新 → 5ターンで要約 Lambda 非同期起動
+  - ターンカウント更新 → 3ターンで要約 Lambda 非同期起動
   - ACTIVE_SESSION upsert
   - フロントエンドから fire-and-forget: POST /memory/events（AgentCore Memory 書き込み）
 ```
@@ -268,7 +268,12 @@ EventBridge rate(15 minutes) → sessionFinalizer Lambda
 - ストリーミング TTS: LLM 応答のストリーミング中に文単位で先行音声合成・再生
 - リップシンク: TTS 音量コールバック → Live2D 口パラメーター連動
 - iOS Safari 対応: AudioContext アンロック + ユーザージェスチャー要件
-- フルスクリーンダークテーマ UI（VoiceChatScreen）
+- フルスクリーンダークテーマ UI（VoiceChatScreen）+ ParticleBackground エフェクト
+- **ターンインジケーター**: AI ターン時はキャラクター周囲に紫グロー、ユーザーターン時はマイク周囲に青グロー
+- **統合マイクボタン**: ミュート/STT 切替を1ボタンに統合
+- **Live2D 表情連動**: emotion バッジに応じて emotionMapping から表情を動的反映
+- **ガイドメッセージ**: ユーザーターン時に「{AI名}に話しかけられます」を表示
+- 会話終了サマリー画面（VoiceChatSummary）: タブバー + コンテンツセンタリング
 
 ### 8. Bedrock Guardrails コンテンツモデレーション
 - 有害コンテンツ（暴力・誹謗中傷・犯罪助長・性的・プロンプトインジェクション）をブロック
@@ -579,7 +584,16 @@ useWeatherIcon hook
   → Live2D キャンバス左上に SVG アイコン + 気温表示
 ```
 
-### 11. セキュリティ設計
+### 11. トークン最適化
+- **maxTokens 削減**: haiku:1024, sonnet:1536, opus:2048（画像時は2倍）
+- **条件付きツール注入**: Google OAuth 未接続ユーザーにはカレンダー/タスクツール（5個）を注入しない
+- **voiceMode ツール除外**: 音声会話モード時はツール定義をすべて除外（レイテンシ優先）
+- **会話履歴 JSON 除去**: アシスタント履歴から emotion/motion/mapData 等の JSON メタデータを除去
+- **履歴ウィンドウ**: 直近10件（`RECENT_MESSAGES_LIMIT=10`）
+- **要約間隔**: 3ターンごと（`SUMMARY_INTERVAL=3`）
+- **開発者モードトークン表示**: チャット画面でメッセージごとの Input/Output/Cache Read/Cache Write トークン数を表示
+
+### 12. セキュリティ設計
 - システムプロンプトはバックエンド（Lambda）で完全生成。フロントエンドに漏洩しない
 - API キーは SSM Parameter Store で管理
 - Prompt Caching（cachePoint 2箇所）でコスト最適化
@@ -589,9 +603,9 @@ useWeatherIcon hook
 
 ```
 butler-assistant-app/     ← メインアプリ（React + Vite）
-├── コンポーネント 38個 / サービス 23個 / フック 11個 / ストア 3個
-├── プラットフォーム抽象化（Web / Tauri / Capacitor）
-├── Live2D レンダリング + フェイストラッキング（MediaPipe + Kalidokit）
+├── コンポーネント 39個 / サービス 25個 / フック 12個 / ストア 3個
+├── プラットフォーム抽象化（Web / Capacitor）
+├── Live2D レンダリング + ParticleBackground エフェクト
 └── PoC（音声認識、GPS、感情分析、フェイストラッキング、ターミナル等）
 
 butler-admin-app/         ← 管理画面（React + Cognito TOTP MFA）
@@ -600,7 +614,7 @@ butler-admin-app/         ← 管理画面（React + Cognito TOTP MFA）
 └── CloudFront + S3 ホスティング
 
 infra/                    ← AWS インフラ（CDK）
-├── Lambda 35+関数（LLM, スキル, テーマ, 会話, フレンド, グループ, 管理等）、20ディレクトリ
+├── Lambda 35+関数（LLM, スキル, テーマ, 会話, フレンド, グループ, 管理等）、21ディレクトリ
 ├── DynamoDB / Cognito / API Gateway / EventBridge / AgentCore Memory / Bedrock Guardrails
 └── CloudFront + S3（管理画面 + モデル CDN）
 
@@ -616,7 +630,7 @@ aiba-extension/           ← Chrome 拡張機能（Manifest V3）
 butler-assistant-app/          # フロントエンド（React + Vite + TypeScript）
 ├── src/
 │   ├── auth/               # 認証（Cognito + AWS Amplify）
-│   ├── components/         # React コンポーネント 38個（PascalCase.tsx）
+│   ├── components/         # React コンポーネント 39個（PascalCase.tsx）
 │   │   ├── ChatUI.tsx          # メインチャットUI
 │   │   ├── ThemeChat.tsx       # トピック別チャット
 │   │   ├── GroupChat.tsx       # グループチャット
@@ -634,8 +648,9 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── WorkBadge.tsx       # MCP接続バッジ
 │   │   ├── WorkConnectModal.tsx # MCP接続モーダル
 │   │   ├── WeatherOverlay.tsx  # 天気アイコン+気温オーバーレイ
+│   │   ├── ParticleBackground.tsx # オーロラ+パーティクルエフェクト
 │   │   └── ...                 # モーダル、ナビゲーション等
-│   ├── hooks/              # カスタムフック 11個
+│   ├── hooks/              # カスタムフック 12個
 │   │   ├── useSpeechRecognition.ts  # 音声認識（Web Speech API）
 │   │   ├── useVAD.ts               # Voice Activity Detection
 │   │   ├── useCamera.ts            # カメラ制御
@@ -646,8 +661,9 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── useQRScanner.ts         # QR コード読み込み
 │   │   ├── useBriefing.ts          # プロアクティブ・ブリーフィング
 │   │   ├── useWeatherIcon.ts       # 天気アイコン表示（Open-Meteo API）
-│   │   └── useActivityLogger.ts    # アクティビティログ
-│   ├── services/           # ビジネスロジック 23個（camelCase.ts、index.ts 除く）
+│   │   ├── useActivityLogger.ts    # アクティビティログ
+│   │   └── useVoiceEmotion.ts     # 音声感情検出
+│   ├── services/           # ビジネスロジック 25個（camelCase.ts）
 │   │   ├── llmClient.ts        # LLM (Bedrock Claude) 通信
 │   │   ├── chatController.ts   # チャットコントローラー
 │   │   ├── responseParser.ts   # LLM レスポンスパーサー
@@ -670,18 +686,18 @@ butler-assistant-app/          # フロントエンド（React + Vite + TypeScri
 │   │   ├── skillClient.ts      # OAuth スキル接続
 │   │   ├── searchService.ts    # 検索サービス
 │   │   ├── greetingService.ts  # 挨拶生成
-│   │   └── sentimentService.ts # 感情分析
+│   │   ├── sentimentService.ts # 感情分析
+│   │   └── usageService.ts    # 使用量管理
 │   ├── stores/             # Zustand 状態管理 3個
 │   │   ├── appStore.ts         # メッセージ、モーション、設定、lastBriefingContext（persist有、ブリーフィングコンテキストは非永続）
 │   │   ├── themeStore.ts       # トピック一覧、アクティブトピック
 │   │   └── groupChatStore.ts   # フレンド、グループ、WS接続状態
 │   ├── types/              # 型定義 10ファイル（エラークラス、サービスIF等）
-│   ├── platform/           # プラットフォーム抽象化（Web / Tauri / Capacitor）
+│   ├── platform/           # プラットフォーム抽象化（Web / Capacitor）
 │   ├── lib/live2d/         # Live2D Cubism SDK ラッパー
 │   ├── utils/              # ユーティリティ（performance, dateFormat）
 │   └── poc/                # 実験・検証ページ（フェイストラッキング、GPS、STT、ターミナル等）
 ├── public/models/          # Live2D モデルファイル
-├── src-tauri/              # Tauri 2 デスクトップ設定（PTY サポート）
 └── ios/                    # Capacitor 8 iOS
 
 butler-admin-app/              # 管理画面（React + Cognito TOTP MFA）
@@ -705,8 +721,9 @@ infra/
     ├── llm/                # LLM チャット
     │   ├── chat.ts             # メインハンドラー（システムプロンプト生成・Prompt Caching・ブリーフィング・画像対応）
     │   ├── models.ts           # Bedrock モデル ID 一元管理（BACKGROUND_MODEL_ID, CHAT_MODEL_ID_MAP）
+    │   ├── rateLimiter.ts      # レートリミッター
     │   ├── skills/             # スキル実装 9ファイル
-    │   │   ├── toolDefinitions.ts  # ツール定義
+    │   │   ├── toolDefinitions.ts  # ツール定義（GOOGLE/BASE/MEMO に分割、条件付き注入）
     │   │   ├── index.ts            # スキルルーティング
     │   │   ├── googleCalendar.ts   # Googleカレンダー
     │   │   ├── googleTasks.ts      # Google Tasks（ToDo管理）
@@ -723,7 +740,8 @@ infra/
     ├── groups/             # グループ管理（create, addMember, leave, members）
     ├── conversations/      # グループチャット会話（list, messagesList, messagesSend, messagesPoll, messagesRead）
     ├── ws/                 # WebSocket（authorizer, connect, disconnect, default）
-    ├── mcp/                # MCP管理（connect, disconnect, status, registryManage, registryResolve, mcpClient）
+    ├── usage/              # 使用量管理
+    ├── mcp/                # MCP管理（connect, disconnect, status, registryManage）
     ├── skills/             # OAuth 管理（callback, connections, disconnect）
     ├── memory/             # 中期記憶イベント保存（AgentCore Memory）
     ├── memos/              # メモ管理（save, list, delete）
@@ -910,6 +928,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
    - DynamoDB GLOBAL_MODEL#{id}（モデルメタ: キャラ設定/感情/モーション）
 3. システムプロンプト構築（3ブロック + cachePoint 2箇所）
 4. セッションコンテキスト取得（要約 + 直近10メッセージ + チェックポイント）
+   ※ アシスタント履歴は JSON メタデータ除去済み（stripAssistantJsonMetadata）
 5. lastBriefingContext の注入（存在する場合のみ、<recent_briefing_context> タグ）
 6. Bedrock Converse API 呼び出し（Tool Use ループ、最大5回）
    ↓ stopReason === 'tool_use' の場合:
@@ -922,7 +941,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
    - 生成完了: WebSocket chat_complete でメタデータ付き完了通知
 8. 後処理:
    - メッセージ保存（DynamoDB MSG#）
-   - ターンカウント更新 → 5ターンで要約 Lambda 非同期起動
+   - ターンカウント更新 → 3ターンで要約 Lambda 非同期起動
    - ACTIVE_SESSION upsert（TTL: 24時間）
    - 新規トピック時の自動命名
 9. レスポンス返却（同期モード時）/ 完了（ストリーミングモード時）
@@ -935,8 +954,8 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 | モデル | モデルID（models.ts） | maxTokens | maxTokens(画像) | temperature |
 |--------|---------|-----------|----------------|-------------|
 | haiku（BACKGROUND_MODEL_ID） | `jp.anthropic.claude-haiku-4-5-20251001-v1:0` | 1024 | 2048 | 0.7 |
-| sonnet | `jp.anthropic.claude-sonnet-4-6` | 2048 | 4096 | 0.7 |
-| opus | `global.anthropic.claude-opus-4-6-v1` | 4096 | 4096 | 0.7 |
+| sonnet | `jp.anthropic.claude-sonnet-4-6` | 1536 | 2048 | 0.7 |
+| opus | `global.anthropic.claude-opus-4-6-v1` | 2048 | 4096 | 0.7 |
 
 バックグラウンド処理（要約・事実抽出）は `BACKGROUND_MODEL_ID` を使用。将来のモデル更新時は `models.ts` を変更するだけで全 Lambda に反映される。
 
@@ -1032,7 +1051,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 1. ~~**同期 HTTP 方式**~~: WebSocket ストリーミングで解決済み（chat_delta でリアルタイム表示）
 2. **Tool Use ループ**: ツール使用時は複数回の Bedrock 呼び出しが直列で発生し、待ち時間が増加
-3. **TTS の直列化**: LLM レスポンス受信後に TTS API を呼び出すため、音声再生開始がさらに遅れる
+3. ~~**TTS の直列化**~~: ストリーミング TTS で解決済み（文単位先行合成・再生）
 4. **JSON パース依存**: LLM が JSON 形式で応答する必要があり、パース失敗時はフォールバックで情報が欠落
 
 ## データフロー
@@ -1051,7 +1070,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
   → chat_delta → タイプライター表示
   → chat_complete → emotion 表情変更 / motion モーション再生 + TTS 音声再生（Polly / Aivis / Web Speech）
   → fire-and-forget: AgentCore Memory に中期記憶保存
-  → 5ターンごと: ローリング要約 Lambda 非同期起動
+  → 3ターンごと: ローリング要約 Lambda 非同期起動
   → 15分無操作: EventBridge → 永久事実自動抽出
 
 プロアクティブ・ブリーフィング（起動時/復帰時/30分ポーリング）:
@@ -1075,7 +1094,7 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 | DynamoDB | `butler-assistant`（PK/SK + GSI×2、ポイントインタイム復旧、TTL） |
 | Cognito | ユーザープール + SPA クライアント（SRP）+ 管理画面用（TOTP MFA） |
 | API Gateway | REST（Cognito 認可）+ WebSocket（JWT 認証） |
-| Lambda x 35+ | Node.js 22 / ARM_64（デフォルト 10秒、LLM: 90秒）、20ディレクトリ |
+| Lambda x 35+ | Node.js 22 / ARM_64（デフォルト 10秒、LLM: 90秒）、21ディレクトリ |
 | Bedrock Guardrails | コンテンツモデレーション（6カテゴリフィルタ） |
 | EventBridge | `rate(15 minutes)` → sessionFinalizer |
 | AgentCore Memory | 中期記憶（SEMANTIC + USER_PREFERENCE） |
@@ -1086,16 +1105,16 @@ aiba-extension/            # Chrome 拡張機能（Manifest V3）
 
 | 項目 | 数量 |
 |------|------|
-| フロントエンド コンポーネント | 38個 |
-| カスタムフック | 11個 |
-| サービス | 23個 |
+| フロントエンド コンポーネント | 39個 |
+| カスタムフック | 12個 |
+| サービス | 25個 |
 | Zustand ストア | 3個 |
-| Lambda 関数 | 35+個（20ディレクトリ） |
+| Lambda 関数 | 35+個（21ディレクトリ） |
 | LLM スキル | 9種（カレンダー×2、Tasks×3、場所検索、Web検索、天気、メモ×4） |
-| テスト | 793テスト / 52ファイル |
+| テスト | 780テスト / 329スイート |
 | 管理画面 コンポーネント | 18個 |
 | Chrome 拡張 | 10ファイル |
 | 型定義ファイル | 10個 |
-| 対応プラットフォーム | 3種（Web / Tauri / Capacitor iOS） |
+| 対応プラットフォーム | 2種（Web / Capacitor iOS） |
 
 
