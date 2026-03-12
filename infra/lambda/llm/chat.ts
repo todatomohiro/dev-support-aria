@@ -967,6 +967,7 @@ async function streamConverseIteration(
   stopReason: string
   toolUseBlocks: Array<{ toolUseId: string; name: string; input: Record<string, unknown> }>
   assistantContentBlocks: ContentBlock[]
+  tokenUsage?: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadInputTokens?: number; cacheWriteInputTokens?: number }
 }> {
   const result = await bedrock.send(new ConverseStreamCommand({
     modelId: resolvedModelId,
@@ -989,12 +990,24 @@ async function streamConverseIteration(
   const toolUseBlocks: Array<{ toolUseId: string; name: string; input: Record<string, unknown> }> = []
   let currentToolUse: { toolUseId: string; name: string; inputJson: string } | null = null
   const assistantContentBlocks: ContentBlock[] = []
+  let tokenUsage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadInputTokens?: number; cacheWriteInputTokens?: number } | undefined
 
   if (!result.stream) {
     throw new Error('ConverseStreamCommand returned no stream')
   }
 
   for await (const event of result.stream) {
+    // メタデータ（トークン使用量）
+    if (event.metadata?.usage) {
+      const u = event.metadata.usage
+      tokenUsage = {
+        inputTokens: u.inputTokens ?? 0,
+        outputTokens: u.outputTokens ?? 0,
+        totalTokens: (u.inputTokens ?? 0) + (u.outputTokens ?? 0),
+        ...((u as any).cacheReadInputTokens ? { cacheReadInputTokens: (u as any).cacheReadInputTokens } : {}),
+        ...((u as any).cacheWriteInputTokens ? { cacheWriteInputTokens: (u as any).cacheWriteInputTokens } : {}),
+      }
+    }
     // テキストブロック開始
     if (event.contentBlockStart?.start?.toolUse) {
       const tu = event.contentBlockStart.start.toolUse
@@ -1063,7 +1076,7 @@ async function streamConverseIteration(
     }
   }
 
-  return { fullText, stopReason, toolUseBlocks, assistantContentBlocks }
+  return { fullText, stopReason, toolUseBlocks, assistantContentBlocks, tokenUsage }
 }
 
 /**
@@ -2218,6 +2231,7 @@ ${briefingParts.join('\n\n')}
         }
 
         let streamedContent = ''
+        let totalTokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadInputTokens: 0, cacheWriteInputTokens: 0 }
 
         for (let iteration = 0; iteration < MAX_TOOL_USE_ITERATIONS; iteration++) {
           const streamResult = await streamConverseIteration(
@@ -2231,7 +2245,17 @@ ${briefingParts.join('\n\n')}
             requestId,
           )
 
-          console.log(`[Stream] Iteration ${iteration}, stopReason: ${streamResult.stopReason}, text: ${streamResult.fullText.length} chars, tools: ${streamResult.toolUseBlocks.length}`)
+          // トークン使用量を累積
+          if (streamResult.tokenUsage) {
+            totalTokenUsage.inputTokens += streamResult.tokenUsage.inputTokens
+            totalTokenUsage.outputTokens += streamResult.tokenUsage.outputTokens
+            totalTokenUsage.totalTokens += streamResult.tokenUsage.totalTokens
+            totalTokenUsage.cacheReadInputTokens += streamResult.tokenUsage.cacheReadInputTokens ?? 0
+            totalTokenUsage.cacheWriteInputTokens += streamResult.tokenUsage.cacheWriteInputTokens ?? 0
+          }
+
+          console.log(`[Stream] Iteration ${iteration}, stopReason: ${streamResult.stopReason}, text: ${streamResult.fullText.length} chars, tools: ${streamResult.toolUseBlocks.length}, tokens: ${JSON.stringify(streamResult.tokenUsage ?? {})}`)
+
 
           // Guardrails によるブロック検出
           if (streamResult.stopReason === 'guardrail_intervened') {
@@ -2348,9 +2372,10 @@ ${briefingParts.join('\n\n')}
           ...(permanentMemory.preferences.length > 0 ? { permanentPreferences: permanentMemory.preferences } : {}),
           ...(generatedThemeName ? { themeName: generatedThemeName } : {}),
           ...(workStatus ? { workStatus } : {}),
+          ...(includeDebug ? { tokenUsage: totalTokenUsage } : {}),
         })
 
-        console.log(`[Stream] ストリーミング完了 (${streamedContent.length} chars)`)
+        console.log(`[Stream] ストリーミング完了 (${streamedContent.length} chars, tokens: ${JSON.stringify(totalTokenUsage)})`)
 
         // 使用量インクリメント（ブリーフィング以外）
         if (!isBriefingMode) {
@@ -2364,6 +2389,7 @@ ${briefingParts.join('\n\n')}
       }
     }
 
+    let nonStreamTokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadInputTokens: 0, cacheWriteInputTokens: 0 }
     for (let iteration = 0; iteration < MAX_TOOL_USE_ITERATIONS; iteration++) {
       const result = await bedrock.send(new ConverseCommand({
         modelId: resolvedModelId,
@@ -2384,7 +2410,15 @@ ${briefingParts.join('\n\n')}
       }))
 
       const stopReason = result.stopReason
-      console.log(`[LLM] Iteration ${iteration}, stopReason: ${stopReason}`)
+      // トークン使用量を累積
+      if (result.usage) {
+        nonStreamTokenUsage.inputTokens += result.usage.inputTokens ?? 0
+        nonStreamTokenUsage.outputTokens += result.usage.outputTokens ?? 0
+        nonStreamTokenUsage.totalTokens += (result.usage.inputTokens ?? 0) + (result.usage.outputTokens ?? 0)
+        nonStreamTokenUsage.cacheReadInputTokens += (result.usage as any).cacheReadInputTokens ?? 0
+        nonStreamTokenUsage.cacheWriteInputTokens += (result.usage as any).cacheWriteInputTokens ?? 0
+      }
+      console.log(`[LLM] Iteration ${iteration}, stopReason: ${stopReason}, tokens: ${JSON.stringify(result.usage ?? {})}`)
 
       // Guardrails によるブロック検出
       if (stopReason === 'guardrail_intervened') {
@@ -2550,6 +2584,7 @@ ${briefingParts.join('\n\n')}
         ...(generatedThemeName ? { themeName: generatedThemeName } : {}),
         ...(workStatus ? { workStatus } : {}),
         ...(savedBriefingSK ? { briefingLogSK: savedBriefingSK } : {}),
+        ...(includeDebug ? { tokenUsage: nonStreamTokenUsage } : {}),
       })
     }
 

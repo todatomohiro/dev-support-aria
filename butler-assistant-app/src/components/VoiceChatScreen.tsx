@@ -9,6 +9,7 @@ import { webSpeechTtsService } from '@/services/webSpeechTtsService'
 import { ttsService } from '@/services/ttsService'
 import { Live2DCanvas } from '@/components/Live2DCanvas'
 import type { Live2DCanvasHandle } from '@/components/Live2DCanvas'
+import { ParticleBackground } from '@/components/ParticleBackground'
 
 /** TTS プロバイダー種別 */
 type TtsProvider = 'webSpeech' | 'aivis'
@@ -61,6 +62,7 @@ export function VoiceChatScreen() {
   const streamingText = useAppStore((s) => s.streamingText)
   const config = useAppStore((s) => s.config)
   const currentMotion = useAppStore((s) => s.currentMotion)
+  const activeModelMeta = useAppStore((s) => s.activeModelMeta)
 
   const [voiceState, setVoiceState] = useState<VoiceState>('connecting')
   const [turns, setTurns] = useState<VoiceTurn[]>([])
@@ -140,6 +142,26 @@ export function VoiceChatScreen() {
       ttsService.setVolumeCallback(null)
     }
   }, [])
+
+  // 感情変化を Live2D 表情に反映
+  useEffect(() => {
+    const emotionMap = activeModelMeta?.emotionMapping ?? {}
+    const expressionName = emotionMap[currentEmotion]
+    if (expressionName) {
+      live2dRef.current?.playExpression(expressionName)
+    } else if (currentEmotion === 'neutral') {
+      // neutral はデフォルト表情に戻す
+      live2dRef.current?.playExpression('exp_01')
+    }
+
+    // neutral 以外は5秒後に戻す
+    if (currentEmotion !== 'neutral') {
+      const timer = setTimeout(() => {
+        live2dRef.current?.playExpression(emotionMap['neutral'] || 'exp_01')
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [currentEmotion, activeModelMeta])
 
   // クリーンアップ
   useEffect(() => {
@@ -414,12 +436,8 @@ export function VoiceChatScreen() {
 
   return (
     <div className="flex-1 flex flex-col bg-gradient-to-b from-slate-900 to-slate-800 min-h-0 relative overflow-hidden">
-      {/* 背景パーティクル */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute w-32 h-32 rounded-full bg-indigo-500/10 -top-8 -left-8" />
-        <div className="absolute w-24 h-24 rounded-full bg-indigo-500/5 top-1/2 -right-6" />
-        <div className="absolute w-16 h-16 rounded-full bg-purple-500/10 bottom-1/4 left-1/3" />
-      </div>
+      {/* 背景パーティクル + オーロラ */}
+      <ParticleBackground count={20} />
 
       {/* 接続ステータス + タイマー */}
       <div className="flex items-center justify-between px-4 pt-3 pb-2 shrink-0 relative z-10">
@@ -481,6 +499,16 @@ export function VoiceChatScreen() {
 
       {/* キャラクターエリア（Live2D 表示） */}
       <div className="flex-1 flex items-center justify-center relative overflow-hidden">
+        {/* AI ターングロー（thinking / speaking 時のみ、ユーザーターン時は非表示） */}
+        {(voiceState === 'thinking' || voiceState === 'speaking') && (
+          <div
+            className="absolute -inset-20 pointer-events-none animate-[fade-in_0.8s_ease-out]"
+            style={{
+              background: 'radial-gradient(ellipse 60% 55% at 50% 50%, rgba(129,140,248,0.7) 0%, rgba(99,102,241,0.3) 30%, rgba(99,102,241,0.08) 55%, transparent 75%)',
+              animation: voiceState === 'speaking' ? 'ai-glow-pulse 2.5s ease-in-out infinite' : 'ai-glow-breathe 3s ease-in-out infinite',
+            }}
+          />
+        )}
         <Live2DCanvas
           ref={live2dRef}
           modelPath={config.model.currentModelId}
@@ -540,6 +568,12 @@ export function VoiceChatScreen() {
 
       {/* テキスト表示エリア */}
       <div className="px-6 pb-3 min-h-[100px] flex flex-col justify-end gap-2 shrink-0 relative z-10">
+        {/* ユーザーターン時のガイド */}
+        {(voiceState === 'idle' || voiceState === 'listening') && !isMuted && (
+          <div className="text-center">
+            <span className="text-xs text-blue-300/60 animate-pulse">{config.profile.aiName || 'Ai-Ba'}に話しかけられます</span>
+          </div>
+        )}
         {lastUserTurn && (
           <div className="text-right">
             <div className="text-[11px] text-blue-300/50 font-semibold mb-0.5">あなた</div>
@@ -568,28 +602,16 @@ export function VoiceChatScreen() {
 
       {/* コントロールバー */}
       <div className="flex items-center justify-center gap-6 px-6 pb-8 pt-4 shrink-0 relative z-10">
-        {/* スピーカーミュート */}
-        <button
-          onClick={handleToggleMute}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-            isMuted
-              ? 'bg-red-500 text-white'
-              : 'bg-white/10 text-white hover:bg-white/20'
-          }`}
-          title={isMuted ? 'ミュート解除' : 'マイクミュート'}
-        >
-          {isMuted ? (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-            </svg>
-          )}
-        </button>
-
+        {/* ユーザーターングロー（idle / listening 時のみ、AIターン時は非表示） */}
+        {(voiceState === 'idle' || voiceState === 'listening') && (
+          <div
+            className="absolute -inset-20 pointer-events-none -z-10"
+            style={{
+              background: 'radial-gradient(ellipse 70% 100% at 50% 70%, rgba(59,130,246,0.7) 0%, rgba(59,130,246,0.25) 35%, rgba(59,130,246,0.05) 60%, transparent 80%)',
+              animation: voiceState === 'listening' ? 'user-glow-pulse 2s ease-in-out infinite' : 'user-glow-breathe 3s ease-in-out infinite',
+            }}
+          />
+        )}
         {/* カメラ ON/OFF */}
         <button
           onClick={() => {
@@ -636,32 +658,47 @@ export function VoiceChatScreen() {
           )}
           <button
             onClick={() => {
-              // ユーザージェスチャーコンテキストで TTS をアンロック
               webSpeechTtsService.unlockAudio()
               aivisTtsService.unlockAudio()
-              if (voiceState === 'idle' || voiceState === 'listening') {
-                toggleListening()
+              if (isMuted) {
+                // ミュート解除 → STT再開
+                setIsMuted(false)
+                if (sttStatus !== 'listening') {
+                  setTimeout(() => toggleListening(), 100)
+                }
+              } else if (voiceState === 'idle' || voiceState === 'listening') {
+                // ミュート → STT停止
+                handleToggleMute()
               }
             }}
-            disabled={voiceState === 'connecting' || voiceState === 'thinking' || voiceState === 'speaking'}
+            disabled={voiceState === 'connecting'}
             className={`w-[72px] h-[72px] rounded-full flex items-center justify-center transition-all relative ${
-              voiceState === 'listening'
-                ? 'bg-blue-500 text-white shadow-[0_0_0_0_rgba(59,130,246,0.5)] animate-[mic-pulse_2s_infinite]'
-                : voiceState === 'speaking'
-                  ? 'bg-white/10 text-white/40'
-                  : voiceState === 'thinking'
-                    ? 'bg-amber-500/20 text-amber-400'
-                    : 'bg-white/15 text-white/60 hover:bg-white/25'
+              isMuted
+                ? 'bg-red-500/80 text-white'
+                : voiceState === 'listening'
+                  ? 'bg-blue-500 text-white shadow-[0_0_0_0_rgba(59,130,246,0.5)] animate-[mic-pulse_2s_infinite]'
+                  : voiceState === 'speaking'
+                    ? 'bg-white/10 text-white/40'
+                    : voiceState === 'thinking'
+                      ? 'bg-amber-500/20 text-amber-400'
+                      : 'bg-white/15 text-white/60 hover:bg-white/25'
             }`}
             title={
-              voiceState === 'listening' ? '聞き取り中...'
+              isMuted ? 'ミュート中（タップで解除）'
+                : voiceState === 'listening' ? '聞き取り中（タップでミュート）'
                 : voiceState === 'speaking' ? 'AI応答中'
                 : voiceState === 'thinking' ? '考え中...'
                 : 'タップして話す'
             }
           >
-            {voiceState === 'thinking' ? (
+            {voiceState === 'thinking' && !isMuted ? (
               <div className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+            ) : isMuted ? (
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 3l18 18" />
+              </svg>
             ) : (
               <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
@@ -693,6 +730,26 @@ export function VoiceChatScreen() {
         @keyframes speaking-bar {
           0%, 100% { transform: scaleY(0.4); }
           50% { transform: scaleY(1); }
+        }
+        @keyframes fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes ai-glow-pulse {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
+        }
+        @keyframes ai-glow-breathe {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 0.8; }
+        }
+        @keyframes user-glow-pulse {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 1; }
+        }
+        @keyframes user-glow-breathe {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 0.7; }
         }
       `}</style>
     </div>

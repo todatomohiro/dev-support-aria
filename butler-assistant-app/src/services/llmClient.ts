@@ -256,7 +256,7 @@ class LLMClientImpl implements LLMClientService {
         throw await this.handleAPIError(res, errorBody)
       }
 
-      const data = (await res.json()) as { streamed?: boolean; requestId?: string; content: string; enhancedSystemPrompt?: string; sessionSummary?: string; permanentFacts?: string[]; themeName?: string; workStatus?: { active: boolean; expiresAt: string; toolCount: number } }
+      const data = (await res.json()) as { streamed?: boolean; requestId?: string; content: string; enhancedSystemPrompt?: string; sessionSummary?: string; permanentFacts?: string[]; themeName?: string; workStatus?: { active: boolean; expiresAt: string; toolCount: number }; tokenUsage?: StructuredResponse['tokenUsage'] }
 
       // ストリーミングモード: REST レスポンスはデータを含まない（WebSocket 経由で受信済み）
       if (data.streamed) {
@@ -317,6 +317,9 @@ class LLMClientImpl implements LLMClientService {
         }
         if (data.workStatus) {
           parsed.workStatus = data.workStatus
+        }
+        if (data.tokenUsage) {
+          parsed.tokenUsage = data.tokenUsage
         }
         return parsed
       } catch {

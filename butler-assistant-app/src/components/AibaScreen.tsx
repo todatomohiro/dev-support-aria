@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useLocation } from 'react-router'
 import { useAuthStore } from '@/auth/authStore'
 import { useAppStore } from '@/stores'
 import { modelService } from '@/services/modelService'
@@ -8,6 +8,7 @@ import { usageService } from '@/services/usageService'
 import { aivisTtsService } from '@/services/aivisTtsService'
 import { webSpeechTtsService } from '@/services/webSpeechTtsService'
 import { Live2DCanvas } from '@/components/Live2DCanvas'
+import { ParticleBackground } from '@/components/ParticleBackground'
 import { currentPlatform } from '@/platform'
 import type { ServerModel } from '@/services/modelService'
 import type { ModelReference, SkillConnection, UIConfig, UserPlan } from '@/types'
@@ -21,7 +22,9 @@ type AibaTab = 'my' | 'skills' | 'shop' | 'studio'
  * タブ切替で「マイAi-Ba」「ショップ」「スタジオ」を表示。
  */
 export function AibaScreen() {
-  const [activeTab, setActiveTab] = useState<AibaTab>('my')
+  const location = useLocation()
+  const initialTab = (location.state as { tab?: AibaTab } | null)?.tab ?? 'my'
+  const [activeTab, setActiveTab] = useState<AibaTab>(initialTab)
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -143,7 +146,8 @@ function MyAibaTab() {
   return (
     <>
       {/* キャラクター表示エリア */}
-      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 mb-5" style={{ height: 280 }}>
+      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-slate-900 to-slate-800 mb-5" style={{ height: 280 }}>
+        <ParticleBackground count={12} />
         <Live2DCanvas
           modelPath={config.model.currentModelId}
           currentMotion={null}
@@ -476,19 +480,21 @@ function SkillsTab() {
 
 /** プラン比較行 */
 const PLAN_COMPARISON = [
+  { feature: '月額料金', freeDetail: '無料', premiumDetail: '¥600', platinumDetail: '¥2,000' },
   { feature: 'Normal モード', free: true, premium: true, platinum: true },
   { feature: 'Premium モード', free: false, premium: true, platinum: true },
   { feature: '1日の相談回数', freeDetail: '15回', premiumDetail: '40回', platinumDetail: '無制限' },
   { feature: '月間利用回数', freeDetail: '300回', premiumDetail: '1,000回', platinumDetail: '無制限' },
   { feature: 'Premium モード月間', freeDetail: '—', premiumDetail: '60回', platinumDetail: '200回' },
-  { feature: 'キャラクター', freeDetail: '1体', premiumDetail: '全て', platinumDetail: '全て' },
+  { feature: 'キャラクター', freeDetail: '2体+購入', premiumDetail: '標準全+購入', platinumDetail: '標準全+購入' },
+  { feature: '音声品質', freeDetail: '電子', premiumDetail: '電子', platinumDetail: 'ナチュラル' },
 ] as const
 
 /** プラン表示情報 */
 const PLAN_DISPLAY: Record<UserPlan, { label: string; gradient: string; icon: string; description: string }> = {
   free: { label: 'Free プラン', gradient: 'bg-gradient-to-r from-indigo-500 to-purple-500', icon: '\u2606', description: '基本機能を無料でご利用いただけます' },
-  paid: { label: 'Premium プラン', gradient: 'bg-gradient-to-r from-amber-500 to-red-500', icon: '\u2605', description: 'Normal + Premium モードをご利用いただけます' },
-  platinum: { label: 'Platinum プラン', gradient: 'bg-gradient-to-r from-slate-600 to-slate-900', icon: '\uD83D\uDC8E', description: 'Normal + Premium モードを無制限でご利用いただけます' },
+  paid: { label: 'Premium プラン', gradient: 'bg-gradient-to-r from-amber-500 to-red-500', icon: '\u2605', description: '月額 ¥600 で Normal + Premium モードをご利用いただけます' },
+  platinum: { label: 'Platinum プラン', gradient: 'bg-gradient-to-r from-slate-600 to-slate-900', icon: '\uD83D\uDC8E', description: '月額 ¥2,000 で Normal + Premium モードを無制限でご利用いただけます' },
 }
 
 /** ショップ・プラン タブ */
@@ -584,7 +590,8 @@ function ShopTab() {
             <PlanRow icon="&#128197;" iconBg="bg-amber-100 dark:bg-amber-900/30 text-amber-600" label="1日の上限" value={dailyLabel} limited={isFree} unlimited={isPlatinum} />
             <PlanRow icon="&#128200;" iconBg="bg-blue-100 dark:bg-blue-900/30 text-blue-600" label="月間上限" value={monthlyLabel} limited={isFree} unlimited={isPlatinum} />
             {!isFree && <PlanRow icon="&#11088;" iconBg="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600" label="Premium 月間" value={premiumMonthlyLabel} />}
-            <PlanRow icon="&#128100;" iconBg="bg-pink-100 dark:bg-pink-900/30 text-pink-600" label="キャラクター" value={isFree ? 'デフォルトのみ' : 'すべて利用可能'} unlimited={!isFree} last />
+            <PlanRow icon="&#128100;" iconBg="bg-pink-100 dark:bg-pink-900/30 text-pink-600" label="キャラクター" value={isFree ? '2体 + 購入キャラ' : '標準キャラ全て + 購入キャラ'} unlimited={!isFree} last />
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 ml-9">※購入キャラは別途ショップでの購入が必要です</p>
           </div>
         </div>
 
@@ -640,14 +647,14 @@ function ShopTab() {
                   disabled={isChanging}
                   className="w-full py-3.5 rounded-xl text-[15px] font-bold text-white bg-gradient-to-r from-amber-500 to-red-500 shadow-md shadow-amber-500/30 hover:shadow-lg hover:shadow-amber-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-60 cursor-pointer"
                 >
-                  {isChanging ? '切り替え中...' : '\u2728 Premium にアップグレード'}
+                  {isChanging ? '切り替え中...' : '\u2728 Premium にアップグレード（¥600/月）'}
                 </button>
                 <button
                   onClick={() => setConfirmTarget('platinum')}
                   disabled={isChanging}
                   className="w-full py-3.5 rounded-xl text-[15px] font-bold text-white bg-gradient-to-r from-slate-600 to-slate-900 shadow-md shadow-slate-500/30 hover:shadow-lg hover:shadow-slate-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-60 cursor-pointer"
                 >
-                  {isChanging ? '切り替え中...' : '\uD83D\uDC8E Platinum にアップグレード'}
+                  {isChanging ? '切り替え中...' : '\uD83D\uDC8E Platinum にアップグレード（¥2,000/月）'}
                 </button>
               </>
             )}
@@ -658,7 +665,7 @@ function ShopTab() {
                   disabled={isChanging}
                   className="w-full py-3.5 rounded-xl text-[15px] font-bold text-white bg-gradient-to-r from-slate-600 to-slate-900 shadow-md shadow-slate-500/30 hover:shadow-lg hover:shadow-slate-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-60 cursor-pointer"
                 >
-                  {isChanging ? '切り替え中...' : '\uD83D\uDC8E Platinum にアップグレード'}
+                  {isChanging ? '切り替え中...' : '\uD83D\uDC8E Platinum にアップグレード（¥2,000/月）'}
                 </button>
                 <div className="text-center">
                   <button

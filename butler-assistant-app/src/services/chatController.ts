@@ -408,6 +408,7 @@ class ChatControllerImpl {
       themeName: event.themeName as string | undefined,
       workStatus: event.workStatus as StructuredResponse['workStatus'],
       enhancedSystemPrompt: event.enhancedSystemPrompt as string | undefined,
+      tokenUsage: event.tokenUsage as StructuredResponse['tokenUsage'],
     }
   }
 

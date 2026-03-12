@@ -298,14 +298,18 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
   }, [streamingText, scrollToBottomImmediate])
 
   // メッセージ変更時: 過去読み込み時はスクロール位置復元、それ以外は最下部へスクロール
+  // メッセージ数が変わらない場合（画像削除等）はスクロール位置を維持
+  const prevMessageLengthRef = useRef(messages.length)
   useEffect(() => {
     const container = scrollContainerRef.current
+    const prevLen = prevMessageLengthRef.current
+    prevMessageLengthRef.current = messages.length
     if (container && isLoadingEarlierRef.current) {
       // 読み込み前のスクロール高さとの差分だけスクロール位置を調整
       const diff = container.scrollHeight - scrollHeightBeforeRef.current
       container.scrollTop += diff
       isLoadingEarlierRef.current = false
-    } else {
+    } else if (messages.length !== prevLen) {
       scrollToBottom()
     }
   }, [messages])
@@ -548,16 +552,20 @@ export function ChatUI({ messages, isLoading, onSendMessage, ttsEnabled, onToggl
 
       {/* 最新メッセージへ戻るボタン */}
       {showScrollButton && (
-        <button
-          onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
-          className="absolute bottom-36 right-4 z-10 w-10 h-10 rounded-full bg-purple-600 text-white shadow-lg hover:bg-purple-700 transition-all flex items-center justify-center opacity-80 hover:opacity-100"
-          title="最新メッセージへ"
-          data-testid="scroll-to-bottom-button"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-          </svg>
-        </button>
+        <div className="absolute bottom-36 left-0 right-0 z-10 pointer-events-none">
+          <div className="max-w-[760px] mx-auto w-full relative">
+            <button
+              onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+              className="pointer-events-auto absolute bottom-0 right-2 sm:right-4 w-10 h-10 rounded-full bg-purple-600 text-white shadow-lg hover:bg-purple-700 transition-all flex items-center justify-center opacity-80 hover:opacity-100"
+              title="最新メッセージへ"
+              data-testid="scroll-to-bottom-button"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
 
       {/* クイックリプライ / ミーティングアクション */}
@@ -901,17 +909,21 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
   const isUser = message.role === 'user'
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
+  const [showTokens, setShowTokens] = useState(false)
   const [memoSaved, setMemoSaved] = useState(false)
   const [memoSaving, setMemoSaving] = useState(false)
 
-  // rawResponse から enhancedSystemPrompt を抽出
-  const promptText = (() => {
-    if (!developerMode || isUser || !message.rawResponse) return null
+  // rawResponse から enhancedSystemPrompt / tokenUsage を抽出
+  const { promptText, tokenUsage } = (() => {
+    if (!developerMode || isUser || !message.rawResponse) return { promptText: null, tokenUsage: null }
     try {
       const raw = JSON.parse(message.rawResponse)
-      return (raw.enhancedSystemPrompt as string) || null
+      return {
+        promptText: (raw.enhancedSystemPrompt as string) || null,
+        tokenUsage: raw.tokenUsage as { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadInputTokens?: number; cacheWriteInputTokens?: number } | null,
+      }
     } catch {
-      return null
+      return { promptText: null, tokenUsage: null }
     }
   })()
 
@@ -951,6 +963,16 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
         {formatRelativeTimestamp(message.timestamp)}
       </span>
       <div className="flex items-center">
+        {developerMode && tokenUsage && (
+          <button
+            onClick={() => setShowTokens((prev) => !prev)}
+            className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold opacity-60 hover:opacity-100 transition-opacity bg-green-500/20 hover:bg-green-500/30 text-green-700 dark:text-green-300"
+            title="トークン使用量を表示"
+            data-testid="token-usage-toggle"
+          >
+            {tokenUsage.totalTokens.toLocaleString()}tk
+          </button>
+        )}
         {developerMode && promptText && (
           <button
             onClick={() => setShowDebug((prev) => !prev)}
@@ -1021,7 +1043,7 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
                   e.stopPropagation()
                   useAppStore.getState().removeMessageImage(message.id)
                 }}
-                className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white/80 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs"
+                className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white/80 flex items-center justify-center opacity-0 group-hover/img:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity text-xs"
                 title="画像を削除"
               >
                 x
@@ -1097,6 +1119,33 @@ function MessageBubble({ message, developerMode = false }: { message: Message; d
           </Suspense>
         )}
         {actionButtons}
+        {showTokens && tokenUsage && (
+          <div
+            className="mt-2 p-2 rounded text-xs bg-green-950/80 text-green-200 font-mono"
+            data-testid="token-usage-content"
+          >
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+              <span className="opacity-70">Input:</span>
+              <span>{tokenUsage.inputTokens.toLocaleString()}</span>
+              <span className="opacity-70">Output:</span>
+              <span>{tokenUsage.outputTokens.toLocaleString()}</span>
+              <span className="opacity-70 font-bold">Total:</span>
+              <span className="font-bold">{tokenUsage.totalTokens.toLocaleString()}</span>
+              {tokenUsage.cacheReadInputTokens != null && tokenUsage.cacheReadInputTokens > 0 && (
+                <>
+                  <span className="opacity-70">Cache Read:</span>
+                  <span className="text-cyan-300">{tokenUsage.cacheReadInputTokens.toLocaleString()}</span>
+                </>
+              )}
+              {tokenUsage.cacheWriteInputTokens != null && tokenUsage.cacheWriteInputTokens > 0 && (
+                <>
+                  <span className="opacity-70">Cache Write:</span>
+                  <span className="text-yellow-300">{tokenUsage.cacheWriteInputTokens.toLocaleString()}</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
         {showDebug && promptText && (
           <pre
             className="mt-2 p-2 rounded text-xs bg-purple-950/80 text-purple-200 overflow-x-auto whitespace-pre-wrap break-words max-h-[60vh] overflow-y-auto"

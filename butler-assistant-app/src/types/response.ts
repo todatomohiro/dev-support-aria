@@ -43,6 +43,8 @@ export interface StructuredResponse {
   suggestedReplies?: string[]
   /** ブリーフィング反応記録用のDynamoDB SK（ブリーフィングモード時のみ） */
   briefingLogSK?: string
+  /** トークン使用量（開発者モード時のみ） */
+  tokenUsage?: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadInputTokens?: number; cacheWriteInputTokens?: number }
 }
 
 /**
