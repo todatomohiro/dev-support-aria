@@ -51,6 +51,8 @@ interface Live2DCanvasProps {
   currentMotion: string | null
   onMotionComplete?: () => void
   className?: string
+  /** false にするとカーソル追尾・ドラッグを無効化（デフォルト true） */
+  interactive?: boolean
 }
 
 export interface Live2DCanvasHandle {
@@ -73,6 +75,7 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
   currentMotion,
   onMotionComplete,
   className = '',
+  interactive = true,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
@@ -605,6 +608,18 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
       }
     }
 
+    // interactive=false の場合はカーソル追尾・ドラッグを無効化
+    if (!interactive) {
+      return () => {
+        if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+        if (idleMotionTimerRef.current) clearTimeout(idleMotionTimerRef.current)
+        if (idleLoopTimerRef.current) {
+          clearTimeout(idleLoopTimerRef.current as unknown as ReturnType<typeof setTimeout>)
+          clearInterval(idleLoopTimerRef.current)
+        }
+      }
+    }
+
     // カーソルを設定
     container.style.cursor = 'grab'
 
@@ -628,7 +643,7 @@ export const Live2DCanvas = forwardRef<Live2DCanvasHandle, Live2DCanvasProps>(fu
         clearInterval(idleLoopTimerRef.current)
       }
     }
-  }, [resetIdleTimer, stopIdleBehavior, startIdleBehavior])
+  }, [interactive, resetIdleTimer, stopIdleBehavior, startIdleBehavior])
 
   return (
     <div className={`relative w-full h-full overflow-hidden ${className}`}>

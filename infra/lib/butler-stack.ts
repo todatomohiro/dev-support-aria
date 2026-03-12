@@ -115,18 +115,6 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-settings-get',
     })
 
-    const settingsPutFn = new lambdaNode.NodejsFunction(this, 'SettingsPutFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'settings', 'put.ts'),
-      functionName: 'butler-settings-put',
-    })
-
-    const usageGetFn = new lambdaNode.NodejsFunction(this, 'UsageGetFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'usage', 'get.ts'),
-      functionName: 'butler-usage-get',
-    })
-
     const usersActivityFn = new lambdaNode.NodejsFunction(this, 'UsersActivityFn', {
       ...lambdaDefaults,
       entry: path.join(__dirname, '..', 'lambda', 'users', 'activity.ts'),
@@ -138,12 +126,6 @@ export class ButlerStack extends cdk.Stack {
       ...lambdaDefaults,
       entry: path.join(__dirname, '..', 'lambda', 'messages', 'list.ts'),
       functionName: 'butler-messages-list',
-    })
-
-    const messagesPutFn = new lambdaNode.NodejsFunction(this, 'MessagesPutFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'messages', 'put.ts'),
-      functionName: 'butler-messages-put',
     })
 
     // ── Friends Lambda 関数 ──
@@ -233,23 +215,11 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-themes-messages',
     })
 
-    // ── Memos Lambda 関数 ──
-    const memosSaveFn = new lambdaNode.NodejsFunction(this, 'MemosSaveFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'memos', 'save.ts'),
-      functionName: 'butler-memos-save',
-    })
-
+    // ── Memos Lambda 関数（統合） ──
     const memosListFn = new lambdaNode.NodejsFunction(this, 'MemosListFn', {
       ...lambdaDefaults,
       entry: path.join(__dirname, '..', 'lambda', 'memos', 'list.ts'),
       functionName: 'butler-memos-list',
-    })
-
-    const memosDeleteFn = new lambdaNode.NodejsFunction(this, 'MemosDeleteFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'memos', 'delete.ts'),
-      functionName: 'butler-memos-delete',
     })
 
     // ── Search Lambda 関数 ──
@@ -661,12 +631,9 @@ export class ButlerStack extends cdk.Stack {
     })
 
     // DynamoDB への読み書き権限
-    table.grantReadData(settingsGetFn)
-    table.grantReadWriteData(settingsPutFn)
-    table.grantReadData(usageGetFn)
+    table.grantReadWriteData(settingsGetFn)
     table.grantReadWriteData(usersActivityFn)
-    table.grantReadData(messagesListFn)
-    table.grantReadWriteData(messagesPutFn)
+    table.grantReadWriteData(messagesListFn)
     table.grantReadWriteData(skillsCallbackFn)
     table.grantReadData(skillsConnectionsFn)
     table.grantReadWriteData(skillsDisconnectFn)
@@ -685,9 +652,7 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadData(groupsMembersFn)
 
     // Memos — DynamoDB 権限
-    table.grantReadWriteData(memosSaveFn)
-    table.grantReadData(memosListFn)
-    table.grantReadWriteData(memosDeleteFn)
+    table.grantReadWriteData(memosListFn)
 
     // Search — DynamoDB 権限
     table.grantReadData(searchQueryFn)
@@ -731,11 +696,13 @@ export class ButlerStack extends cdk.Stack {
     // /settings
     const settingsResource = api.root.addResource('settings')
     settingsResource.addMethod('GET', new apigateway.LambdaIntegration(settingsGetFn), authMethodOptions)
-    settingsResource.addMethod('PUT', new apigateway.LambdaIntegration(settingsPutFn), authMethodOptions)
+    settingsResource.addMethod('PUT', new apigateway.LambdaIntegration(settingsGetFn), authMethodOptions)
 
     // /usage
     const usageResource = api.root.addResource('usage')
-    usageResource.addMethod('GET', new apigateway.LambdaIntegration(usageGetFn), authMethodOptions)
+    usageResource.addMethod('GET', new apigateway.LambdaIntegration(settingsGetFn), authMethodOptions)
+    // PUT /usage — プラン変更（開発用セルフサービス）
+    usageResource.addMethod('PUT', new apigateway.LambdaIntegration(settingsGetFn), authMethodOptions)
 
     // /users/activity (POST: ログ保存, GET: パターン取得)
     const usersResource = api.root.addResource('users')
@@ -746,7 +713,7 @@ export class ButlerStack extends cdk.Stack {
     // /messages
     const messagesResource = api.root.addResource('messages')
     messagesResource.addMethod('GET', new apigateway.LambdaIntegration(messagesListFn), authMethodOptions)
-    messagesResource.addMethod('POST', new apigateway.LambdaIntegration(messagesPutFn), authMethodOptions)
+    messagesResource.addMethod('POST', new apigateway.LambdaIntegration(messagesListFn), authMethodOptions)
 
     // /tts/synthesize（Polly / Aivis — provider パラメータで切替）
     const ttsResource = api.root.addResource('tts')
@@ -823,11 +790,11 @@ export class ButlerStack extends cdk.Stack {
     // /memos
     const memosResource = api.root.addResource('memos')
     memosResource.addMethod('GET', new apigateway.LambdaIntegration(memosListFn), authMethodOptions)
-    memosResource.addMethod('POST', new apigateway.LambdaIntegration(memosSaveFn), authMethodOptions)
+    memosResource.addMethod('POST', new apigateway.LambdaIntegration(memosListFn), authMethodOptions)
 
     // /memos/{memoId}
     const memoByIdResource = memosResource.addResource('{memoId}')
-    memoByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(memosDeleteFn), authMethodOptions)
+    memoByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(memosListFn), authMethodOptions)
 
     // /search
     const searchResource = api.root.addResource('search')
@@ -953,12 +920,6 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-admin-users-role',
     })
 
-    const adminUsersPlanFn = new lambdaNode.NodejsFunction(this, 'AdminUsersPlanFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersPlan.ts'),
-      functionName: 'butler-admin-users-plan',
-    })
-
     const adminUsersActivityFn = new lambdaNode.NodejsFunction(this, 'AdminUsersActivityFn', {
       ...lambdaDefaults,
       entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersActivity.ts'),
@@ -978,8 +939,6 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadData(adminUsersActivityFn)
     table.grantReadWriteData(adminUsersMemoryFn)
     table.grantReadWriteData(adminUsersRoleFn)
-    table.grantReadWriteData(adminUsersPlanFn)
-
     // Admin — Cognito ListUsers/AdminGetUser 権限
     const cognitoReadPolicy = new iam.PolicyStatement({
       actions: ['cognito-idp:ListUsers', 'cognito-idp:AdminGetUser'],
@@ -1009,7 +968,7 @@ export class ButlerStack extends cdk.Stack {
 
     // /admin/users/{userId}/plan
     const adminUserPlanResource = adminUserByIdResource.addResource('plan')
-    adminUserPlanResource.addMethod('PUT', new apigateway.LambdaIntegration(adminUsersPlanFn), authMethodOptions)
+    adminUserPlanResource.addMethod('PUT', new apigateway.LambdaIntegration(adminUsersRoleFn), authMethodOptions)
 
     // /admin/users/{userId}/activity
     const adminUserActivityResource = adminUserByIdResource.addResource('activity')

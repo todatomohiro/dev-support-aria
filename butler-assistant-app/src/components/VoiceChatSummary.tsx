@@ -83,7 +83,7 @@ export function VoiceChatSummary() {
       {/* アクションボタン */}
       <div className="px-5 pb-8 mt-auto flex flex-col gap-3">
         <button
-          onClick={() => navigate('/aiba-alpha')}
+          onClick={() => navigate('/aiba')}
           className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition-colors"
         >
           もう一度話す

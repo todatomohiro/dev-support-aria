@@ -38,7 +38,7 @@ export function AppLayout({ children, currentSessionName, headerRight, headerExt
 
   // 現在のアクティブタブを判定
   const activeTab = location.pathname.startsWith('/aiba-alpha')
-    ? 'aiba-alpha'
+    ? 'aiba'
     : location.pathname.startsWith('/aiba')
     ? 'aiba'
     : location.pathname.startsWith('/themes')

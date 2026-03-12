@@ -250,19 +250,20 @@ export const useAppStore = create<AppState>()(
       setLastBriefingContext: (context: string | null) => set({ lastBriefingContext: context }),
       setUsageInfo: (info: UsageInfo | null) => set({ usageInfo: info }),
       decrementUsage: () => set((state) => {
-        if (!state.usageInfo || state.usageInfo.plan === 'paid') return state
+        if (!state.usageInfo) return state
+        const { daily, monthly } = state.usageInfo
         return {
           usageInfo: {
             ...state.usageInfo,
-            daily: {
-              ...state.usageInfo.daily,
-              used: state.usageInfo.daily.used + 1,
-              remaining: Math.max(0, state.usageInfo.daily.remaining - 1),
+            daily: daily.limit < 0 ? daily : {
+              ...daily,
+              used: daily.used + 1,
+              remaining: Math.max(0, daily.remaining - 1),
             },
-            monthly: {
-              ...state.usageInfo.monthly,
-              used: state.usageInfo.monthly.used + 1,
-              remaining: Math.max(0, state.usageInfo.monthly.remaining - 1),
+            monthly: monthly.limit < 0 ? monthly : {
+              ...monthly,
+              used: monthly.used + 1,
+              remaining: Math.max(0, monthly.remaining - 1),
             },
           },
         }

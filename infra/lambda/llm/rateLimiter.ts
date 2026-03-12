@@ -15,22 +15,34 @@ const dynamo = new DynamoDBClient({})
 const TABLE_NAME = process.env.TABLE_NAME ?? ''
 
 /** プランタイプ */
-export type PlanType = 'free' | 'paid'
+export type PlanType = 'free' | 'paid' | 'platinum'
+
+/** プレミアムモード対象モデル */
+const PREMIUM_MODELS = ['sonnet', 'opus']
 
 /** プラン別制限定数 */
 export const PLAN_LIMITS: Record<PlanType, {
   daily: number
   monthly: number
+  premiumMonthly: number
   allowedModels: string[]
 }> = {
   free: {
-    daily: 20,
-    monthly: 500,
+    daily: 15,
+    monthly: 300,
+    premiumMonthly: 0,
     allowedModels: ['haiku'],
   },
   paid: {
+    daily: 40,
+    monthly: 1000,
+    premiumMonthly: 60,
+    allowedModels: ['haiku', 'sonnet', 'opus'],
+  },
+  platinum: {
     daily: Infinity,
     monthly: Infinity,
+    premiumMonthly: 200,
     allowedModels: ['haiku', 'sonnet', 'opus'],
   },
 }
@@ -38,10 +50,11 @@ export const PLAN_LIMITS: Record<PlanType, {
 /** レートリミットチェック結果 */
 export interface RateLimitResult {
   allowed: boolean
-  reason?: 'daily_limit' | 'monthly_limit' | 'model_not_allowed'
+  reason?: 'daily_limit' | 'monthly_limit' | 'premium_monthly_limit' | 'model_not_allowed'
   plan: PlanType
   daily: { used: number; limit: number; remaining: number }
   monthly: { used: number; limit: number; remaining: number }
+  premiumMonthly: { used: number; limit: number; remaining: number }
   allowedModels: string[]
 }
 
@@ -72,9 +85,9 @@ export async function getUserPlan(userId: string): Promise<PlanType> {
       SK: { S: 'PLAN' },
     },
   }))
-  if (result.Item?.plan?.S === 'paid') {
-    return 'paid'
-  }
+  const planValue = result.Item?.plan?.S
+  if (planValue === 'platinum') return 'platinum'
+  if (planValue === 'paid') return 'paid'
   return 'free'
 }
 
@@ -86,6 +99,8 @@ export async function getUserPlan(userId: string): Promise<PlanType> {
 export async function checkRateLimit(userId: string, modelKey: string): Promise<RateLimitResult> {
   const { date, month } = getJSTDateInfo()
 
+  const isPremiumModel = PREMIUM_MODELS.includes(modelKey)
+
   // プラン + 使用量を並列取得
   const [plan, usageResult] = await Promise.all([
     getUserPlan(userId),
@@ -95,6 +110,7 @@ export async function checkRateLimit(userId: string, modelKey: string): Promise<
           Keys: [
             { PK: { S: `USER#${userId}` }, SK: { S: `USAGE_DAILY#${date}` } },
             { PK: { S: `USER#${userId}` }, SK: { S: `USAGE_MONTHLY#${month}` } },
+            { PK: { S: `USER#${userId}` }, SK: { S: `USAGE_PREMIUM_MONTHLY#${month}` } },
           ],
         },
       },
@@ -106,11 +122,14 @@ export async function checkRateLimit(userId: string, modelKey: string): Promise<
 
   let dailyUsed = 0
   let monthlyUsed = 0
+  let premiumMonthlyUsed = 0
   for (const item of items) {
     const sk = item.SK?.S ?? ''
     const count = parseInt(item.count?.N ?? '0', 10)
     if (sk.startsWith('USAGE_DAILY#')) {
       dailyUsed = count
+    } else if (sk.startsWith('USAGE_PREMIUM_MONTHLY#')) {
+      premiumMonthlyUsed = count
     } else if (sk.startsWith('USAGE_MONTHLY#')) {
       monthlyUsed = count
     }
@@ -129,6 +148,11 @@ export async function checkRateLimit(userId: string, modelKey: string): Promise<
       limit: limits.monthly,
       remaining: Math.max(0, limits.monthly - monthlyUsed),
     },
+    premiumMonthly: {
+      used: premiumMonthlyUsed,
+      limit: limits.premiumMonthly,
+      remaining: Math.max(0, limits.premiumMonthly - premiumMonthlyUsed),
+    },
     allowedModels: limits.allowedModels,
   }
 
@@ -139,17 +163,24 @@ export async function checkRateLimit(userId: string, modelKey: string): Promise<
     return result
   }
 
-  // 日次制限チェック
-  if (limits.daily !== Infinity && dailyUsed >= limits.daily) {
+  // 日次制限チェック（Normal モードの日次上限）
+  if (dailyUsed >= limits.daily) {
     result.allowed = false
     result.reason = 'daily_limit'
     return result
   }
 
-  // 月次制限チェック
-  if (limits.monthly !== Infinity && monthlyUsed >= limits.monthly) {
+  // 月次制限チェック（Normal モードの月次上限）
+  if (monthlyUsed >= limits.monthly) {
     result.allowed = false
     result.reason = 'monthly_limit'
+    return result
+  }
+
+  // Premium モード月次制限チェック
+  if (isPremiumModel && limits.premiumMonthly > 0 && premiumMonthlyUsed >= limits.premiumMonthly) {
+    result.allowed = false
+    result.reason = 'premium_monthly_limit'
     return result
   }
 
@@ -158,8 +189,10 @@ export async function checkRateLimit(userId: string, modelKey: string): Promise<
 
 /**
  * 使用量をインクリメント（日次・月次を同時に atomic increment）
+ *
+ * Premium モデル（sonnet/opus）使用時は追加で USAGE_PREMIUM_MONTHLY# もインクリメント。
  */
-export async function incrementUsage(userId: string): Promise<void> {
+export async function incrementUsage(userId: string, modelKey?: string): Promise<void> {
   const { date, month } = getJSTDateInfo()
 
   // 日次 TTL: 2日後、月次 TTL: 35日後
@@ -167,7 +200,7 @@ export async function incrementUsage(userId: string): Promise<void> {
   const dailyTTL = now + 2 * 24 * 60 * 60
   const monthlyTTL = now + 35 * 24 * 60 * 60
 
-  await Promise.all([
+  const updates: Promise<unknown>[] = [
     dynamo.send(new UpdateItemCommand({
       TableName: TABLE_NAME,
       Key: {
@@ -200,7 +233,31 @@ export async function incrementUsage(userId: string): Promise<void> {
         ':ttl': { N: String(monthlyTTL) },
       },
     })),
-  ])
+  ]
+
+  // Premium モデル使用時は Premium 月次カウンターもインクリメント
+  if (modelKey && PREMIUM_MODELS.includes(modelKey)) {
+    updates.push(
+      dynamo.send(new UpdateItemCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          PK: { S: `USER#${userId}` },
+          SK: { S: `USAGE_PREMIUM_MONTHLY#${month}` },
+        },
+        UpdateExpression: 'ADD #count :inc SET #ttl = if_not_exists(#ttl, :ttl)',
+        ExpressionAttributeNames: {
+          '#count': 'count',
+          '#ttl': 'ttlExpiry',
+        },
+        ExpressionAttributeValues: {
+          ':inc': { N: '1' },
+          ':ttl': { N: String(monthlyTTL) },
+        },
+      })),
+    )
+  }
+
+  await Promise.all(updates)
 }
 
 /**
@@ -215,7 +272,12 @@ export function buildRateLimitMessage(reason: RateLimitResult['reason']): string
       })
     case 'monthly_limit':
       return JSON.stringify({
-        text: '今月のお話回数の上限に達しちゃった…🥺 来月になったらまたたくさんお話できるよ！\n\nプレミアムプランなら回数無制限でお話しできます ✨',
+        text: '今月のお話回数の上限に達しちゃった…🥺 来月になったらまたたくさんお話できるよ！\n\nプレミアムプランならもっとたくさんお話しできます ✨',
+        emotion: 'troubled',
+      })
+    case 'premium_monthly_limit':
+      return JSON.stringify({
+        text: '今月の Premium モードの利用回数の上限に達しちゃった…🥺 Normal モードならまだ使えるよ！来月になったらまた Premium モードも使えるようになるからね ✨',
         emotion: 'troubled',
       })
     case 'model_not_allowed':

@@ -1768,7 +1768,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     try {
       const rateLimitResult = await checkRateLimit(userId, modelKey)
       if (!rateLimitResult.allowed) {
-        console.log(`[RateLimit] 制限到達: userId=${userId}, reason=${rateLimitResult.reason}, plan=${rateLimitResult.plan}, daily=${rateLimitResult.daily.used}/${rateLimitResult.daily.limit}, monthly=${rateLimitResult.monthly.used}/${rateLimitResult.monthly.limit}`)
+        console.log(`[RateLimit] 制限到達: userId=${userId}, reason=${rateLimitResult.reason}, plan=${rateLimitResult.plan}, daily=${rateLimitResult.daily.used}/${rateLimitResult.daily.limit}, monthly=${rateLimitResult.monthly.used}/${rateLimitResult.monthly.limit}, premiumMonthly=${rateLimitResult.premiumMonthly.used}/${rateLimitResult.premiumMonthly.limit}`)
 
         const limitMessage = buildRateLimitMessage(rateLimitResult.reason)
 
@@ -1788,6 +1788,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                   plan: rateLimitResult.plan,
                   daily: rateLimitResult.daily,
                   monthly: rateLimitResult.monthly,
+                  premiumMonthly: rateLimitResult.premiumMonthly,
                 },
               })
               return response(200, { streamed: true, requestId, rateLimited: true })
@@ -2353,7 +2354,7 @@ ${briefingParts.join('\n\n')}
 
         // 使用量インクリメント（ブリーフィング以外）
         if (!isBriefingMode) {
-          incrementUsage(userId).catch((err) => console.warn('[RateLimit] インクリメントエラー（スキップ）:', err))
+          incrementUsage(userId, modelKey).catch((err) => console.warn('[RateLimit] インクリメントエラー（スキップ）:', err))
         }
 
         // REST レスポンス（ストリーミング済みを示す）
@@ -2537,7 +2538,7 @@ ${briefingParts.join('\n\n')}
 
       // 使用量インクリメント（ブリーフィング以外）
       if (!isBriefingMode) {
-        incrementUsage(userId).catch((err) => console.warn('[RateLimit] インクリメントエラー（スキップ）:', err))
+        incrementUsage(userId, modelKey).catch((err) => console.warn('[RateLimit] インクリメントエラー（スキップ）:', err))
       }
 
       return response(200, {

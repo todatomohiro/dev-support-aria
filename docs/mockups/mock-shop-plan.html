@@ -1,0 +1,1156 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ai-Ba ショップ・プラン Mock</title>
+<style>
+  :root {
+    --primary: #3b82f6;
+    --bg: #f9fafb;
+    --card: #ffffff;
+    --text: #111827;
+    --text-secondary: #6b7280;
+    --border: #e5e7eb;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif;
+    background: #1e293b;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    min-height: 100vh;
+  }
+
+  .mock-selector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    background: rgba(255,255,255,0.1);
+    padding: 6px;
+    border-radius: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .mock-selector button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    color: rgba(255,255,255,0.7);
+    background: transparent;
+    transition: all 0.2s;
+  }
+  .mock-selector button.active {
+    background: var(--primary);
+    color: white;
+  }
+
+  .mock-container { display: none; }
+  .mock-container.active { display: flex; gap: 32px; justify-content: center; flex-wrap: wrap; align-items: flex-start; }
+
+  .device-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .device-label {
+    color: rgba(255,255,255,0.4);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  /* ===== Phone Frame ===== */
+  .phone {
+    width: 390px;
+    height: 780px;
+    background: var(--bg);
+    border-radius: 32px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+  }
+  .phone .content {
+    height: 100%;
+    overflow-y: auto;
+    padding-bottom: 70px;
+  }
+
+  /* ===== PC Frame ===== */
+  .pc-frame {
+    width: 960px;
+    height: 640px;
+    background: var(--bg);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+    display: flex;
+  }
+
+  /* ===== PC Sidebar ===== */
+  .pc-sidebar {
+    width: 220px;
+    background: #111827;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .pc-sidebar .sidebar-logo {
+    padding: 20px 16px;
+    font-size: 18px;
+    font-weight: 800;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .pc-sidebar .sidebar-logo .logo-icon {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .pc-sidebar nav {
+    flex: 1;
+    padding: 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .pc-sidebar .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pc-sidebar .nav-link:hover {
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.8);
+  }
+  .pc-sidebar .nav-link.active {
+    background: rgba(99,102,241,0.15);
+    color: #a5b4fc;
+  }
+  .pc-sidebar .nav-link .link-icon {
+    width: 20px;
+    text-align: center;
+    font-size: 15px;
+  }
+  .pc-sidebar .sidebar-bottom {
+    padding: 12px 16px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+  }
+
+  /* ===== PC Main Area ===== */
+  .pc-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .pc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 28px;
+    background: white;
+    border-bottom: 1px solid var(--border);
+  }
+  .pc-header h1 {
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .pc-header .user-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .pc-header .avatar {
+    width: 32px;
+    height: 32px;
+    background: #e5e7eb;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  /* ===== PC Tabs ===== */
+  .pc-tabs {
+    display: flex;
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 0 28px;
+    gap: 4px;
+  }
+  .pc-tabs button {
+    padding: 12px 20px;
+    border: none;
+    background: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .pc-tabs button.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+  }
+
+  /* ===== PC Content ===== */
+  .pc-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 28px;
+  }
+  .pc-content .pc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    max-width: 800px;
+  }
+  .pc-content .pc-grid.three-col {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  .pc-content .pc-full {
+    grid-column: 1 / -1;
+  }
+
+  /* ===== Shared Component Styles ===== */
+
+  /* Plan Banner */
+  .plan-banner {
+    border-radius: 16px;
+    padding: 20px;
+    color: white;
+    position: relative;
+    overflow: hidden;
+  }
+  .phone .plan-banner { margin: 16px; }
+  .plan-banner.free {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  }
+  .plan-banner.premium {
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+  }
+  .plan-banner .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    background: rgba(255,255,255,0.2);
+    color: white;
+  }
+  .plan-banner h3 {
+    font-size: 20px;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+  .plan-banner p {
+    font-size: 13px;
+    opacity: 0.9;
+  }
+  .plan-banner .sparkle {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    font-size: 32px;
+    opacity: 0.3;
+  }
+  /* PC banner wider */
+  .pc-content .plan-banner {
+    padding: 28px 32px;
+  }
+  .pc-content .plan-banner h3 {
+    font-size: 24px;
+  }
+  .pc-content .plan-banner p {
+    font-size: 14px;
+  }
+  .pc-content .plan-banner .sparkle {
+    font-size: 48px;
+    top: 16px;
+    right: 24px;
+  }
+
+  /* Plan Card */
+  .plan-card {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .phone .plan-card { margin: 0 16px 16px; }
+  .plan-card h4 {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    color: var(--text);
+  }
+  .plan-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .plan-row:last-child { border-bottom: none; }
+  .plan-row .label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .plan-row .label .icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  .plan-row .value {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .plan-row .value.limit { color: #ef4444; }
+  .plan-row .value.unlimited { color: #10b981; }
+
+  /* Usage Section */
+  .usage-section {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .phone .usage-section { margin: 0 16px 16px; }
+  .usage-section h4 {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 14px;
+  }
+  .usage-item { margin-bottom: 14px; }
+  .usage-item:last-child { margin-bottom: 0; }
+  .usage-item .usage-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  .usage-item .usage-label span:first-child { color: var(--text-secondary); }
+  .usage-item .usage-label span:last-child { font-weight: 600; color: var(--text); }
+  .usage-bar {
+    height: 8px;
+    background: #f3f4f6;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .usage-bar .fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s;
+  }
+  .usage-bar .fill.low { background: #10b981; }
+  .usage-bar .fill.mid { background: #f59e0b; }
+  .usage-bar .fill.high { background: #ef4444; }
+
+  /* Upgrade Button */
+  .upgrade-btn {
+    display: block;
+    padding: 14px;
+    border: none;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+  .phone .upgrade-btn {
+    width: calc(100% - 32px);
+    margin: 0 16px 16px;
+  }
+  .upgrade-btn.to-premium {
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    color: white;
+    box-shadow: 0 4px 14px rgba(245,158,11,0.3);
+  }
+  .upgrade-btn.to-premium:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(245,158,11,0.4);
+  }
+  .upgrade-btn.current {
+    background: #f3f4f6;
+    color: var(--text-secondary);
+    cursor: default;
+  }
+  .pc-content .upgrade-btn {
+    width: 100%;
+  }
+
+  /* Comparison Table */
+  .compare-card {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .phone .compare-card { margin: 0 16px 16px; }
+  .compare-card h4 {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 14px;
+  }
+  .compare-header {
+    display: grid;
+    grid-template-columns: 1fr 80px 80px;
+    gap: 8px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #f3f4f6;
+    margin-bottom: 4px;
+  }
+  .compare-header span {
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .compare-header span:first-child { text-align: left; }
+  .compare-header .free-col { color: #6366f1; }
+  .compare-header .premium-col { color: #f59e0b; }
+  .compare-row {
+    display: grid;
+    grid-template-columns: 1fr 80px 80px;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f9fafb;
+    align-items: center;
+  }
+  .compare-row:last-child { border-bottom: none; }
+  .compare-row .feature { font-size: 13px; color: var(--text); }
+  .compare-row .check, .compare-row .cross { text-align: center; font-size: 14px; }
+  .compare-row .check { color: #10b981; }
+  .compare-row .cross { color: #d1d5db; }
+  .compare-row .detail { text-align: center; font-size: 12px; color: var(--text-secondary); }
+
+  /* Shop Section */
+  .shop-section h4 {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+  .phone .shop-section { margin: 0 16px 16px; }
+  .shop-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .shop-item {
+    background: white;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .shop-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  .shop-item .thumb {
+    height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+  }
+  .shop-item .info { padding: 10px 12px; }
+  .shop-item .info .name { font-size: 13px; font-weight: 700; }
+  .shop-item .info .price { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+  .shop-item .lock-overlay { position: relative; }
+  .shop-item .lock-overlay::after {
+    content: 'Premium';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+
+  /* Mobile Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 54px 20px 12px;
+    background: white;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 { font-size: 18px; font-weight: 700; }
+  .header .back {
+    font-size: 14px;
+    color: var(--primary);
+    cursor: pointer;
+    background: none;
+    border: none;
+  }
+
+  /* Mobile Tabs */
+  .tabs {
+    display: flex;
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+  }
+  .tabs button {
+    flex: 1;
+    padding: 12px 8px;
+    border: none;
+    background: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .tabs button.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+  }
+
+  /* Bottom Nav */
+  .bottom-nav {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 70px;
+    background: white;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 8px;
+  }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+  .nav-item.active { color: var(--primary); }
+  .nav-item .nav-icon {
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  /* Dialog */
+  .dialog-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  .dialog {
+    background: white;
+    border-radius: 20px;
+    padding: 24px;
+    width: 340px;
+    text-align: center;
+  }
+  .pc-frame .dialog { width: 420px; padding: 32px; }
+  .dialog .dialog-icon { font-size: 40px; margin-bottom: 12px; }
+  .dialog h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+  .pc-frame .dialog h3 { font-size: 19px; }
+  .dialog p { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5; }
+  .dialog .dialog-btns { display: flex; gap: 10px; }
+  .dialog .dialog-btns button {
+    flex: 1;
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+  .dialog .btn-cancel { background: #f3f4f6; color: var(--text-secondary); }
+  .dialog .btn-confirm {
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    color: white;
+  }
+  .dialog .features-box {
+    background: #fef3c7;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 16px;
+    text-align: left;
+  }
+  .dialog .features-box .features-title {
+    font-size: 12px;
+    color: #92400e;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .dialog .features-box .features-list {
+    font-size: 12px;
+    color: #78350f;
+    line-height: 1.8;
+  }
+
+  /* Success Banner */
+  .success-banner {
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #065f46;
+  }
+  .phone .success-banner { margin: 16px; }
+</style>
+</head>
+<body>
+
+<h1 style="color:white; margin-bottom: 8px; font-size: 20px;">Ai-Ba ショップ・プラン Mock</h1>
+<p style="color:rgba(255,255,255,0.5); font-size: 13px; margin-bottom: 20px;">タブ名「ショップ」→「ショップ・プラン」に変更、プラン表示＆切替機能（スマホ + PC）</p>
+
+<div class="mock-selector">
+  <button class="active" onclick="showMock('free')">Free プラン表示</button>
+  <button onclick="showMock('upgrade')">Premium 切替確認</button>
+  <button onclick="showMock('premium')">Premium プラン表示</button>
+</div>
+
+<!-- ==================== Mock 1: Free Plan ==================== -->
+<div id="mock-free" class="mock-container active">
+
+  <!-- Mobile -->
+  <div class="device-wrap">
+    <div class="device-label">Mobile - Free</div>
+    <div class="phone">
+      <div class="content">
+        <div class="header">
+          <button class="back">&#8592; 戻る</button>
+          <h1>Ai-Ba</h1>
+          <div style="width:40px"></div>
+        </div>
+        <div class="tabs">
+          <button>マイAi-Ba</button>
+          <button>マイSkills</button>
+          <button class="active">ショップ・プラン</button>
+          <button>スタジオ</button>
+        </div>
+        <div class="plan-banner free">
+          <div class="sparkle">&#9734;</div>
+          <div class="badge">CURRENT PLAN</div>
+          <h3>Free プラン</h3>
+          <p>基本機能を無料でご利用いただけます</p>
+        </div>
+        <div class="usage-section">
+          <h4>今日の利用状況</h4>
+          <div class="usage-item">
+            <div class="usage-label"><span>1日の相談回数</span><span>5 / 20 回</span></div>
+            <div class="usage-bar"><div class="fill low" style="width: 25%"></div></div>
+          </div>
+          <div class="usage-item">
+            <div class="usage-label"><span>今月の利用回数</span><span>87 / 500 回</span></div>
+            <div class="usage-bar"><div class="fill low" style="width: 17%"></div></div>
+          </div>
+        </div>
+        <div class="plan-card">
+          <h4>プラン内容</h4>
+          <div class="plan-row">
+            <div class="label"><div class="icon" style="background:#ede9fe;color:#7c3aed;">&#9883;</div>演算モード</div>
+            <div class="value">Normal のみ</div>
+          </div>
+          <div class="plan-row">
+            <div class="label"><div class="icon" style="background:#fef3c7;color:#d97706;">&#128197;</div>1日の上限</div>
+            <div class="value limit">20 回</div>
+          </div>
+          <div class="plan-row">
+            <div class="label"><div class="icon" style="background:#dbeafe;color:#2563eb;">&#128200;</div>月間上限</div>
+            <div class="value limit">500 回</div>
+          </div>
+          <div class="plan-row">
+            <div class="label"><div class="icon" style="background:#fce7f3;color:#db2777;">&#128100;</div>キャラクター</div>
+            <div class="value">デフォルトのみ</div>
+          </div>
+        </div>
+        <button class="upgrade-btn to-premium">&#10024; Premium にアップグレード</button>
+        <div class="compare-card">
+          <h4>プラン比較</h4>
+          <div class="compare-header"><span></span><span class="free-col">Free</span><span class="premium-col">Premium</span></div>
+          <div class="compare-row"><div class="feature">Normal モード</div><div class="check">&#10003;</div><div class="check">&#10003;</div></div>
+          <div class="compare-row"><div class="feature">Premium モード</div><div class="cross">&#10005;</div><div class="check">&#10003;</div></div>
+          <div class="compare-row"><div class="feature">1日の相談回数</div><div class="detail">15回</div><div class="detail">40回</div></div>
+          <div class="compare-row"><div class="feature">月間利用回数</div><div class="detail">300回</div><div class="detail">1,000回</div></div>
+          <div class="compare-row"><div class="feature">Premium月間</div><div class="detail">—</div><div class="detail">60回</div></div>
+          <div class="compare-row"><div class="feature">キャラクター</div><div class="detail">1体</div><div class="detail">全て</div></div>
+        </div>
+        <div class="shop-section">
+          <h4>キャラクターショップ</h4>
+          <div class="shop-grid">
+            <div class="shop-item"><div class="thumb" style="background:linear-gradient(135deg,#fce7f3,#fdf2f8);">&#128131;</div><div class="info"><div class="name">サクラ</div><div class="price">Coming Soon</div></div></div>
+            <div class="shop-item"><div class="thumb lock-overlay" style="background:linear-gradient(135deg,#dbeafe,#eff6ff);">&#129302;</div><div class="info"><div class="name">カイ</div><div class="price">Coming Soon</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">&#128172;</div>ホーム</div>
+        <div class="nav-item"><div class="nav-icon">&#128203;</div>トピック</div>
+        <div class="nav-item active"><div class="nav-icon">&#9733;</div>Ai-Ba</div>
+        <div class="nav-item"><div class="nav-icon">&#9881;</div>設定</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PC -->
+  <div class="device-wrap">
+    <div class="device-label">Desktop - Free</div>
+    <div class="pc-frame">
+      <div class="pc-sidebar">
+        <div class="sidebar-logo"><div class="logo-icon">&#9733;</div>Ai-Ba</div>
+        <nav>
+          <div class="nav-link"><span class="link-icon">&#128172;</span>ホーム</div>
+          <div class="nav-link"><span class="link-icon">&#128203;</span>トピック</div>
+          <div class="nav-link active"><span class="link-icon">&#9733;</span>Ai-Ba</div>
+          <div class="nav-link"><span class="link-icon">&#9881;</span>設定</div>
+        </nav>
+        <div class="sidebar-bottom">Ai-Ba v1.0</div>
+      </div>
+      <div class="pc-main">
+        <div class="pc-header">
+          <h1>Ai-Ba</h1>
+          <div class="user-badge"><div class="avatar">&#128100;</div>ユーザー</div>
+        </div>
+        <div class="pc-tabs">
+          <button>マイAi-Ba</button>
+          <button>マイSkills</button>
+          <button class="active">ショップ・プラン</button>
+          <button>スタジオ</button>
+        </div>
+        <div class="pc-content">
+          <!-- Banner full width -->
+          <div class="plan-banner free" style="margin-bottom:20px;">
+            <div class="sparkle">&#9734;</div>
+            <div class="badge">CURRENT PLAN</div>
+            <h3>Free プラン</h3>
+            <p>基本機能を無料でご利用いただけます</p>
+          </div>
+
+          <div class="pc-grid">
+            <!-- Left: Usage + Plan Details -->
+            <div>
+              <div class="usage-section" style="margin-bottom:20px;">
+                <h4>今日の利用状況</h4>
+                <div class="usage-item">
+                  <div class="usage-label"><span>1日の相談回数</span><span>5 / 20 回</span></div>
+                  <div class="usage-bar"><div class="fill low" style="width: 25%"></div></div>
+                </div>
+                <div class="usage-item">
+                  <div class="usage-label"><span>今月の利用回数</span><span>87 / 500 回</span></div>
+                  <div class="usage-bar"><div class="fill low" style="width: 17%"></div></div>
+                </div>
+              </div>
+              <div class="plan-card">
+                <h4>プラン内容</h4>
+                <div class="plan-row">
+                  <div class="label"><div class="icon" style="background:#ede9fe;color:#7c3aed;">&#9883;</div>演算モード</div>
+                  <div class="value">Normal のみ</div>
+                </div>
+                <div class="plan-row">
+                  <div class="label"><div class="icon" style="background:#fef3c7;color:#d97706;">&#128197;</div>1日の上限</div>
+                  <div class="value limit">20 回</div>
+                </div>
+                <div class="plan-row">
+                  <div class="label"><div class="icon" style="background:#dbeafe;color:#2563eb;">&#128200;</div>月間上限</div>
+                  <div class="value limit">500 回</div>
+                </div>
+                <div class="plan-row">
+                  <div class="label"><div class="icon" style="background:#fce7f3;color:#db2777;">&#128100;</div>キャラクター</div>
+                  <div class="value">デフォルトのみ</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Comparison + Upgrade -->
+            <div>
+              <div class="compare-card" style="margin-bottom:20px;">
+                <h4>プラン比較</h4>
+                <div class="compare-header"><span></span><span class="free-col">Free</span><span class="premium-col">Premium</span></div>
+                <div class="compare-row"><div class="feature">Normal モード</div><div class="check">&#10003;</div><div class="check">&#10003;</div></div>
+                <div class="compare-row"><div class="feature">Premium モード</div><div class="cross">&#10005;</div><div class="check">&#10003;</div></div>
+                <div class="compare-row"><div class="feature">1日の相談回数</div><div class="detail">15回</div><div class="detail">40回</div></div>
+                <div class="compare-row"><div class="feature">月間利用回数</div><div class="detail">300回</div><div class="detail">1,000回</div></div>
+          <div class="compare-row"><div class="feature">Premium月間</div><div class="detail">—</div><div class="detail">60回</div></div>
+                <div class="compare-row"><div class="feature">キャラクター</div><div class="detail">1体</div><div class="detail">全て</div></div>
+              </div>
+              <button class="upgrade-btn to-premium">&#10024; Premium にアップグレード</button>
+            </div>
+
+            <!-- Shop full width -->
+            <div class="pc-full">
+              <div class="shop-section" style="margin-top:4px;">
+                <h4>キャラクターショップ</h4>
+                <div class="shop-grid" style="grid-template-columns:repeat(4,1fr);">
+                  <div class="shop-item"><div class="thumb" style="background:linear-gradient(135deg,#fce7f3,#fdf2f8);">&#128131;</div><div class="info"><div class="name">サクラ</div><div class="price">Coming Soon</div></div></div>
+                  <div class="shop-item"><div class="thumb lock-overlay" style="background:linear-gradient(135deg,#dbeafe,#eff6ff);">&#129302;</div><div class="info"><div class="name">カイ</div><div class="price">Coming Soon</div></div></div>
+                  <div class="shop-item"><div class="thumb lock-overlay" style="background:linear-gradient(135deg,#ecfdf5,#f0fdf4);">&#128049;</div><div class="info"><div class="name">ルナ</div><div class="price">Coming Soon</div></div></div>
+                  <div class="shop-item"><div class="thumb lock-overlay" style="background:linear-gradient(135deg,#fef3c7,#fffbeb);">&#128526;</div><div class="info"><div class="name">レン</div><div class="price">Coming Soon</div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Mock 2: Upgrade Confirm ==================== -->
+<div id="mock-upgrade" class="mock-container">
+
+  <!-- Mobile -->
+  <div class="device-wrap">
+    <div class="device-label">Mobile - Confirm</div>
+    <div class="phone">
+      <div class="content" style="filter: blur(1px); opacity: 0.5;">
+        <div class="header">
+          <button class="back">&#8592; 戻る</button>
+          <h1>Ai-Ba</h1>
+          <div style="width:40px"></div>
+        </div>
+        <div class="tabs">
+          <button>マイAi-Ba</button>
+          <button>マイSkills</button>
+          <button class="active">ショップ・プラン</button>
+          <button>スタジオ</button>
+        </div>
+        <div class="plan-banner free">
+          <div class="badge">CURRENT PLAN</div>
+          <h3>Free プラン</h3>
+          <p>基本機能を無料でご利用いただけます</p>
+        </div>
+      </div>
+      <div class="dialog-overlay">
+        <div class="dialog">
+          <div class="dialog-icon">&#10024;</div>
+          <h3>Premium にアップグレード</h3>
+          <p>Premium プランに切り替えると、Normal 40回/日 + Premium モード 60回/月 が利用できます。</p>
+          <div class="features-box">
+            <div class="features-title">Premium で解放される機能:</div>
+            <div class="features-list">
+              &#10003; Premium（詳細モード）が利用可能<br>
+              &#10003; Normal 40回/日・1,000回/月<br>
+              &#10003; Premium モード 60回/月<br>
+              &#10003; 全キャラクター利用可能
+            </div>
+          </div>
+          <div class="dialog-btns">
+            <button class="btn-cancel">キャンセル</button>
+            <button class="btn-confirm">切り替える</button>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">&#128172;</div>ホーム</div>
+        <div class="nav-item"><div class="nav-icon">&#128203;</div>トピック</div>
+        <div class="nav-item active"><div class="nav-icon">&#9733;</div>Ai-Ba</div>
+        <div class="nav-item"><div class="nav-icon">&#9881;</div>設定</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PC -->
+  <div class="device-wrap">
+    <div class="device-label">Desktop - Confirm</div>
+    <div class="pc-frame">
+      <div class="pc-sidebar" style="filter: blur(1px); opacity: 0.5;">
+        <div class="sidebar-logo"><div class="logo-icon">&#9733;</div>Ai-Ba</div>
+        <nav>
+          <div class="nav-link"><span class="link-icon">&#128172;</span>ホーム</div>
+          <div class="nav-link"><span class="link-icon">&#128203;</span>トピック</div>
+          <div class="nav-link active"><span class="link-icon">&#9733;</span>Ai-Ba</div>
+          <div class="nav-link"><span class="link-icon">&#9881;</span>設定</div>
+        </nav>
+      </div>
+      <div class="pc-main" style="filter: blur(1px); opacity: 0.5;">
+        <div class="pc-header">
+          <h1>Ai-Ba</h1>
+          <div class="user-badge"><div class="avatar">&#128100;</div>ユーザー</div>
+        </div>
+        <div class="pc-tabs">
+          <button>マイAi-Ba</button>
+          <button>マイSkills</button>
+          <button class="active">ショップ・プラン</button>
+          <button>スタジオ</button>
+        </div>
+        <div class="pc-content">
+          <div class="plan-banner free" style="margin-bottom:20px;">
+            <div class="badge">CURRENT PLAN</div>
+            <h3>Free プラン</h3>
+            <p>基本機能を無料でご利用いただけます</p>
+          </div>
+        </div>
+      </div>
+      <!-- Dialog overlay over pc-frame -->
+      <div class="dialog-overlay" style="border-radius:12px;">
+        <div class="dialog">
+          <div class="dialog-icon">&#10024;</div>
+          <h3>Premium にアップグレード</h3>
+          <p>Premium プランに切り替えると、Normal 40回/日 + Premium モード 60回/月 が利用できます。</p>
+          <div class="features-box">
+            <div class="features-title">Premium で解放される機能:</div>
+            <div class="features-list">
+              &#10003; Premium（詳細モード）が利用可能<br>
+              &#10003; Normal 40回/日・1,000回/月<br>
+              &#10003; Premium モード 60回/月<br>
+              &#10003; 全キャラクター利用可能
+            </div>
+          </div>
+          <div class="dialog-btns">
+            <button class="btn-cancel">キャンセル</button>
+            <button class="btn-confirm">切り替える</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Mock 3: Premium Plan ==================== -->
+<div id="mock-premium" class="mock-container">
+
+  <!-- Mobile -->
+  <div class="device-wrap">
+    <div class="device-label">Mobile - Premium</div>
+    <div class="phone">
+      <div class="content">
+        <div class="header">
+          <button class="back">&#8592; 戻る</button>
+          <h1>Ai-Ba</h1>
+          <div style="width:40px"></div>
+        </div>
+        <div class="tabs">
+          <button>マイAi-Ba</button>
+          <button>マイSkills</button>
+          <button class="active">ショップ・プラン</button>
+          <button>スタジオ</button>
+        </div>
+        <div class="success-banner">
+          <span style="font-size:18px;">&#10003;</span>
+          Premium プランに切り替えました！
+        </div>
+        <div class="plan-banner premium">
+          <div class="sparkle">&#9733;</div>
+          <div class="badge">CURRENT PLAN</div>
+          <h3>Premium プラン</h3>
+          <p>Normal + Premium モードをご利用いただけます</p>
+        </div>
+        <div class="plan-card">
+          <h4>プラン内容</h4>
+          <div class="plan-row">
+            <div class="label"><div class="icon" style="background:#ede9fe;color:#7c3aed;">&#9883;</div>演算モード</div>
+            <div class="value unlimited">Normal + Premium</div>
+          </div>
+          <div class="plan-row">
+            <div class="label"><div class="icon" style="background:#fef3c7;color:#d97706;">&#128197;</div>1日の上限</div>
+            <div class="value">40 回</div>
+          </div>
+          <div class="plan-row">
+            <div class="label"><div class="icon" style="background:#dbeafe;color:#2563eb;">&#128200;</div>月間上限</div>
+            <div class="value">1,000 回</div>
+          </div>
+          <div class="plan-row">
+            <div class="label"><div class="icon" style="background:#fef9c3;color:#ca8a04;">&#11088;</div>Premium 月間</div>
+            <div class="value">60 回</div>
+          </div>
+          <div class="plan-row">
+            <div class="label"><div class="icon" style="background:#fce7f3;color:#db2777;">&#128100;</div>キャラクター</div>
+            <div class="value unlimited">すべて利用可能</div>
+          </div>
+        </div>
+        <button class="upgrade-btn current">&#10003; 現在のプラン</button>
+        <div style="text-align:center; margin: 0 16px 16px;">
+          <button style="background:none; border:none; font-size:12px; color:#9ca3af; cursor:pointer; text-decoration:underline; padding:4px 8px;">Free プランに戻す</button>
+        </div>
+        <div class="shop-section">
+          <h4>キャラクターショップ</h4>
+          <div class="shop-grid">
+            <div class="shop-item"><div class="thumb" style="background:linear-gradient(135deg,#fce7f3,#fdf2f8);">&#128131;</div><div class="info"><div class="name">サクラ</div><div class="price">Coming Soon</div></div></div>
+            <div class="shop-item"><div class="thumb" style="background:linear-gradient(135deg,#dbeafe,#eff6ff);">&#129302;</div><div class="info"><div class="name">カイ</div><div class="price">Coming Soon</div></div></div>
+            <div class="shop-item"><div class="thumb" style="background:linear-gradient(135deg,#ecfdf5,#f0fdf4);">&#128049;</div><div class="info"><div class="name">ルナ</div><div class="price">Coming Soon</div></div></div>
+            <div class="shop-item"><div class="thumb" style="background:linear-gradient(135deg,#fef3c7,#fffbeb);">&#128526;</div><div class="info"><div class="name">レン</div><div class="price">Coming Soon</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">&#128172;</div>ホーム</div>
+        <div class="nav-item"><div class="nav-icon">&#128203;</div>トピック</div>
+        <div class="nav-item active"><div class="nav-icon">&#9733;</div>Ai-Ba</div>
+        <div class="nav-item"><div class="nav-icon">&#9881;</div>設定</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PC -->
+  <div class="device-wrap">
+    <div class="device-label">Desktop - Premium</div>
+    <div class="pc-frame">
+      <div class="pc-sidebar">
+        <div class="sidebar-logo"><div class="logo-icon">&#9733;</div>Ai-Ba</div>
+        <nav>
+          <div class="nav-link"><span class="link-icon">&#128172;</span>ホーム</div>
+          <div class="nav-link"><span class="link-icon">&#128203;</span>トピック</div>
+          <div class="nav-link active"><span class="link-icon">&#9733;</span>Ai-Ba</div>
+          <div class="nav-link"><span class="link-icon">&#9881;</span>設定</div>
+        </nav>
+        <div class="sidebar-bottom">Ai-Ba v1.0</div>
+      </div>
+      <div class="pc-main">
+        <div class="pc-header">
+          <h1>Ai-Ba</h1>
+          <div class="user-badge">
+            <span style="font-size:11px; background:linear-gradient(135deg,#f59e0b,#ef4444); color:white; padding:2px 8px; border-radius:10px; font-weight:700;">Premium</span>
+            <div class="avatar">&#128100;</div>ユーザー
+          </div>
+        </div>
+        <div class="pc-tabs">
+          <button>マイAi-Ba</button>
+          <button>マイSkills</button>
+          <button class="active">ショップ・プラン</button>
+          <button>スタジオ</button>
+        </div>
+        <div class="pc-content">
+          <!-- Success -->
+          <div class="success-banner" style="margin-bottom:20px;">
+            <span style="font-size:18px;">&#10003;</span>
+            Premium プランに切り替えました！
+          </div>
+
+          <!-- Banner -->
+          <div class="plan-banner premium" style="margin-bottom:20px;">
+            <div class="sparkle">&#9733;</div>
+            <div class="badge">CURRENT PLAN</div>
+            <h3>Premium プラン</h3>
+            <p>Normal + Premium モードをご利用いただけます</p>
+          </div>
+
+          <div class="pc-grid">
+            <!-- Left: Plan Details -->
+            <div>
+              <div class="plan-card">
+                <h4>プラン内容</h4>
+                <div class="plan-row">
+                  <div class="label"><div class="icon" style="background:#ede9fe;color:#7c3aed;">&#9883;</div>演算モード</div>
+                  <div class="value unlimited">Normal + Premium</div>
+                </div>
+                <div class="plan-row">
+                  <div class="label"><div class="icon" style="background:#fef3c7;color:#d97706;">&#128197;</div>1日の上限</div>
+                  <div class="value">40 回</div>
+                </div>
+                <div class="plan-row">
+                  <div class="label"><div class="icon" style="background:#dbeafe;color:#2563eb;">&#128200;</div>月間上限</div>
+                  <div class="value">1,000 回</div>
+                </div>
+                <div class="plan-row">
+                  <div class="label"><div class="icon" style="background:#fef9c3;color:#ca8a04;">&#11088;</div>Premium 月間</div>
+                  <div class="value">60 回</div>
+                </div>
+                <div class="plan-row">
+                  <div class="label"><div class="icon" style="background:#fce7f3;color:#db2777;">&#128100;</div>キャラクター</div>
+                  <div class="value unlimited">すべて利用可能</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Current plan badge -->
+            <div>
+              <div style="background:white; border-radius:16px; padding:24px; box-shadow:0 1px 3px rgba(0,0,0,0.06); text-align:center;">
+                <div style="font-size:48px; margin-bottom:12px;">&#9733;</div>
+                <h4 style="font-size:16px; font-weight:700; margin-bottom:8px;">Premium メンバー</h4>
+                <p style="font-size:13px; color:#6b7280; line-height:1.6; margin-bottom:16px;">すべての機能をお楽しみいただけます。<br>ご利用ありがとうございます。</p>
+                <button class="upgrade-btn current" style="margin:0;">&#10003; 現在のプラン</button>
+                <div style="margin-top:10px;">
+                  <button style="background:none; border:none; font-size:12px; color:#9ca3af; cursor:pointer; text-decoration:underline; padding:4px 8px;">Free プランに戻す</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Shop full width -->
+            <div class="pc-full">
+              <div class="shop-section" style="margin-top:4px;">
+                <h4>キャラクターショップ</h4>
+                <div class="shop-grid" style="grid-template-columns:repeat(4,1fr);">
+                  <div class="shop-item"><div class="thumb" style="background:linear-gradient(135deg,#fce7f3,#fdf2f8);">&#128131;</div><div class="info"><div class="name">サクラ</div><div class="price">Coming Soon</div></div></div>
+                  <div class="shop-item"><div class="thumb" style="background:linear-gradient(135deg,#dbeafe,#eff6ff);">&#129302;</div><div class="info"><div class="name">カイ</div><div class="price">Coming Soon</div></div></div>
+                  <div class="shop-item"><div class="thumb" style="background:linear-gradient(135deg,#ecfdf5,#f0fdf4);">&#128049;</div><div class="info"><div class="name">ルナ</div><div class="price">Coming Soon</div></div></div>
+                  <div class="shop-item"><div class="thumb" style="background:linear-gradient(135deg,#fef3c7,#fffbeb);">&#128526;</div><div class="info"><div class="name">レン</div><div class="price">Coming Soon</div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showMock(id) {
+  document.querySelectorAll('.mock-container').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.mock-selector button').forEach(el => el.classList.remove('active'));
+  document.getElementById('mock-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>

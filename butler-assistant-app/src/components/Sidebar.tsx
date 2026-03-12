@@ -135,21 +135,6 @@ export function Sidebar({ activeTab, onOpenWork }: SidebarProps) {
           </svg>
           Ai-Ba
         </button>
-        <button
-          onClick={() => navigate('/aiba-alpha')}
-          className={`w-full flex items-center gap-2 px-4 py-3 text-left text-sm transition-colors ${
-            activeTab === 'aiba-alpha'
-              ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-          }`}
-          data-testid="sidebar-aiba-alpha"
-        >
-          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-14 0m14 0a7 7 0 00-14 0m14 0v1a7 7 0 01-14 0v-1m7 8v4m-4 0h8" />
-          </svg>
-          Ai-Ba α
-          <span className="ml-auto text-[10px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded-full">α</span>
-        </button>
       </div>
 
     </div>

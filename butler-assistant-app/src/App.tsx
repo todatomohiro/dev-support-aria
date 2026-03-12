@@ -139,7 +139,7 @@ function App() {
 
   // 現在のセッション名を判定（設計書: ヘッダーにはセッション名のみ表示）
   const currentSessionName = location.pathname.startsWith('/aiba-alpha')
-    ? 'マイ Ai-Ba (α)'
+    ? 'Ai-Ba'
     : location.pathname.startsWith('/aiba')
     ? 'Ai-Ba'
     : location.pathname.startsWith('/themes') && activeThemeId
