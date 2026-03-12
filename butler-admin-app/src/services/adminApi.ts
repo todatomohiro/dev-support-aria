@@ -1,4 +1,4 @@
-import type { MeResponse, UsersListResponse, UserDetailResponse, UserRole, ModelMeta, ModelsListResponse, CharacterConfig } from '@/types/admin'
+import type { MeResponse, UsersListResponse, UserDetailResponse, UserRole, UserPlan, ModelMeta, ModelsListResponse, CharacterConfig } from '@/types/admin'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string
 
@@ -44,6 +44,14 @@ export const adminApi = {
     return authFetch(`/admin/users/${userId}/role`, token, {
       method: 'PUT',
       body: JSON.stringify({ role }),
+    })
+  },
+
+  /** プラン変更 */
+  async updatePlan(token: string, userId: string, plan: UserPlan): Promise<{ userId: string; plan: UserPlan }> {
+    return authFetch(`/admin/users/${userId}/plan`, token, {
+      method: 'PUT',
+      body: JSON.stringify({ plan }),
     })
   },
 

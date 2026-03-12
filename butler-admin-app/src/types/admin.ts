@@ -1,6 +1,9 @@
 /** ユーザーロール */
 export type UserRole = 'admin' | 'user'
 
+/** ユーザープラン */
+export type UserPlan = 'free' | 'paid'
+
 /** ユーザー一覧アイテム */
 export interface AdminUser {
   userId: string
@@ -15,12 +18,14 @@ export interface AdminUser {
 export interface AdminUserDetail extends AdminUser {
   themeCount: number
   hasSettings: boolean
+  plan?: UserPlan
 }
 
 /** /admin/me レスポンス */
 export interface MeResponse {
   userId: string
   role: UserRole
+  plan: UserPlan
 }
 
 /** ユーザー一覧レスポンス */

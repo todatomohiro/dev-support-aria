@@ -5,7 +5,7 @@ import { useAdminStore } from '@/stores/adminStore'
 import { adminApi } from '@/services/adminApi'
 import { RoleBadge } from './RoleBadge'
 import { ConfirmDialog } from './ConfirmDialog'
-import type { UserRole } from '@/types/admin'
+import type { UserRole, UserPlan } from '@/types/admin'
 
 /** ユーザー詳細画面 */
 export function UserDetail() {
@@ -13,8 +13,9 @@ export function UserDetail() {
   const navigate = useNavigate()
   const idToken = useAuthStore((s) => s.idToken)
   const currentUserId = useAuthStore((s) => s.user?.userId)
-  const { selectedUser, loading, error, setSelectedUser, updateUserRole, setLoading, setError } = useAdminStore()
+  const { selectedUser, loading, error, setSelectedUser, updateUserRole, updateUserPlan, setLoading, setError } = useAdminStore()
   const [confirmRole, setConfirmRole] = useState<UserRole | null>(null)
+  const [confirmPlan, setConfirmPlan] = useState<UserPlan | null>(null)
 
   const fetchDetail = useCallback(async () => {
     if (!idToken || !userId) return
@@ -48,6 +49,19 @@ export function UserDetail() {
     }
   }
 
+  const handlePlanChange = async () => {
+    if (!idToken || !userId || !confirmPlan) return
+    setError(null)
+    try {
+      await adminApi.updatePlan(idToken, userId, confirmPlan)
+      updateUserPlan(userId, confirmPlan)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'プラン変更に失敗しました')
+    } finally {
+      setConfirmPlan(null)
+    }
+  }
+
   if (loading && !selectedUser) {
     return <div className="text-gray-400">読み込み中...</div>
   }
@@ -58,6 +72,8 @@ export function UserDetail() {
 
   const isSelf = currentUserId === selectedUser.userId
   const newRole: UserRole = selectedUser.role === 'admin' ? 'user' : 'admin'
+  const currentPlan: UserPlan = selectedUser.plan ?? 'free'
+  const newPlan: UserPlan = currentPlan === 'paid' ? 'free' : 'paid'
 
   return (
     <div>
@@ -71,7 +87,16 @@ export function UserDetail() {
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold">{selectedUser.email}</h2>
-          <RoleBadge role={selectedUser.role} />
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+              currentPlan === 'paid'
+                ? 'bg-amber-100 text-amber-800'
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {currentPlan === 'paid' ? 'Premium' : 'Free'}
+            </span>
+            <RoleBadge role={selectedUser.role} />
+          </div>
         </div>
 
         {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
@@ -124,6 +149,25 @@ export function UserDetail() {
         </div>
 
         <div className="mt-6 pt-6 border-t border-gray-200">
+          <h3 className="font-medium mb-3">プラン管理</h3>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-600">
+              現在のプラン: <span className="font-medium">{currentPlan === 'paid' ? 'Premium（有料）' : 'Free（無料）'}</span>
+            </span>
+            <button
+              onClick={() => setConfirmPlan(newPlan)}
+              className={`px-4 py-2 text-sm rounded cursor-pointer ${
+                newPlan === 'paid'
+                  ? 'bg-amber-500 text-white hover:bg-amber-600'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              {newPlan === 'paid' ? 'Premium に変更' : 'Free に変更'}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 pt-6 border-t border-gray-200">
           <h3 className="font-medium mb-3">ロール管理</h3>
           {isSelf ? (
             <p className="text-sm text-gray-500">自分のロールは変更できません</p>
@@ -149,6 +193,15 @@ export function UserDetail() {
         confirmLabel="変更する"
         onConfirm={handleRoleChange}
         onCancel={() => setConfirmRole(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmPlan !== null}
+        title="プラン変更の確認"
+        message={`${selectedUser.email} のプランを「${confirmPlan === 'paid' ? 'Premium（有料）' : 'Free（無料）'}」に変更しますか？`}
+        confirmLabel="変更する"
+        onConfirm={handlePlanChange}
+        onCancel={() => setConfirmPlan(null)}
       />
     </div>
   )

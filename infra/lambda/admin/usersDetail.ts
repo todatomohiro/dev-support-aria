@@ -34,13 +34,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response(404, { error: 'User not found' })
     }
 
-    // DynamoDB から並列取得: ROLE + テーマ数 + 設定有無
-    const [roleResult, themesResult, settingsResult] = await Promise.all([
+    // DynamoDB から並列取得: ROLE + PLAN + テーマ数 + 設定有無
+    const [roleResult, planResult, themesResult, settingsResult] = await Promise.all([
       dynamo.send(new GetItemCommand({
         TableName: TABLE_NAME,
         Key: {
           PK: { S: `USER#${targetUserId}` },
           SK: { S: 'ROLE' },
+        },
+      })),
+      dynamo.send(new GetItemCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          PK: { S: `USER#${targetUserId}` },
+          SK: { S: 'PLAN' },
         },
       })),
       dynamo.send(new QueryCommand({
@@ -63,6 +70,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     ])
 
     const role = roleResult.Item ? unmarshall(roleResult.Item).role : 'user'
+    const plan = planResult.Item ? unmarshall(planResult.Item).plan : 'free'
     const email = cognitoUser.Attributes?.find(a => a.Name === 'email')?.Value ?? ''
 
     return response(200, {
@@ -72,6 +80,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         status: cognitoUser.UserStatus ?? 'UNKNOWN',
         enabled: cognitoUser.Enabled ?? false,
         role,
+        plan,
         createdAt: cognitoUser.UserCreateDate?.toISOString() ?? '',
         themeCount: themesResult.Count ?? 0,
         hasSettings: !!settingsResult.Item,

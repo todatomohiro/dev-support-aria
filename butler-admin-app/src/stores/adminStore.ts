@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AdminUser, AdminUserDetail } from '@/types/admin'
+import type { AdminUser, AdminUserDetail, UserPlan } from '@/types/admin'
 
 interface AdminState {
   /** ユーザー一覧 */
@@ -17,6 +17,7 @@ interface AdminState {
   appendUsers: (users: AdminUser[], nextToken: string | null) => void
   setSelectedUser: (user: AdminUserDetail | null) => void
   updateUserRole: (userId: string, role: 'admin' | 'user') => void
+  updateUserPlan: (userId: string, plan: UserPlan) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
 }
@@ -34,6 +35,9 @@ export const useAdminStore = create<AdminState>((set) => ({
   updateUserRole: (userId, role) => set((s) => ({
     users: s.users.map(u => u.userId === userId ? { ...u, role } : u),
     selectedUser: s.selectedUser?.userId === userId ? { ...s.selectedUser, role } : s.selectedUser,
+  })),
+  updateUserPlan: (userId, plan) => set((s) => ({
+    selectedUser: s.selectedUser?.userId === userId ? { ...s.selectedUser, plan } : s.selectedUser,
   })),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
