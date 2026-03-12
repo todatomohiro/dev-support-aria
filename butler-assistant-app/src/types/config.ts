@@ -75,9 +75,8 @@ export interface ModelInfo {
 }
 
 export const AVAILABLE_MODELS: readonly ModelInfo[] = [
-  { key: 'haiku', label: 'Haiku', description: '高速・低コスト' },
-  { key: 'sonnet', label: 'Sonnet', description: 'バランス型' },
-  { key: 'opus', label: 'Opus', description: '高性能' },
+  { key: 'haiku', label: 'Normal', description: '日常モード' },
+  { key: 'sonnet', label: 'Premium', description: '詳細モード' },
 ]
 
 export const DEFAULT_MODEL_KEY: ModelKey = 'haiku'

@@ -219,16 +219,18 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
 
       {/* カテゴリ選択（メッセージなし＆カテゴリ未設定時） */}
       {messages.length === 0 && !hasCategory && !workConnection && (
-        <div className="flex flex-col pt-10">
-          <CategorySelect onSelect={handleCategorySelect} developerMode={config.ui.developerMode} />
-          <div className="px-4 -mt-5">
-            <button
-              type="button"
-              className="px-5 py-3 text-sm font-medium rounded-full border border-purple-300 dark:border-purple-600 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-sm transition-all"
-              onClick={handleSocraticStart}
-            >
-              💭 壁打ち相手になって
-            </button>
+        <div className="pt-10 px-2 sm:px-4">
+          <div className="max-w-[760px] mx-auto w-full">
+            <CategorySelect onSelect={handleCategorySelect} developerMode={config.ui.developerMode} />
+            <div className="px-4 -mt-5">
+              <button
+                type="button"
+                className="px-5 py-3 text-sm font-medium rounded-full border border-purple-300 dark:border-purple-600 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-sm transition-all"
+                onClick={handleSocraticStart}
+              >
+                💭 壁打ち相手になって
+              </button>
+            </div>
           </div>
         </div>
       )}

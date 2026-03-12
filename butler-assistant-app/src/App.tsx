@@ -618,7 +618,7 @@ function App() {
             )}
 
             {/* ルーティング */}
-            <div className="flex-1 flex flex-col min-h-0 relative">
+            <div className="flex-1 flex flex-col min-h-0 min-w-0 relative">
               {/* キャラクター非表示時: 天気バッジ + 展開ボタン */}
               {showLive2DRoute && !characterVisible && (
                 <div
