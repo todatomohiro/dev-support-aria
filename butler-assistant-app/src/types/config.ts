@@ -81,6 +81,18 @@ export const AVAILABLE_MODELS: readonly ModelInfo[] = [
 
 export const DEFAULT_MODEL_KEY: ModelKey = 'haiku'
 
+/** ユーザープラン */
+export type UserPlan = 'free' | 'paid'
+
+/** 使用量情報 */
+export interface UsageInfo {
+  plan: UserPlan
+  daily: { used: number; limit: number; remaining: number }
+  monthly: { used: number; limit: number; remaining: number }
+  allowedModels: ModelKey[]
+  resetAt: { daily: string; monthly: string }
+}
+
 /**
  * モデル参照
  */

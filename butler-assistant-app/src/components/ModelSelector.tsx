@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { AVAILABLE_MODELS } from '@/types'
-import type { ModelKey } from '@/types'
+import type { ModelKey, UsageInfo } from '@/types'
+import { useAppStore } from '@/stores'
 
 interface ModelSelectorProps {
   /** 現在選択中のモデルキー */
@@ -12,13 +13,22 @@ interface ModelSelectorProps {
 /**
  * モデル選択ドロップダウンコンポーネント
  *
- * ピル型ボタンをクリックするとドロップダウンが開き、3モデルから選択できる。
+ * ピル型ボタンをクリックするとドロップダウンが開き、モデルを選択できる。
+ * 無料プランでは利用不可のモデルにロックアイコンを表示。
  */
 export function ModelSelector({ modelKey, onChange }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const usageInfo = useAppStore((s) => s.usageInfo)
 
   const currentModel = AVAILABLE_MODELS.find((m) => m.key === modelKey) ?? AVAILABLE_MODELS[0]
+
+  /** モデルがプランで利用可能かチェック */
+  const isModelAllowed = (key: ModelKey, usage: UsageInfo | null): boolean => {
+    if (!usage) return true
+    if (usage.plan === 'paid') return true
+    return usage.allowedModels.includes(key)
+  }
 
   /** ドロップダウン外クリックで閉じる */
   useEffect(() => {
@@ -34,11 +44,12 @@ export function ModelSelector({ modelKey, onChange }: ModelSelectorProps) {
 
   /** モデル選択 */
   const handleSelect = useCallback((key: ModelKey) => {
+    if (!isModelAllowed(key, usageInfo)) return
     if (key !== modelKey) {
       onChange(key)
     }
     setIsOpen(false)
-  }, [modelKey, onChange])
+  }, [modelKey, onChange, usageInfo])
 
   return (
     <div ref={containerRef} className="relative" data-testid="model-selector">
@@ -57,22 +68,32 @@ export function ModelSelector({ modelKey, onChange }: ModelSelectorProps) {
       {/* ドロップダウン */}
       {isOpen && (
         <div className="absolute right-0 bottom-full mb-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-50" data-testid="model-selector-dropdown">
-          {AVAILABLE_MODELS.map((model) => (
-            <button
-              key={model.key}
-              onClick={() => handleSelect(model.key)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg transition-colors"
-              data-testid={`model-option-${model.key}`}
-            >
-              <span className="w-4 text-center text-blue-500">
-                {model.key === modelKey ? '✓' : ''}
-              </span>
-              <div>
-                <div className="text-sm font-medium text-gray-800 dark:text-gray-200">{model.label}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">{model.description}</div>
-              </div>
-            </button>
-          ))}
+          {AVAILABLE_MODELS.map((model) => {
+            const allowed = isModelAllowed(model.key, usageInfo)
+            return (
+              <button
+                key={model.key}
+                onClick={() => handleSelect(model.key)}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-left first:rounded-t-lg last:rounded-b-lg transition-colors ${
+                  allowed
+                    ? 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                    : 'opacity-50 cursor-not-allowed'
+                }`}
+                data-testid={`model-option-${model.key}`}
+              >
+                <span className="w-4 text-center text-blue-500">
+                  {model.key === modelKey ? '✓' : !allowed ? '🔒' : ''}
+                </span>
+                <div>
+                  <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    {model.label}
+                    {!allowed && <span className="ml-1 text-xs text-amber-500">有料</span>}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">{model.description}</div>
+                </div>
+              </button>
+            )
+          })}
         </div>
       )}
     </div>

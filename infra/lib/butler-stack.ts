@@ -121,6 +121,12 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-settings-put',
     })
 
+    const usageGetFn = new lambdaNode.NodejsFunction(this, 'UsageGetFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'usage', 'get.ts'),
+      functionName: 'butler-usage-get',
+    })
+
     const usersActivityFn = new lambdaNode.NodejsFunction(this, 'UsersActivityFn', {
       ...lambdaDefaults,
       entry: path.join(__dirname, '..', 'lambda', 'users', 'activity.ts'),
@@ -657,6 +663,7 @@ export class ButlerStack extends cdk.Stack {
     // DynamoDB への読み書き権限
     table.grantReadData(settingsGetFn)
     table.grantReadWriteData(settingsPutFn)
+    table.grantReadData(usageGetFn)
     table.grantReadWriteData(usersActivityFn)
     table.grantReadData(messagesListFn)
     table.grantReadWriteData(messagesPutFn)
@@ -725,6 +732,10 @@ export class ButlerStack extends cdk.Stack {
     const settingsResource = api.root.addResource('settings')
     settingsResource.addMethod('GET', new apigateway.LambdaIntegration(settingsGetFn), authMethodOptions)
     settingsResource.addMethod('PUT', new apigateway.LambdaIntegration(settingsPutFn), authMethodOptions)
+
+    // /usage
+    const usageResource = api.root.addResource('usage')
+    usageResource.addMethod('GET', new apigateway.LambdaIntegration(usageGetFn), authMethodOptions)
 
     // /users/activity (POST: ログ保存, GET: パターン取得)
     const usersResource = api.root.addResource('users')
@@ -942,6 +953,12 @@ export class ButlerStack extends cdk.Stack {
       functionName: 'butler-admin-users-role',
     })
 
+    const adminUsersPlanFn = new lambdaNode.NodejsFunction(this, 'AdminUsersPlanFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersPlan.ts'),
+      functionName: 'butler-admin-users-plan',
+    })
+
     const adminUsersActivityFn = new lambdaNode.NodejsFunction(this, 'AdminUsersActivityFn', {
       ...lambdaDefaults,
       entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersActivity.ts'),
@@ -961,6 +978,7 @@ export class ButlerStack extends cdk.Stack {
     table.grantReadData(adminUsersActivityFn)
     table.grantReadWriteData(adminUsersMemoryFn)
     table.grantReadWriteData(adminUsersRoleFn)
+    table.grantReadWriteData(adminUsersPlanFn)
 
     // Admin — Cognito ListUsers/AdminGetUser 権限
     const cognitoReadPolicy = new iam.PolicyStatement({
@@ -988,6 +1006,10 @@ export class ButlerStack extends cdk.Stack {
     // /admin/users/{userId}/role
     const adminUserRoleResource = adminUserByIdResource.addResource('role')
     adminUserRoleResource.addMethod('PUT', new apigateway.LambdaIntegration(adminUsersRoleFn), authMethodOptions)
+
+    // /admin/users/{userId}/plan
+    const adminUserPlanResource = adminUserByIdResource.addResource('plan')
+    adminUserPlanResource.addMethod('PUT', new apigateway.LambdaIntegration(adminUsersPlanFn), authMethodOptions)
 
     // /admin/users/{userId}/activity
     const adminUserActivityResource = adminUserByIdResource.addResource('activity')

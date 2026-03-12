@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { llmClient } from './llmClient'
+import { usageService } from './usageService'
 import { motionController } from './motionController'
 import { syncService } from './syncService'
 import { ttsService } from './ttsService'
@@ -625,6 +626,22 @@ class ChatControllerImpl {
       return
     }
 
+    // レートリミット先行チェック（UX 向上のため、最終判定はバックエンド）
+    const appStore = useAppStore.getState()
+    const activeTheme = store.themes.find((t) => t.themeId === themeId)
+    const modelKey = activeTheme?.modelKey ?? 'haiku'
+    const usageCheck = usageService.canSendMessage(appStore.usageInfo, modelKey as 'haiku' | 'sonnet' | 'opus')
+    if (!usageCheck.allowed) {
+      // ソフトリミットメッセージをアシスタントとして表示
+      store.addMessage({
+        id: uuidv4(),
+        role: 'assistant',
+        content: usageCheck.reason ?? '利用制限に達しました',
+        timestamp: Date.now(),
+      })
+      return
+    }
+
     // ユーザーメッセージを作成
     const userMessage: Message = {
       id: uuidv4(),
@@ -793,6 +810,9 @@ class ChatControllerImpl {
     }
 
     store.addMessage(assistantMessage)
+
+    // 使用量を楽観的デクリメント
+    appStore.decrementUsage()
 
     if (appStore.config.ui.ttsEnabled) {
       ttsService.synthesizeAndPlay(assistantMessage.content)

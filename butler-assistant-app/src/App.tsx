@@ -5,6 +5,7 @@ import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, Motion
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
 import { chatController } from './services/chatController'
+import { usageService } from './services/usageService'
 import { syncService } from './services/syncService'
 import { themeService } from './services/themeService'
 import { greetingService } from './services/greetingService'
@@ -175,6 +176,14 @@ function App() {
       setIsInitialized(true)
     }
   }, [])
+
+  // 認証完了後に使用量情報を取得
+  useEffect(() => {
+    if (requiresAuth) return
+    usageService.fetchUsage().then((info) => {
+      if (info) useAppStore.getState().setUsageInfo(info)
+    })
+  }, [requiresAuth])
 
   // 挨拶トリガー: メインAIチャット画面で1回だけ発火
   useEffect(() => {

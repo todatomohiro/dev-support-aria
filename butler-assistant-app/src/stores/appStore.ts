@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
-import type { Message, AppConfig, AppError, UserLocation } from '@/types'
+import type { Message, AppConfig, AppError, UserLocation, UsageInfo } from '@/types'
 import { DEFAULT_UI_CONFIG, DEFAULT_USER_PROFILE } from '@/types'
 import { MAX_MESSAGE_HISTORY } from '@/utils/performance'
 
@@ -75,6 +75,9 @@ export interface AppState {
   // ブリーフィングコンテキスト（直前のブリーフィング発言を次の送信時に引き継ぐ、非永続）
   lastBriefingContext: string | null
 
+  // 使用量（レートリミット）— 非永続、サーバーが信頼元
+  usageInfo: UsageInfo | null
+
   // エラー関連
   lastError: AppError | null
 
@@ -99,6 +102,8 @@ export interface AppState {
   setStreamingRequestId: (id: string | null) => void
   appendStreamingText: (delta: string) => void
   setLastBriefingContext: (context: string | null) => void
+  setUsageInfo: (info: UsageInfo | null) => void
+  decrementUsage: () => void
   clearMessages: () => void
   resetSession: () => void
   removeMessageImage: (messageId: string) => void
@@ -140,6 +145,7 @@ export const useAppStore = create<AppState>()(
       streamingText: null,
       streamingRequestId: null,
       lastBriefingContext: null,
+      usageInfo: null,
       lastError: null,
 
       // メッセージアクション（履歴制限付き）
@@ -242,6 +248,25 @@ export const useAppStore = create<AppState>()(
         streamingText: (state.streamingText ?? '') + delta,
       })),
       setLastBriefingContext: (context: string | null) => set({ lastBriefingContext: context }),
+      setUsageInfo: (info: UsageInfo | null) => set({ usageInfo: info }),
+      decrementUsage: () => set((state) => {
+        if (!state.usageInfo || state.usageInfo.plan === 'paid') return state
+        return {
+          usageInfo: {
+            ...state.usageInfo,
+            daily: {
+              ...state.usageInfo.daily,
+              used: state.usageInfo.daily.used + 1,
+              remaining: Math.max(0, state.usageInfo.daily.remaining - 1),
+            },
+            monthly: {
+              ...state.usageInfo.monthly,
+              used: state.usageInfo.monthly.used + 1,
+              remaining: Math.max(0, state.usageInfo.monthly.remaining - 1),
+            },
+          },
+        }
+      }),
     }),
     {
       name: 'butler-app-storage',

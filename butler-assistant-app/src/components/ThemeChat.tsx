@@ -14,6 +14,7 @@ import { ChatUI } from './ChatUI'
 import { WorkBadge } from './WorkBadge'
 import { ModelSelector } from './ModelSelector'
 import { CategorySelect } from './CategorySelect'
+import { UsageBadge } from './UsageBadge'
 
 interface ThemeChatProps {
   themeId: string
@@ -259,7 +260,7 @@ export function ThemeChat({ themeId }: ThemeChatProps) {
           }]}
           persistentReplies={workConnection?.active && workConnection.suggestedRepliesPersistent ? workConnection.suggestedReplies : undefined}
           persistentRepliesTemplate={workConnection?.active && workConnection.suggestedRepliesPersistent ? workConnection.suggestedRepliesTemplate : undefined}
-          inputExtra={<ModelSelector modelKey={currentModelKey} onChange={handleModelChange} />}
+          inputExtra={<><UsageBadge /><ModelSelector modelKey={currentModelKey} onChange={handleModelChange} /></>}
         />
       </div>
     </div>

@@ -21,7 +21,7 @@ export type { MotionDefinition, MotionMapping, ModelConfig, MotionTag } from './
 
 // Config types
 export { DEFAULT_UI_CONFIG, DEFAULT_USER_PROFILE, AVAILABLE_MODELS, DEFAULT_MODEL_KEY, TOPIC_CATEGORIES } from './config'
-export type { ModelKey, ModelInfo, ModelReference, UIConfig, UserProfile, UserLocation, AppConfig, ThemeSession, TopicCategory, TopicSubcategory } from './config'
+export type { ModelKey, ModelInfo, ModelReference, UIConfig, UserProfile, UserLocation, AppConfig, ThemeSession, TopicCategory, TopicSubcategory, UserPlan, UsageInfo } from './config'
 
 // Error types
 export {

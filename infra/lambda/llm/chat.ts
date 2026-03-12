@@ -22,6 +22,7 @@ import {
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda'
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
+import { checkRateLimit, incrementUsage, buildRateLimitMessage } from './rateLimiter'
 import { executeSkill } from './skills'
 import { TOOL_DEFINITIONS, MEMO_TOOL_DEFINITIONS } from './skills/toolDefinitions'
 import type { MCPToolDefinition } from '../mcp/mcpClient'
@@ -1762,6 +1763,57 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.log('[LLM] ブリーフィングモード開始')
   }
 
+  // レートリミットチェック（ブリーフィングはカウントしない）
+  if (!isBriefingMode) {
+    try {
+      const rateLimitResult = await checkRateLimit(userId, modelKey)
+      if (!rateLimitResult.allowed) {
+        console.log(`[RateLimit] 制限到達: userId=${userId}, reason=${rateLimitResult.reason}, plan=${rateLimitResult.plan}, daily=${rateLimitResult.daily.used}/${rateLimitResult.daily.limit}, monthly=${rateLimitResult.monthly.used}/${rateLimitResult.monthly.limit}`)
+
+        const limitMessage = buildRateLimitMessage(rateLimitResult.reason)
+
+        // ストリーミングモード: WebSocket で送信
+        if (streaming) {
+          try {
+            const connectionIds = await getUserConnectionIds(userId)
+            if (connectionIds.length > 0) {
+              const wsClient = new ApiGatewayManagementApiClient({ endpoint: WEBSOCKET_ENDPOINT })
+              const requestId = `rl_${Date.now()}`
+              await wsPushAll(wsClient, connectionIds, {
+                type: 'chat_complete',
+                requestId,
+                content: limitMessage,
+                rateLimited: true,
+                usage: {
+                  plan: rateLimitResult.plan,
+                  daily: rateLimitResult.daily,
+                  monthly: rateLimitResult.monthly,
+                },
+              })
+              return response(200, { streamed: true, requestId, rateLimited: true })
+            }
+          } catch (wsErr) {
+            console.warn('[RateLimit] WebSocket 送信エラー、REST フォールバック:', wsErr)
+          }
+        }
+
+        // REST モード（またはストリーミング WebSocket フォールバック）
+        return response(200, {
+          content: limitMessage,
+          rateLimited: true,
+          usage: {
+            plan: rateLimitResult.plan,
+            daily: rateLimitResult.daily,
+            monthly: rateLimitResult.monthly,
+          },
+        })
+      }
+    } catch (rateLimitError) {
+      // レートリミットチェック失敗時はチャットを続行（可用性優先）
+      console.warn('[RateLimit] チェックエラー（スキップ）:', rateLimitError)
+    }
+  }
+
   // lastBriefingContext（ブリーフィング直後の初回発言時に文脈を引き継ぐ）
   let lastBriefingContext: string | undefined
   try {
@@ -2299,6 +2351,11 @@ ${briefingParts.join('\n\n')}
 
         console.log(`[Stream] ストリーミング完了 (${streamedContent.length} chars)`)
 
+        // 使用量インクリメント（ブリーフィング以外）
+        if (!isBriefingMode) {
+          incrementUsage(userId).catch((err) => console.warn('[RateLimit] インクリメントエラー（スキップ）:', err))
+        }
+
         // REST レスポンス（ストリーミング済みを示す）
         return response(200, { streamed: true, requestId })
       } else {
@@ -2477,6 +2534,11 @@ ${briefingParts.join('\n\n')}
       const workStatus = mcpConn
         ? { active: !mcpConn.isExpired, expiresAt: mcpConn.expiresAt, toolCount: mcpConn.tools.length }
         : undefined
+
+      // 使用量インクリメント（ブリーフィング以外）
+      if (!isBriefingMode) {
+        incrementUsage(userId).catch((err) => console.warn('[RateLimit] インクリメントエラー（スキップ）:', err))
+      }
 
       return response(200, {
         content,

@@ -1,4 +1,4 @@
-import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb'
+import { DynamoDBClient, BatchGetItemCommand } from '@aws-sdk/client-dynamodb'
 import { unmarshall } from '@aws-sdk/util-dynamodb'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import { response } from './middleware'
@@ -7,7 +7,7 @@ const client = new DynamoDBClient({})
 const TABLE_NAME = process.env.TABLE_NAME!
 
 /**
- * GET /admin/me — 自分のロールを返却（ロールチェックなし）
+ * GET /admin/me — 自分のロールとプランを返却（ロールチェックなし）
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const userId = event.requestContext.authorizer?.claims?.sub
@@ -16,19 +16,29 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   try {
-    const result = await client.send(new GetItemCommand({
-      TableName: TABLE_NAME,
-      Key: {
-        PK: { S: `USER#${userId}` },
-        SK: { S: 'ROLE' },
+    const result = await client.send(new BatchGetItemCommand({
+      RequestItems: {
+        [TABLE_NAME]: {
+          Keys: [
+            { PK: { S: `USER#${userId}` }, SK: { S: 'ROLE' } },
+            { PK: { S: `USER#${userId}` }, SK: { S: 'PLAN' } },
+          ],
+        },
       },
     }))
 
-    const role = result.Item ? unmarshall(result.Item).role : 'user'
+    const items = result.Responses?.[TABLE_NAME] ?? []
+    let role = 'user'
+    let plan = 'free'
+    for (const item of items) {
+      const parsed = unmarshall(item)
+      if (parsed.SK === 'ROLE') role = parsed.role ?? 'user'
+      if (parsed.SK === 'PLAN') plan = parsed.plan ?? 'free'
+    }
 
-    return response(200, { userId, role })
+    return response(200, { userId, role, plan })
   } catch (error) {
-    console.error('ロール取得エラー:', error)
+    console.error('ロール/プラン取得エラー:', error)
     return response(500, { error: 'Internal server error' })
   }
 }
