@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useAuthStore } from '@/auth/authStore'
 import { adminApi } from '@/services/adminApi'
+import { BriefingSchedule } from '@/components/BriefingSchedule'
 
 /** 曜日ラベル */
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
@@ -10,7 +11,7 @@ const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 /** 日別アクティビティ */
-interface DayActivity {
+export interface DayActivity {
   date: string
   dayOfWeek: number
   hours: number[]       // 各時間のアクティブ分数（0-60）
@@ -99,6 +100,8 @@ export function UserActivityViewer() {
   const [days, setDays] = useState(30)
   const [selectedDay, setSelectedDay] = useState<DayActivity | null>(null)
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
+  const [backendDayWindows, setBackendDayWindows] = useState<Record<string, { from: string; to: string; confidence: number }[]> | undefined>()
+  const [briefingHistory, setBriefingHistory] = useState<{ date: string; triggeredWindows: { windowFrom: string; windowTo: string; firedAt: string }[] }[] | undefined>()
 
   const fetchData = useCallback(async (numDays: number) => {
     if (!idToken || !userId) return
@@ -107,6 +110,8 @@ export function UserActivityViewer() {
     try {
       const result = await adminApi.getUserActivity(idToken, userId, numDays)
       setData(parseActivities(result.activities))
+      setBackendDayWindows(result.dayWindows)
+      setBriefingHistory(result.briefingHistory)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'アクティビティの取得に失敗しました')
     } finally {
@@ -272,15 +277,27 @@ export function UserActivityViewer() {
             )}
           </div>
 
+          {/* ブリーフィングスケジュール */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">ブリーフィングスケジュール</h3>
+            <BriefingSchedule data={data} backendDayWindows={backendDayWindows} briefingHistory={briefingHistory} />
+          </div>
+
           {/* インサイト（Phase 2 プレビュー） */}
           <InsightPreview data={data} />
         </>
       )}
 
       {!loading && data.length === 0 && !error && (
-        <div className="bg-white rounded-lg shadow p-6 text-center text-gray-400">
-          アクティビティデータがありません
-        </div>
+        <>
+          <div className="bg-white rounded-lg shadow p-6 text-center text-gray-400">
+            アクティビティデータがありません
+          </div>
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">ブリーフィングスケジュール</h3>
+            <BriefingSchedule data={[]} />
+          </div>
+        </>
       )}
 
       {/* ツールチップ */}

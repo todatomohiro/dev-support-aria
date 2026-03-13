@@ -5,12 +5,13 @@
  *
  * アダプティブモード（アクティビティパターンあり）:
  *   ユーザーの過去の利用パターンから算出された「ブリーフィングウィンドウ」内で発火。
- *   セッション開始30分前〜開始時刻がウィンドウ。各ウィンドウにつき1回のみ。
+ *   各ウィンドウにつき1回のみ。重複チェックはバックエンド履歴 + メモリキャッシュ。
  *
  * フォールバックモード（パターンなし）:
  *   従来通り、前回から3時間以上経過していれば発火。
  */
 
+import { getIdToken } from '@/auth'
 import { activityPatternService } from '@/services/activityPatternService'
 
 /** localStorage キー */
@@ -27,10 +28,6 @@ const FALLBACK_MAX_DAILY = 3
 /** アダプティブ: 1日あたりの絶対上限（安全弁） */
 const ADAPTIVE_MAX_DAILY = 8
 
-/** ブリーフィング許可時間帯（JST） */
-const BRIEFING_HOUR_START = 6
-const BRIEFING_HOUR_END = 23
-
 /**
  * ブリーフィングサービスインターフェース
  */
@@ -41,6 +38,10 @@ export interface BriefingServiceInterface {
   markTriggered(): void
   /** 最終ブリーフィング時刻を取得 */
   getLastBriefingTime(): number | null
+  /** バックエンドから今日の発火履歴をロード */
+  loadTodayHistory(): Promise<void>
+  /** バックエンドに発火を記録（fire-and-forget） */
+  recordFired(windowFrom: string, windowTo: string): Promise<void>
 }
 
 /**
@@ -61,41 +62,112 @@ interface WindowTriggered {
 }
 
 /**
+ * バックエンドの発火履歴レスポンス
+ */
+interface BriefingHistoryResponse {
+  date: string
+  triggeredWindows: { windowFrom: string; windowTo: string; firedAt: string }[]
+}
+
+/**
  * ブリーフィングサービス実装
  */
 class BriefingServiceImpl implements BriefingServiceInterface {
   /** メモリキャッシュ: localStorage 読み取りを減らし、レース条件を防ぐ */
   private lastTriggeredAt: number | null = null
+  /** メモリキャッシュ: 今日の発火済みウィンドウ（"from" 時刻のSet） */
+  private todayTriggeredWindows: Set<string> = new Set()
+  /** 今日の日付（リセット判定用） */
+  private todayDate: string = ''
 
   constructor() {
     this.lastTriggeredAt = this._readLastBriefingTime()
+    this._restoreWindowTriggered()
+  }
+
+  /**
+   * バックエンドから今日の発火履歴をロード
+   *
+   * アプリ起動時・visibilitychange 時に呼ばれる。
+   * バックエンドの履歴でメモリキャッシュと localStorage を同期する。
+   */
+  async loadTodayHistory(): Promise<void> {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
+    if (!apiBaseUrl) return
+
+    try {
+      const token = await getIdToken()
+      if (!token) return
+
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
+      const res = await fetch(`${apiBaseUrl}/users/activity?action=briefing&date=${today}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!res.ok) return
+
+      const data: BriefingHistoryResponse = await res.json()
+
+      // メモリキャッシュを更新
+      this.todayDate = today
+      this.todayTriggeredWindows = new Set(data.triggeredWindows.map((w) => w.windowFrom))
+
+      // localStorage も同期（オフラインフォールバック用）
+      const windowData: WindowTriggered = {
+        date: today,
+        windows: [...this.todayTriggeredWindows],
+      }
+      localStorage.setItem(WINDOW_TRIGGERED_KEY, JSON.stringify(windowData))
+
+      console.log(`[Briefing] 発火履歴ロード: ${data.triggeredWindows.length}件 (${today})`)
+    } catch (error) {
+      console.warn('[Briefing] 発火履歴の取得に失敗、ローカルキャッシュを継続利用:', error)
+    }
+  }
+
+  /**
+   * バックエンドに発火を記録（fire-and-forget）
+   */
+  async recordFired(windowFrom: string, windowTo: string): Promise<void> {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
+    if (!apiBaseUrl) return
+
+    try {
+      const token = await getIdToken()
+      if (!token) return
+
+      await fetch(`${apiBaseUrl}/users/activity?action=briefing`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ windowFrom, windowTo }),
+      })
+    } catch {
+      // fire-and-forget: エラーは無視
+    }
   }
 
   /**
    * ブリーフィングを発火すべきか判定
    *
    * アダプティブモード（パターンあり）:
-   *   1. 時間帯チェック（JST 6:00〜23:00）
-   *   2. 1日の絶対上限チェック
-   *   3. 現在時刻がブリーフィングウィンドウ内か
-   *   4. そのウィンドウで未発火か
+   *   1. 1日の絶対上限チェック
+   *   2. 現在時刻がブリーフィングウィンドウ内か
+   *   3. そのウィンドウで未発火か（メモリキャッシュ）
    *
    * フォールバックモード（パターンなし）:
-   *   1. 時間帯チェック（JST 6:00〜23:00）
-   *   2. 前回から3時間以上経過
-   *   3. 1日の上限（3回）チェック
+   *   1. 前回から3時間以上経過
+   *   2. 1日の上限（3回）チェック
    */
   shouldTrigger(): boolean {
-    // 共通: 時間帯チェック（JST）
-    const now = new Date()
-    const jstHour = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })).getHours()
-    if (jstHour < BRIEFING_HOUR_START || jstHour >= BRIEFING_HOUR_END) {
-      return false
-    }
-
     // アダプティブモード
     if (activityPatternService.hasPattern()) {
-      return this._shouldTriggerAdaptive(now)
+      return this._shouldTriggerAdaptive(new Date())
     }
 
     // フォールバックモード
@@ -103,7 +175,7 @@ class BriefingServiceImpl implements BriefingServiceInterface {
   }
 
   /**
-   * ブリーフィング実行済みを記録
+   * ブリーフィング実行済みを記録（メモリキャッシュ即座更新）
    */
   markTriggered(): void {
     const now = Date.now()
@@ -138,7 +210,7 @@ class BriefingServiceImpl implements BriefingServiceInterface {
       return false
     }
 
-    // このウィンドウで既に発火済みかチェック
+    // このウィンドウで既に発火済みかチェック（メモリキャッシュ）
     if (this._isWindowAlreadyTriggered(now)) {
       return false
     }
@@ -165,66 +237,66 @@ class BriefingServiceImpl implements BriefingServiceInterface {
   }
 
   /**
-   * 現在時刻が属するウィンドウが既に発火済みかチェック
+   * 現在時刻が属するウィンドウが既に発火済みかチェック（メモリキャッシュ優先）
    */
   private _isWindowAlreadyTriggered(now: Date): boolean {
     const today = new Date(now).toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
-    try {
-      const stored = localStorage.getItem(WINDOW_TRIGGERED_KEY)
-      if (!stored) return false
-      const data: WindowTriggered = JSON.parse(stored)
-      if (data.date !== today) return false
 
-      // 現在のウィンドウの "from" を特定
-      const currentWindow = this._getCurrentWindowKey(now)
-      if (!currentWindow) return false
-
-      return data.windows.includes(currentWindow)
-    } catch {
-      return false
+    // 日付が変わったらリセット
+    if (this.todayDate !== today) {
+      this.todayTriggeredWindows.clear()
+      this.todayDate = today
     }
+
+    // 現在のウィンドウの "from" を特定
+    const currentWindow = activityPatternService.getCurrentWindow(now)
+    if (!currentWindow) return false
+
+    return this.todayTriggeredWindows.has(currentWindow.from)
   }
 
   /**
-   * 現在時刻が属するウィンドウの "from" 時刻を返す
-   */
-  private _getCurrentWindowKey(now: Date): string | null {
-    const dayOfWeek = now.getDay()
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-
-    // activityPatternService のパターンを直接参照はできないので、
-    // isInBriefingWindow が true の時点で呼ばれる前提。
-    // 現在時刻を15分単位に丸めてキーにする。
-    const minutes = now.getHours() * 60 + now.getMinutes()
-    const binned = Math.floor(minutes / 15) * 15
-    const h = Math.floor(binned / 60)
-    const m = binned % 60
-    return `${isWeekend ? 'we' : 'wd'}:${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-  }
-
-  /**
-   * 現在のウィンドウを発火済みとして記録
+   * 現在のウィンドウを発火済みとして記録（メモリキャッシュ + localStorage）
    */
   private _markWindowTriggered(now: Date): void {
     const today = new Date(now).toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
-    const windowKey = this._getCurrentWindowKey(now)
-    if (!windowKey) return
 
+    // 日付が変わったらリセット
+    if (this.todayDate !== today) {
+      this.todayTriggeredWindows.clear()
+      this.todayDate = today
+    }
+
+    const currentWindow = activityPatternService.getCurrentWindow(now)
+    if (!currentWindow) return
+
+    this.todayTriggeredWindows.add(currentWindow.from)
+
+    // localStorage にもバックアップ
     try {
-      const stored = localStorage.getItem(WINDOW_TRIGGERED_KEY)
-      let data: WindowTriggered = { date: today, windows: [] }
-      if (stored) {
-        const parsed: WindowTriggered = JSON.parse(stored)
-        if (parsed.date === today) {
-          data = parsed
-        }
+      const windowData: WindowTriggered = {
+        date: today,
+        windows: [...this.todayTriggeredWindows],
       }
-      if (!data.windows.includes(windowKey)) {
-        data.windows.push(windowKey)
-      }
-      localStorage.setItem(WINDOW_TRIGGERED_KEY, JSON.stringify(data))
+      localStorage.setItem(WINDOW_TRIGGERED_KEY, JSON.stringify(windowData))
     } catch {
       // localStorage エラーは無視
+    }
+  }
+
+  /** localStorage からウィンドウ発火記録を復元 */
+  private _restoreWindowTriggered(): void {
+    try {
+      const stored = localStorage.getItem(WINDOW_TRIGGERED_KEY)
+      if (!stored) return
+      const data: WindowTriggered = JSON.parse(stored)
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
+      if (data.date === today) {
+        this.todayDate = today
+        this.todayTriggeredWindows = new Set(data.windows)
+      }
+    } catch {
+      // 復元失敗時は無視
     }
   }
 

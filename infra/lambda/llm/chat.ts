@@ -1187,18 +1187,19 @@ interface PastSessionGroup {
 }
 
 /**
- * 5フェーズ・ブリーフィング
+ * 6フェーズ・ブリーフィング
  *
  * | # | フェーズ         | 時間帯      | 種別    |
  * |---|-----------------|------------|---------|
- * | 1 | morning         | 6:00〜11:00 | main    |
- * | 2 | midday_support  | 11:00〜12:00| support |
- * | 3 | afternoon       | 12:00〜17:00| main    |
- * | 4 | evening_support | 17:00〜19:00| support |
- * | 5 | night           | 19:00〜23:00| main    |
+ * | 1 | late_night      | 23:00〜6:00 | main    |
+ * | 2 | morning         | 6:00〜11:00 | main    |
+ * | 3 | midday_support  | 11:00〜12:00| support |
+ * | 4 | afternoon       | 12:00〜17:00| main    |
+ * | 5 | evening_support | 17:00〜19:00| support |
+ * | 6 | night           | 19:00〜23:00| main    |
  */
 
-type BriefingPhase = 'morning' | 'midday_support' | 'afternoon' | 'evening_support' | 'night'
+type BriefingPhase = 'morning' | 'midday_support' | 'afternoon' | 'evening_support' | 'night' | 'late_night'
 
 interface PhaseDefinition {
   phase: BriefingPhase
@@ -1209,6 +1210,7 @@ interface PhaseDefinition {
 }
 
 const BRIEFING_PHASES: PhaseDefinition[] = [
+  { phase: 'late_night',      fromHour: 23, toHour: 6,  type: 'main',    label: '深夜' },
   { phase: 'morning',         fromHour: 6,  toHour: 11, type: 'main',    label: '朝' },
   { phase: 'midday_support',  fromHour: 11, toHour: 12, type: 'support', label: '午前サポート' },
   { phase: 'afternoon',       fromHour: 12, toHour: 17, type: 'main',    label: '昼' },
@@ -1218,9 +1220,17 @@ const BRIEFING_PHASES: PhaseDefinition[] = [
 
 /**
  * 現在時刻のフェーズを取得
+ *
+ * fromHour > toHour の場合は日跨ぎフェーズ（例: 23:00-6:00）
  */
 function getCurrentPhase(jstHour: number): PhaseDefinition | null {
-  return BRIEFING_PHASES.find((p) => jstHour >= p.fromHour && jstHour < p.toHour) ?? null
+  return BRIEFING_PHASES.find((p) => {
+    if (p.fromHour > p.toHour) {
+      // 日跨ぎ: 23:00〜6:00 → hour >= 23 || hour < 6
+      return jstHour >= p.fromHour || jstHour < p.toHour
+    }
+    return jstHour >= p.fromHour && jstHour < p.toHour
+  }) ?? null
 }
 
 /**
@@ -2193,6 +2203,14 @@ ${userMood && userMood !== 'neutral' ? `
   - 特に伝えることがなければ、気遣いの一言（「頑張ってるね」「無理しないでね」等）
   - ユーザーの反応が今後のサポート頻度に影響するため、押し付けにならないよう注意` : ''
 
+    // 深夜フェーズ用の追加ルール
+    const lateNightPhaseRules = phaseName === 'late_night' ? `
+- 【深夜フェーズ】夜更かしユーザーへの軽い声かけです:
+  - 短く簡潔に（1〜2文程度）。報告や情報提供は控えめに
+  - 「まだ起きてるんだね」「夜遅くまでお疲れさま」等、労いの一言
+  - 明日の予定がある場合は「明日○○があるから、そろそろ休んだ方がいいかも」とやんわり伝える
+  - 押し付けにならないよう注意。夜型であることを否定しない` : ''
+
     // ブリーフィング専用のユーザーメッセージを構築
     const briefingUserMessage = `【ブリーフィングモード】
 あなたはユーザーの「相棒」です。ユーザーがアプリを開いたので、自然に話しかけてください。
@@ -2220,7 +2238,7 @@ ${briefingParts.join('\n\n')}
   - 朝の挨拶（おはよう等）は1日1回まで。2回目以降は「また来たね」「戻ってきたね」等、再訪を認識した言い方にする
   - 夜の挨拶（おやすみ等）も1日1回まで。2回目以降は別の話題で話しかける
   - 前回のブリーフィングで伝えた内容と同じ情報は繰り返さない。新しい切り口や別の話題を選ぶ
-  - このフェーズが消化済みの場合、特に短く簡潔にすること${supportPhaseRules}
+  - このフェーズが消化済みの場合、特に短く簡潔にすること${supportPhaseRules}${lateNightPhaseRules}
 - キャラクターの口調を守る
 - 押し付けがましくならないように。さりげなく自然に
 - 通常の JSON レスポンス形式（text, emotion, motion, suggestedReplies）で返すこと`

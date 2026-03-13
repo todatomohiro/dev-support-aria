@@ -1,7 +1,7 @@
 /**
  * アクティビティパターンサービス
  *
- * バックエンドから取得したアクティビティパターン（セッション開始時刻のウィンドウ）を
+ * バックエンドから取得したアクティビティパターン（曜日別セッション開始時刻のウィンドウ）を
  * ブリーフィング判定に提供する。
  */
 
@@ -22,10 +22,11 @@ export interface BriefingWindow {
 
 /**
  * アクティビティパターンレスポンス
+ *
+ * dayWindows: 曜日別ブリーフィングウィンドウ（キー: "0"=日〜"6"=土）
  */
 export interface ActivityPattern {
-  weekday: BriefingWindow[]
-  weekend: BriefingWindow[]
+  dayWindows: Record<string, BriefingWindow[]>
   analyzedDays: number
   activeDays: number
   updatedAt: string
@@ -39,6 +40,8 @@ export interface ActivityPatternServiceInterface {
   loadPattern(): Promise<void>
   /** 現在時刻がブリーフィングウィンドウ内か判定 */
   isInBriefingWindow(now?: Date): boolean
+  /** 現在時刻が属するウィンドウを返す（重複チェック用） */
+  getCurrentWindow(now?: Date): BriefingWindow | null
   /** パターンデータが利用可能か */
   hasPattern(): boolean
 }
@@ -95,7 +98,8 @@ class ActivityPatternServiceImpl implements ActivityPatternServiceInterface {
       const data: ActivityPattern = await res.json()
       this.pattern = data
       this._saveToCache(data)
-      console.log(`[ActivityPattern] パターン取得完了: 平日${data.weekday.length}件, 休日${data.weekend.length}件, 活動日${data.activeDays}日`)
+      const totalWindows = Object.values(data.dayWindows).reduce((sum, ws) => sum + ws.length, 0)
+      console.log(`[ActivityPattern] パターン取得完了: ${totalWindows}件(${Object.keys(data.dayWindows).length}曜日), 活動日${data.activeDays}日`)
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('fetch')) {
         console.warn('[ActivityPattern] ネットワークエラー、キャッシュを継続利用')
@@ -112,32 +116,64 @@ class ActivityPatternServiceImpl implements ActivityPatternServiceInterface {
   /**
    * 現在時刻がブリーフィングウィンドウ内かを判定
    *
-   * パターンデータがない場合は false を返す（フォールバックロジックを使うため）
+   * 現在の曜日に対応するウィンドウで判定する。
+   * パターンデータがない場合は false を返す（フォールバックロジックを使うため）。
    */
   isInBriefingWindow(now?: Date): boolean {
     if (!this.pattern) return false
 
     const current = now ?? new Date()
-    const dayOfWeek = current.getDay()
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-    const windows = isWeekend ? this.pattern.weekend : this.pattern.weekday
-
-    if (windows.length === 0) return false
+    const dow = String(current.getDay())
+    const windows = this.pattern.dayWindows[dow]
+    if (!windows || windows.length === 0) return false
 
     const currentMinutes = current.getHours() * 60 + current.getMinutes()
 
     return windows.some((w) => {
       const fromMinutes = timeToMinutes(w.from)
       const toMinutes = timeToMinutes(w.to)
-      return currentMinutes >= fromMinutes && currentMinutes <= toMinutes
+      if (fromMinutes <= toMinutes) {
+        // 通常: 07:00〜09:00
+        return currentMinutes >= fromMinutes && currentMinutes <= toMinutes
+      }
+      // 日跨ぎ: 21:00〜01:00 → 21:00〜24:00 or 00:00〜01:00
+      return currentMinutes >= fromMinutes || currentMinutes <= toMinutes
     })
   }
 
   /**
-   * パターンデータが利用可能か（アクティブな日が1日以上あるか）
+   * 現在時刻が属するウィンドウを返す（重複チェック用）
+   *
+   * isInBriefingWindow と同じロジックだが、マッチしたウィンドウオブジェクトを返す。
+   */
+  getCurrentWindow(now?: Date): BriefingWindow | null {
+    if (!this.pattern) return null
+
+    const current = now ?? new Date()
+    const dow = String(current.getDay())
+    const windows = this.pattern.dayWindows[dow]
+    if (!windows || windows.length === 0) return null
+
+    const currentMinutes = current.getHours() * 60 + current.getMinutes()
+
+    for (const w of windows) {
+      const fromMinutes = timeToMinutes(w.from)
+      const toMinutes = timeToMinutes(w.to)
+      if (fromMinutes <= toMinutes) {
+        if (currentMinutes >= fromMinutes && currentMinutes <= toMinutes) return w
+      } else {
+        if (currentMinutes >= fromMinutes || currentMinutes <= toMinutes) return w
+      }
+    }
+    return null
+  }
+
+  /**
+   * パターンデータが利用可能か（いずれかの曜日にウィンドウがあるか）
    */
   hasPattern(): boolean {
-    return this.pattern !== null && this.pattern.activeDays > 0
+    if (!this.pattern || this.pattern.activeDays === 0) return false
+    return Object.values(this.pattern.dayWindows).some((ws) => ws.length > 0)
   }
 
   /** localStorage からキャッシュを復元 */

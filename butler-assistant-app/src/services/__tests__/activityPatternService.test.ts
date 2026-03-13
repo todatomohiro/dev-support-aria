@@ -4,20 +4,25 @@ import type { ActivityPattern } from '../activityPatternService'
 
 const PATTERN_CACHE_KEY = 'butler-activity-pattern'
 
-/** テスト用のアクティビティパターン（平日3セッション、休日2セッション） */
+/** テスト用のアクティビティパターン（曜日別） */
 function createTestPattern(overrides?: Partial<ActivityPattern>): ActivityPattern {
   return {
-    weekday: [
-      { from: '08:30', to: '09:00', confidence: 0.85 },
-      { from: '13:00', to: '13:30', confidence: 0.7 },
-      { from: '19:30', to: '20:00', confidence: 0.4 },
-    ],
-    weekend: [
-      { from: '09:30', to: '10:00', confidence: 0.6 },
-      { from: '14:00', to: '14:30', confidence: 0.5 },
-    ],
-    analyzedDays: 14,
-    activeDays: 10,
+    dayWindows: {
+      // 月曜 (1)
+      '1': [
+        { from: '07:00', to: '09:00', confidence: 0.85 },
+        { from: '11:00', to: '14:00', confidence: 0.7 },
+        { from: '19:00', to: '21:00', confidence: 0.4 },
+      ],
+      // 火曜 (2)
+      '2': [
+        { from: '08:00', to: '10:00', confidence: 0.75 },
+        { from: '12:00', to: '15:00', confidence: 0.6 },
+      ],
+      // 日曜 (0) — ウィンドウなし（データ不足）
+    },
+    analyzedDays: 28,
+    activeDays: 20,
     updatedAt: '2026-03-10T00:00:00Z',
     ...overrides,
   }
@@ -55,6 +60,12 @@ describe('ActivityPatternServiceImpl', () => {
       expect(service.hasPattern()).toBe(false)
     })
 
+    it('dayWindows が空の場合は false', () => {
+      setCachedPattern(createTestPattern({ dayWindows: {} }))
+      service = new ActivityPatternServiceImpl()
+      expect(service.hasPattern()).toBe(false)
+    })
+
     it('有効なパターンがキャッシュにある場合は true', () => {
       setCachedPattern(createTestPattern())
       service = new ActivityPatternServiceImpl()
@@ -68,45 +79,38 @@ describe('ActivityPatternServiceImpl', () => {
       service = new ActivityPatternServiceImpl()
     })
 
-    it('平日 8:45 はウィンドウ内（08:30〜09:00）', () => {
-      // 月曜日 8:45
-      const date = new Date(2026, 2, 9, 8, 45)  // 2026-03-09 (月)
+    it('月曜 8:30 はウィンドウ内（07:00〜09:00）', () => {
+      const date = new Date(2026, 2, 9, 8, 30)  // 2026-03-09 (月)
       vi.setSystemTime(date)
       expect(service.isInBriefingWindow(date)).toBe(true)
     })
 
-    it('平日 8:29 はウィンドウ外', () => {
-      const date = new Date(2026, 2, 9, 8, 29)
+    it('月曜 6:59 はウィンドウ外', () => {
+      const date = new Date(2026, 2, 9, 6, 59)
       vi.setSystemTime(date)
       expect(service.isInBriefingWindow(date)).toBe(false)
     })
 
-    it('平日 9:01 はウィンドウ外（09:00を超過）', () => {
-      const date = new Date(2026, 2, 9, 9, 1)
-      vi.setSystemTime(date)
-      expect(service.isInBriefingWindow(date)).toBe(false)
-    })
-
-    it('平日 13:15 はウィンドウ内（13:00〜13:30）', () => {
-      const date = new Date(2026, 2, 9, 13, 15)
+    it('月曜 12:00 はウィンドウ内（11:00〜14:00）', () => {
+      const date = new Date(2026, 2, 9, 12, 0)
       vi.setSystemTime(date)
       expect(service.isInBriefingWindow(date)).toBe(true)
     })
 
-    it('平日 10:00 はウィンドウ外', () => {
-      const date = new Date(2026, 2, 9, 10, 0)
-      vi.setSystemTime(date)
-      expect(service.isInBriefingWindow(date)).toBe(false)
-    })
-
-    it('休日 9:45 はウィンドウ内（09:30〜10:00）', () => {
-      const date = new Date(2026, 2, 8, 9, 45)  // 2026-03-08 (日)
+    it('火曜 9:00 はウィンドウ内（08:00〜10:00）', () => {
+      const date = new Date(2026, 2, 10, 9, 0)  // 2026-03-10 (火)
       vi.setSystemTime(date)
       expect(service.isInBriefingWindow(date)).toBe(true)
     })
 
-    it('休日 8:45 はウィンドウ外（休日パターンには 08:30〜09:00 がない）', () => {
-      const date = new Date(2026, 2, 8, 8, 45)
+    it('火曜 7:30 はウィンドウ外（火曜は 08:00〜10:00 が最初）', () => {
+      const date = new Date(2026, 2, 10, 7, 30)
+      vi.setSystemTime(date)
+      expect(service.isInBriefingWindow(date)).toBe(false)
+    })
+
+    it('日曜はウィンドウなし → 常に false', () => {
+      const date = new Date(2026, 2, 8, 8, 30)  // 2026-03-08 (日)
       vi.setSystemTime(date)
       expect(service.isInBriefingWindow(date)).toBe(false)
     })
@@ -147,15 +151,66 @@ describe('ActivityPatternServiceImpl', () => {
     })
   })
 
+  describe('getCurrentWindow', () => {
+    beforeEach(() => {
+      setCachedPattern(createTestPattern())
+      service = new ActivityPatternServiceImpl()
+    })
+
+    it('月曜 8:30 はウィンドウ 07:00〜09:00 を返す', () => {
+      const date = new Date(2026, 2, 9, 8, 30)  // 2026-03-09 (月)
+      vi.setSystemTime(date)
+      const w = service.getCurrentWindow(date)
+      expect(w).not.toBeNull()
+      expect(w!.from).toBe('07:00')
+      expect(w!.to).toBe('09:00')
+    })
+
+    it('月曜 6:59 はウィンドウ外なので null', () => {
+      const date = new Date(2026, 2, 9, 6, 59)
+      vi.setSystemTime(date)
+      expect(service.getCurrentWindow(date)).toBeNull()
+    })
+
+    it('月曜 12:00 はウィンドウ 11:00〜14:00 を返す', () => {
+      const date = new Date(2026, 2, 9, 12, 0)
+      vi.setSystemTime(date)
+      const w = service.getCurrentWindow(date)
+      expect(w).not.toBeNull()
+      expect(w!.from).toBe('11:00')
+      expect(w!.to).toBe('14:00')
+    })
+
+    it('日曜はウィンドウなし → null', () => {
+      const date = new Date(2026, 2, 8, 8, 30)  // 2026-03-08 (日)
+      vi.setSystemTime(date)
+      expect(service.getCurrentWindow(date)).toBeNull()
+    })
+
+    it('パターンがない場合は null', () => {
+      localStorage.clear()
+      service = new ActivityPatternServiceImpl()
+      const date = new Date(2026, 2, 9, 8, 45)
+      expect(service.getCurrentWindow(date)).toBeNull()
+    })
+  })
+
   describe('ウィンドウなしのパターン', () => {
-    it('weekday/weekend 共に空の場合は常に false', () => {
+    it('全曜日ウィンドウ空の場合は hasPattern=false', () => {
       setCachedPattern(createTestPattern({
-        weekday: [],
-        weekend: [],
+        dayWindows: {},
         activeDays: 5,
       }))
       service = new ActivityPatternServiceImpl()
+      expect(service.hasPattern()).toBe(false)
+    })
 
+    it('全曜日ウィンドウ空の場合は isInBriefingWindow=false', () => {
+      setCachedPattern(createTestPattern({
+        dayWindows: {},
+        activeDays: 5,
+      }))
+      service = new ActivityPatternServiceImpl()
       const date = new Date(2026, 2, 9, 8, 45)
       expect(service.isInBriefingWindow(date)).toBe(false)
     })

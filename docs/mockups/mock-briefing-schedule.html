@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ブリーフィングスケジュール - 管理画面モック</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  /* タイムライングリッド: 行ごとに相対配置、ブロックは絶対配置 */
+  .tl-row {
+    position: relative;
+    height: 48px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .tl-row:last-child { border-bottom: none; }
+  .tl-header {
+    position: relative;
+    height: 24px;
+    border-bottom: 1px solid #d1d5db;
+  }
+  .tl-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid #e5e7eb;
+  }
+  .tl-tick-label {
+    position: absolute;
+    top: 2px;
+    font-size: 10px;
+    color: #9ca3af;
+    transform: translateX(-50%);
+    user-select: none;
+  }
+  .tl-day {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    background: #f9fafb;
+    border-right: 1px solid #e5e7eb;
+    z-index: 5;
+  }
+  .tl-day.weekend { color: #dc2626; }
+  .tl-area {
+    position: absolute;
+    left: 36px;
+    right: 0;
+    top: 0;
+    bottom: 0;
+  }
+
+  /* 非アクティブ時間帯（0-6時, 23時以降） */
+  .tl-inactive {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(45deg, transparent, transparent 3px, #f3f4f6 3px, #f3f4f6 4px);
+    z-index: 1;
+  }
+
+  /* ブリーフィングブロック */
+  .b-block {
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    z-index: 10;
+    white-space: nowrap;
+    cursor: default;
+    transition: filter 0.12s;
+    min-width: 56px;
+    box-sizing: border-box;
+    padding: 0 6px;
+  }
+  .b-block:hover { filter: brightness(0.92); }
+  .b-block.main {
+    background: #dbeafe;
+    border: 1.5px solid #93c5fd;
+    color: #1e40af;
+  }
+  .b-block.support {
+    background: #fef3c7;
+    border: 1.5px solid #fcd34d;
+    color: #92400e;
+  }
+
+  /* confidence バー */
+  .c-bar {
+    position: absolute;
+    bottom: 3px;
+    left: 4px;
+    right: 4px;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(0,0,0,0.08);
+  }
+  .c-fill {
+    height: 100%;
+    border-radius: 2px;
+  }
+  .main .c-fill { background: #3b82f6; }
+  .support .c-fill { background: #f59e0b; }
+
+  /* ツールチップ */
+  .b-block .tip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2937;
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 400;
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+    line-height: 1.6;
+  }
+  .b-block .tip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #1f2937;
+  }
+  .b-block:hover .tip { display: block; }
+
+  .legend-sw {
+    width: 18px;
+    height: 14px;
+    border-radius: 3px;
+    display: inline-block;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<div class="flex h-screen">
+  <!-- サイドバー -->
+  <aside class="w-60 bg-gray-900 text-white flex-shrink-0 flex flex-col">
+    <div class="p-4 border-b border-gray-700">
+      <h1 class="text-lg font-bold">Ai-Ba Admin</h1>
+      <p class="text-xs text-gray-400 mt-0.5">管理画面</p>
+    </div>
+    <nav class="flex-1 p-3 space-y-1 text-sm">
+      <a href="#" class="block px-3 py-2 rounded text-gray-300 hover:bg-gray-800">ユーザー一覧</a>
+      <a href="#" class="block px-3 py-2 rounded text-gray-300 hover:bg-gray-800">モデル管理</a>
+      <a href="#" class="block px-3 py-2 rounded bg-gray-800 text-white font-medium">ブリーフィング</a>
+      <a href="#" class="block px-3 py-2 rounded text-gray-300 hover:bg-gray-800">MFA 設定</a>
+    </nav>
+  </aside>
+
+  <!-- メイン -->
+  <main class="flex-1 overflow-auto p-6">
+    <a href="#" class="text-sm text-blue-600 hover:text-blue-800 mb-4 inline-block">&larr; ユーザー詳細に戻る</a>
+
+    <div class="mb-6">
+      <h2 class="text-xl font-bold text-gray-900">ブリーフィングスケジュール</h2>
+      <p class="text-sm text-gray-500 mt-1">ユーザーのブリーフィング発火タイミングを可視化</p>
+    </div>
+
+    <!-- ユーザー選択 + メタ情報 -->
+    <div class="bg-white rounded-lg shadow p-5 mb-6">
+      <div class="flex flex-wrap items-end gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ユーザー</label>
+          <select id="userSelect" class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-72" onchange="render(this.value)">
+            <option value="user1">toda@example.com (toda.tomohiro)</option>
+            <option value="user2">tanaka@example.com (tanaka.yuki)</option>
+            <option value="user3">suzuki@example.com — パターンなし</option>
+          </select>
+        </div>
+        <div id="metaInfo" class="flex gap-6 text-sm text-gray-600">
+          <div><span class="text-gray-400">分析期間:</span> <span class="font-medium text-gray-900">14日間</span></div>
+          <div><span class="text-gray-400">活動日数:</span> <span class="font-medium text-gray-900" id="activeDays">12日</span></div>
+          <div><span class="text-gray-400">モード:</span> <span id="modeLabel" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">アダプティブ</span></div>
+          <div><span class="text-gray-400">最終更新:</span> <span class="font-medium text-gray-900">2026-03-13 09:15</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 凡例 -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+      <div class="flex flex-wrap items-center gap-6 text-sm">
+        <span class="font-medium text-gray-700">凡例:</span>
+        <div class="flex items-center gap-1.5">
+          <span class="legend-sw" style="border:1.5px solid #93c5fd;background:#dbeafe;"></span>
+          <span class="text-gray-600">メインフェーズ（morning / afternoon / night）</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="legend-sw" style="border:1.5px solid #fcd34d;background:#fef3c7;"></span>
+          <span class="text-gray-600">サポートフェーズ（midday / evening）</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="legend-sw" style="background:repeating-linear-gradient(45deg,transparent,transparent 3px,#f3f4f6 3px,#f3f4f6 4px);border:1px solid #e5e7eb;"></span>
+          <span class="text-gray-600">非ブリーフィング時間帯（0-5時）</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <div style="display:inline-block;width:40px;height:6px;border-radius:3px;background:#e5e7eb;position:relative;vertical-align:middle;">
+            <div style="height:100%;width:70%;border-radius:3px;background:#3b82f6;"></div>
+          </div>
+          <span class="text-gray-600">confidence（出現率）</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== 学習前 ====== -->
+    <div class="bg-white rounded-lg shadow p-5 mb-6">
+      <div class="flex items-center gap-3 mb-3">
+        <h3 class="text-lg font-semibold text-gray-900">学習前</h3>
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">フォールバックモード</span>
+      </div>
+      <p class="text-sm text-gray-500 mb-4">パターンがない初期状態。前回から3時間以上経過で発火（1日最大3回）。<br>5フェーズの時間帯に基づき、どの時間帯でも発火可能。</p>
+      <div class="overflow-x-auto" style="min-width:720px;">
+        <div id="grid-before" style="position:relative;"></div>
+      </div>
+    </div>
+
+    <!-- ====== 学習後 ====== -->
+    <div class="bg-white rounded-lg shadow p-5 mb-6" id="adaptiveSection">
+      <div class="flex items-center gap-3 mb-3">
+        <h3 class="text-lg font-semibold text-gray-900">学習後</h3>
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">アダプティブモード</span>
+      </div>
+      <p class="text-sm text-gray-500 mb-4">過去14日間の利用パターンから算出したウィンドウ。セッション開始30分前〜開始時刻。<br>ウィンドウ内でのみ発火、同一ウィンドウ1回（1日最大8回）。</p>
+      <div class="overflow-x-auto" style="min-width:720px;">
+        <div id="grid-after" style="position:relative;"></div>
+      </div>
+
+      <!-- ウィンドウ詳細テーブル -->
+      <div class="mt-6 border-t border-gray-200 pt-4">
+        <h4 class="text-sm font-semibold text-gray-700 mb-3">検出ウィンドウ一覧</h4>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-gray-50 text-gray-600 text-left">
+              <th class="px-3 py-2 font-medium">区分</th>
+              <th class="px-3 py-2 font-medium">ウィンドウ</th>
+              <th class="px-3 py-2 font-medium">フェーズ</th>
+              <th class="px-3 py-2 font-medium">Confidence</th>
+              <th class="px-3 py-2 font-medium">発火回数 / 活動日</th>
+            </tr>
+          </thead>
+          <tbody id="windowTableBody" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 5フェーズ参照表 -->
+    <div class="bg-white rounded-lg shadow p-5 mb-6">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3">5フェーズ定義（バックエンド）</h3>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50 text-gray-600 text-left">
+            <th class="px-3 py-2 font-medium">フェーズ名</th>
+            <th class="px-3 py-2 font-medium">時間帯（JST）</th>
+            <th class="px-3 py-2 font-medium">タイプ</th>
+            <th class="px-3 py-2 font-medium">説明</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr><td class="px-3 py-2 font-medium">morning</td><td class="px-3 py-2">6:00 - 11:00</td><td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">main</span></td><td class="px-3 py-2 text-gray-500">朝の挨拶 + 今日の予定・天気</td></tr>
+          <tr><td class="px-3 py-2 font-medium">midday_support</td><td class="px-3 py-2">11:00 - 12:00</td><td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">support</span></td><td class="px-3 py-2 text-gray-500">午前のリマインド・気遣い</td></tr>
+          <tr><td class="px-3 py-2 font-medium">afternoon</td><td class="px-3 py-2">12:00 - 17:00</td><td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">main</span></td><td class="px-3 py-2 text-gray-500">午後の予定・タスクリマインド</td></tr>
+          <tr><td class="px-3 py-2 font-medium">evening_support</td><td class="px-3 py-2">17:00 - 19:00</td><td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">support</span></td><td class="px-3 py-2 text-gray-500">夕方の声かけ・労い</td></tr>
+          <tr><td class="px-3 py-2 font-medium">night</td><td class="px-3 py-2">19:00 - 23:00</td><td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">main</span></td><td class="px-3 py-2 text-gray-500">1日の振り返り・おやすみ</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const DAYS = ['月','火','水','木','金','土','日']
+
+const PHASES = [
+  { phase:'morning',         from:6,  to:11, type:'main',    label:'朝' },
+  { phase:'midday_support',  from:11, to:12, type:'support', label:'午前サポート' },
+  { phase:'afternoon',       from:12, to:17, type:'main',    label:'昼' },
+  { phase:'evening_support', from:17, to:19, type:'support', label:'夕方サポート' },
+  { phase:'night',           from:19, to:23, type:'main',    label:'夜' },
+]
+
+function getPhase(hour) {
+  return PHASES.find(p => hour >= p.from && hour < p.to) || null
+}
+function t2m(t) { const [h,m] = t.split(':').map(Number); return h*60+m }
+
+// ── サンプルデータ ──
+const DATA = {
+  user1: {
+    activeDays: 12, mode: 'adaptive',
+    weekday: [
+      { from:'07:00', to:'07:30', confidence:0.83 },
+      { from:'11:00', to:'11:30', confidence:0.50 },
+      { from:'12:30', to:'13:00', confidence:0.67 },
+      { from:'15:30', to:'16:00', confidence:0.42 },
+    ],
+    weekend: [
+      { from:'08:30', to:'09:00', confidence:0.75 },
+      { from:'11:00', to:'11:30', confidence:0.50 },
+      { from:'13:00', to:'13:30', confidence:0.50 },
+      { from:'18:00', to:'18:30', confidence:0.50 },
+    ],
+  },
+  user2: {
+    activeDays: 8, mode: 'adaptive',
+    weekday: [
+      { from:'08:30', to:'09:00', confidence:0.63 },
+      { from:'12:00', to:'12:30', confidence:0.50 },
+      { from:'20:30', to:'21:00', confidence:0.75 },
+    ],
+    weekend: [
+      { from:'10:00', to:'10:30', confidence:0.50 },
+      { from:'14:00', to:'14:30', confidence:0.50 },
+    ],
+  },
+  user3: { activeDays: 2, mode: 'fallback', weekday: [], weekend: [] },
+}
+
+// ── タイムライン描画 ──
+
+/** %位置: 分→グリッド上の left% (0-24時 = 0-100%) */
+function pct(minutes) { return (minutes / 1440) * 100 }
+
+function buildTimeline(containerId, getBlocks) {
+  const el = document.getElementById(containerId)
+  el.innerHTML = ''
+
+  // ヘッダー（時刻目盛り）
+  const hdr = document.createElement('div')
+  hdr.className = 'tl-header'
+  hdr.style.marginLeft = '36px'
+  hdr.style.position = 'relative'
+  for (let h = 0; h <= 23; h++) {
+    const lbl = document.createElement('span')
+    lbl.className = 'tl-tick-label'
+    lbl.style.left = `${pct(h*60)}%`
+    lbl.textContent = h
+    hdr.appendChild(lbl)
+  }
+  el.appendChild(hdr)
+
+  // 日ごとの行
+  DAYS.forEach((day, di) => {
+    const isWe = di >= 5
+    const row = document.createElement('div')
+    row.className = 'tl-row'
+
+    // 曜日ラベル
+    const lbl = document.createElement('div')
+    lbl.className = 'tl-day' + (isWe ? ' weekend' : '')
+    lbl.textContent = day
+    row.appendChild(lbl)
+
+    // 時間エリア
+    const area = document.createElement('div')
+    area.className = 'tl-area'
+
+    // 時刻グリッド線
+    for (let h = 0; h <= 24; h++) {
+      const tick = document.createElement('div')
+      tick.className = 'tl-tick'
+      tick.style.left = `${pct(h*60)}%`
+      area.appendChild(tick)
+    }
+
+    // 非アクティブ帯（0-6時）
+    const inact = document.createElement('div')
+    inact.className = 'tl-inactive'
+    inact.style.left = '0'
+    inact.style.width = `${pct(6*60)}%`
+    area.appendChild(inact)
+    // 23時以降
+    const inact2 = document.createElement('div')
+    inact2.className = 'tl-inactive'
+    inact2.style.left = `${pct(23*60)}%`
+    inact2.style.right = '0'
+    area.appendChild(inact2)
+
+    // ブロック配置
+    const blocks = getBlocks(day, di, isWe)
+    blocks.forEach(b => {
+      const fromM = t2m(b.from)
+      const toM = t2m(b.to)
+      const block = document.createElement('div')
+      block.className = `b-block ${b.type}`
+      block.style.left = `${pct(fromM)}%`
+      // 最小幅を確保するため、実際の幅と min-width の大きい方を使用
+      const naturalWidth = pct(toM - fromM)
+      block.style.width = `${naturalWidth}%`
+      block.style.minWidth = '60px'
+      block.textContent = b.label
+
+      // confidence バー
+      if (b.confidence != null) {
+        const bar = document.createElement('div')
+        bar.className = 'c-bar'
+        const fill = document.createElement('div')
+        fill.className = 'c-fill'
+        fill.style.width = `${Math.round(b.confidence*100)}%`
+        bar.appendChild(fill)
+        block.appendChild(bar)
+      }
+
+      // ツールチップ
+      const tip = document.createElement('div')
+      tip.className = 'tip'
+      let lines = [`<b>${b.phase}</b> (${b.type})`, `${b.from} – ${b.to}`]
+      if (b.confidence != null) lines.push(`confidence: ${Math.round(b.confidence*100)}%`)
+      tip.innerHTML = lines.join('<br>')
+      block.appendChild(tip)
+
+      area.appendChild(block)
+    })
+
+    row.appendChild(area)
+    el.appendChild(row)
+  })
+}
+
+// ── フォールバック: 全曜日同じ3ブロック ──
+function fallbackBlocks() {
+  return [
+    { from:'07:00', to:'08:30', phase:'morning',   type:'main', label:'morning',   confidence:null },
+    { from:'12:00', to:'13:30', phase:'afternoon',  type:'main', label:'afternoon', confidence:null },
+    { from:'21:30', to:'23:00', phase:'night',      type:'main', label:'night',     confidence:null },
+  ]
+}
+
+// ── アダプティブ: ユーザーデータから生成 ──
+function adaptiveBlocks(data, isWe) {
+  const wins = isWe ? data.weekend : data.weekday
+  return wins.map(w => {
+    const h = Math.floor(t2m(w.from) / 60)
+    const ph = getPhase(h)
+    return {
+      from: w.from, to: w.to,
+      phase: ph?.phase ?? '?',
+      type: ph?.type ?? 'main',
+      label: ph?.type === 'support' ? 'support' : (ph?.phase ?? '?'),
+      confidence: w.confidence,
+    }
+  })
+}
+
+// ── ウィンドウ詳細テーブル ──
+function buildTable(data) {
+  const tbody = document.getElementById('windowTableBody')
+  tbody.innerHTML = ''
+  const secs = [
+    { label:'平日', wins:data.weekday, cls:'bg-gray-100 text-gray-700' },
+    { label:'休日', wins:data.weekend, cls:'bg-red-50 text-red-700' },
+  ]
+  secs.forEach(s => {
+    s.wins.forEach(w => {
+      const h = Math.floor(t2m(w.from)/60)
+      const ph = getPhase(h)
+      const est = Math.round(w.confidence * data.activeDays)
+      const tr = document.createElement('tr')
+      tr.innerHTML = `
+        <td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${s.cls}">${s.label}</span></td>
+        <td class="px-3 py-2 font-mono text-gray-900">${w.from} – ${w.to}</td>
+        <td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${ph?.type==='support'?'bg-amber-100 text-amber-700':'bg-blue-100 text-blue-700'}">${ph?.phase??'?'}</span></td>
+        <td class="px-3 py-2">
+          <div class="flex items-center gap-2">
+            <div class="w-20 h-2 bg-gray-200 rounded-full overflow-hidden"><div class="h-full rounded-full ${ph?.type==='support'?'bg-amber-400':'bg-blue-400'}" style="width:${Math.round(w.confidence*100)}%"></div></div>
+            <span class="text-gray-700 font-medium">${Math.round(w.confidence*100)}%</span>
+          </div>
+        </td>
+        <td class="px-3 py-2 text-gray-600">${est} / ${data.activeDays}日</td>
+      `
+      tbody.appendChild(tr)
+    })
+  })
+}
+
+// ── メイン描画 ──
+function render(userId) {
+  const d = DATA[userId]
+
+  document.getElementById('activeDays').textContent = `${d.activeDays}日`
+  const ml = document.getElementById('modeLabel')
+  if (d.mode === 'adaptive') {
+    ml.textContent = 'アダプティブ'
+    ml.className = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700'
+  } else {
+    ml.textContent = 'フォールバック'
+    ml.className = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600'
+  }
+
+  // 学習前
+  buildTimeline('grid-before', () => fallbackBlocks())
+
+  // 学習後
+  const sec = document.getElementById('adaptiveSection')
+  if (d.mode === 'fallback') {
+    sec.style.display = 'none'
+  } else {
+    sec.style.display = ''
+    buildTimeline('grid-after', (day, di, isWe) => adaptiveBlocks(d, isWe))
+    buildTable(d)
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => render('user1'))
+</script>
+</body>
+</html>

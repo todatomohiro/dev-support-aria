@@ -17,6 +17,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
 import * as cloudfrontOrigins from 'aws-cdk-lib/aws-cloudfront-origins'
 import * as acm from 'aws-cdk-lib/aws-certificatemanager'
 import * as path from 'path'
+import { AdminNestedStack } from './admin-nested-stack'
 
 interface ButlerStackProps extends cdk.StackProps {
   /** CloudFront 用 ACM 証明書（us-east-1 で作成済み） */
@@ -887,98 +888,6 @@ export class ButlerStack extends cdk.Stack {
       },
     })
 
-    // ── Admin Lambda 関数 ──
-    const adminMeFn = new lambdaNode.NodejsFunction(this, 'AdminMeFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'me.ts'),
-      functionName: 'butler-admin-me',
-    })
-
-    const adminUsersListFn = new lambdaNode.NodejsFunction(this, 'AdminUsersListFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersList.ts'),
-      functionName: 'butler-admin-users-list',
-      environment: {
-        TABLE_NAME: table.tableName,
-        USER_POOL_ID: userPool.userPoolId,
-      },
-    })
-
-    const adminUsersDetailFn = new lambdaNode.NodejsFunction(this, 'AdminUsersDetailFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersDetail.ts'),
-      functionName: 'butler-admin-users-detail',
-      environment: {
-        TABLE_NAME: table.tableName,
-        USER_POOL_ID: userPool.userPoolId,
-      },
-    })
-
-    const adminUsersRoleFn = new lambdaNode.NodejsFunction(this, 'AdminUsersRoleFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersRole.ts'),
-      functionName: 'butler-admin-users-role',
-    })
-
-    const adminUsersActivityFn = new lambdaNode.NodejsFunction(this, 'AdminUsersActivityFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersActivity.ts'),
-      functionName: 'butler-admin-users-activity',
-    })
-
-    const adminUsersMemoryFn = new lambdaNode.NodejsFunction(this, 'AdminUsersMemoryFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'usersMemory.ts'),
-      functionName: 'butler-admin-users-memory',
-    })
-
-    // Admin — DynamoDB 権限
-    table.grantReadData(adminMeFn)
-    table.grantReadData(adminUsersListFn)
-    table.grantReadData(adminUsersDetailFn)
-    table.grantReadData(adminUsersActivityFn)
-    table.grantReadWriteData(adminUsersMemoryFn)
-    table.grantReadWriteData(adminUsersRoleFn)
-    // Admin — Cognito ListUsers/AdminGetUser 権限
-    const cognitoReadPolicy = new iam.PolicyStatement({
-      actions: ['cognito-idp:ListUsers', 'cognito-idp:AdminGetUser'],
-      resources: [userPool.userPoolArn],
-    })
-    adminUsersListFn.addToRolePolicy(cognitoReadPolicy)
-    adminUsersDetailFn.addToRolePolicy(cognitoReadPolicy)
-
-    // /admin API ルート
-    const adminResource = api.root.addResource('admin')
-
-    // /admin/me
-    const adminMeResource = adminResource.addResource('me')
-    adminMeResource.addMethod('GET', new apigateway.LambdaIntegration(adminMeFn), authMethodOptions)
-
-    // /admin/users
-    const adminUsersResource = adminResource.addResource('users')
-    adminUsersResource.addMethod('GET', new apigateway.LambdaIntegration(adminUsersListFn), authMethodOptions)
-
-    // /admin/users/{userId}
-    const adminUserByIdResource = adminUsersResource.addResource('{userId}')
-    adminUserByIdResource.addMethod('GET', new apigateway.LambdaIntegration(adminUsersDetailFn), authMethodOptions)
-
-    // /admin/users/{userId}/role
-    const adminUserRoleResource = adminUserByIdResource.addResource('role')
-    adminUserRoleResource.addMethod('PUT', new apigateway.LambdaIntegration(adminUsersRoleFn), authMethodOptions)
-
-    // /admin/users/{userId}/plan
-    const adminUserPlanResource = adminUserByIdResource.addResource('plan')
-    adminUserPlanResource.addMethod('PUT', new apigateway.LambdaIntegration(adminUsersRoleFn), authMethodOptions)
-
-    // /admin/users/{userId}/activity
-    const adminUserActivityResource = adminUserByIdResource.addResource('activity')
-    adminUserActivityResource.addMethod('GET', new apigateway.LambdaIntegration(adminUsersActivityFn), authMethodOptions)
-
-    // /admin/users/{userId}/memory
-    const adminUserMemoryResource = adminUserByIdResource.addResource('memory')
-    adminUserMemoryResource.addMethod('GET', new apigateway.LambdaIntegration(adminUsersMemoryFn), authMethodOptions)
-    adminUserMemoryResource.addMethod('DELETE', new apigateway.LambdaIntegration(adminUsersMemoryFn), authMethodOptions)
-
     // ── Models S3 バケット（Live2D モデル保存用） ──
     const modelsBucket = new s3.Bucket(this, 'ModelsStorageBucket', {
       bucketName: `butler-models-${this.account}`,
@@ -1011,80 +920,15 @@ export class ButlerStack extends cdk.Stack {
 
     const modelsCdnBase = `https://${modelsDistribution.distributionDomainName}`
 
-    // ── Admin Models Lambda 関数 ──
-    const adminModelsPrepareFn = new lambdaNode.NodejsFunction(this, 'AdminModelsPrepareFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'prepare.ts'),
-      functionName: 'butler-admin-models-prepare',
+    // ── Admin ネステッドスタック（Lambda + API ルート）──
+    new AdminNestedStack(this, 'AdminStack', {
+      table,
+      api,
+      authorizer,
+      userPool,
+      modelsBucket,
+      modelsCdnBase,
     })
-    adminModelsPrepareFn.addEnvironment('MODELS_BUCKET', modelsBucket.bucketName)
-
-    const adminModelsFinalizeFn = new lambdaNode.NodejsFunction(this, 'AdminModelsFinalizeFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'finalize.ts'),
-      functionName: 'butler-admin-models-finalize',
-      timeout: cdk.Duration.seconds(30),
-    })
-    adminModelsFinalizeFn.addEnvironment('MODELS_BUCKET', modelsBucket.bucketName)
-
-    const adminModelsListFn = new lambdaNode.NodejsFunction(this, 'AdminModelsListFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'list.ts'),
-      functionName: 'butler-admin-models-list',
-    })
-
-    const adminModelsUpdateFn = new lambdaNode.NodejsFunction(this, 'AdminModelsUpdateFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'update.ts'),
-      functionName: 'butler-admin-models-update',
-    })
-
-    const adminModelsDeleteFn = new lambdaNode.NodejsFunction(this, 'AdminModelsDeleteFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'delete.ts'),
-      functionName: 'butler-admin-models-delete',
-    })
-    adminModelsDeleteFn.addEnvironment('MODELS_BUCKET', modelsBucket.bucketName)
-
-    // Models — DynamoDB 権限
-    table.grantReadData(adminModelsPrepareFn)
-    table.grantReadWriteData(adminModelsFinalizeFn)
-    table.grantReadData(adminModelsListFn)
-    table.grantReadWriteData(adminModelsUpdateFn)
-    table.grantReadWriteData(adminModelsDeleteFn)
-
-    // Models — S3 権限
-    modelsBucket.grantPut(adminModelsPrepareFn)
-    modelsBucket.grantRead(adminModelsFinalizeFn)
-    modelsBucket.grantRead(adminModelsListFn)
-    modelsBucket.grantReadWrite(adminModelsDeleteFn)
-
-    // ユーザー向けモデル一覧 Lambda
-    const modelsListFn = new lambdaNode.NodejsFunction(this, 'ModelsListFn', {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, '..', 'lambda', 'models', 'list.ts'),
-      functionName: 'butler-models-list',
-    })
-    modelsListFn.addEnvironment('MODELS_CDN_BASE', modelsCdnBase)
-    table.grantReadData(modelsListFn)
-
-    // /admin/models API ルート
-    const adminModelsResource = adminResource.addResource('models')
-    adminModelsResource.addMethod('GET', new apigateway.LambdaIntegration(adminModelsListFn), authMethodOptions)
-    adminModelsResource.addMethod('POST', new apigateway.LambdaIntegration(adminModelsPrepareFn), authMethodOptions)
-
-    // /admin/models/{modelId}
-    const adminModelByIdResource = adminModelsResource.addResource('{modelId}')
-    adminModelByIdResource.addMethod('PATCH', new apigateway.LambdaIntegration(adminModelsUpdateFn), authMethodOptions)
-    adminModelByIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(adminModelsDeleteFn), authMethodOptions)
-
-    // /admin/models/{modelId}/finalize
-    const adminModelFinalizeResource = adminModelByIdResource.addResource('finalize')
-    adminModelFinalizeResource.addMethod('POST', new apigateway.LambdaIntegration(adminModelsFinalizeFn), authMethodOptions)
-
-    // /models（ユーザー向け）
-    const modelsResource = api.root.addResource('models')
-    modelsResource.addMethod('GET', new apigateway.LambdaIntegration(modelsListFn), authMethodOptions)
 
     // ── Transcribe Streaming（Meeting Noter 用 — PoC） ──
     const transcribeStreamUrlFn = new lambdaNode.NodejsFunction(this, 'TranscribeStreamUrlFn', {

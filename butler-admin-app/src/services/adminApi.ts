@@ -107,7 +107,12 @@ export const adminApi = {
   },
 
   /** ユーザーアクティビティ取得 */
-  async getUserActivity(token: string, userId: string, days = 30): Promise<{ activities: { date: string; activeMinutes: string[] }[]; days: number }> {
+  async getUserActivity(token: string, userId: string, days = 30): Promise<{
+    activities: { date: string; activeMinutes: string[] }[]
+    days: number
+    dayWindows?: Record<string, { from: string; to: string; confidence: number; phase?: string; phaseType?: 'main' | 'support' }[]>
+    briefingHistory?: { date: string; triggeredWindows: { windowFrom: string; windowTo: string; firedAt: string }[] }[]
+  }> {
     return authFetch(`/admin/users/${userId}/activity?days=${days}`, token)
   },
 }
