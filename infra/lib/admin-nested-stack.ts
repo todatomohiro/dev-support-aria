@@ -169,6 +169,13 @@ export class AdminNestedStack extends cdk.NestedStack {
       entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'update.ts'),
     })
 
+    const adminModelsAvatarUploadFn = new lambdaNode.NodejsFunction(this, 'AdminModelsAvatarUploadFn', {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'avatarUpload.ts'),
+    })
+    adminModelsAvatarUploadFn.addEnvironment('MODELS_BUCKET', modelsBucket.bucketName)
+    adminModelsAvatarUploadFn.addEnvironment('MODELS_CDN_BASE', modelsCdnBase)
+
     const adminModelsDeleteFn = new lambdaNode.NodejsFunction(this, 'AdminModelsDeleteFn', {
       ...lambdaDefaults,
       entry: path.join(__dirname, '..', 'lambda', 'admin', 'models', 'delete.ts'),
@@ -180,12 +187,14 @@ export class AdminNestedStack extends cdk.NestedStack {
     table.grantReadWriteData(adminModelsFinalizeFn)
     table.grantReadData(adminModelsListFn)
     table.grantReadWriteData(adminModelsUpdateFn)
+    table.grantReadWriteData(adminModelsAvatarUploadFn)
     table.grantReadWriteData(adminModelsDeleteFn)
 
     // Models — S3 権限
     modelsBucket.grantPut(adminModelsPrepareFn)
     modelsBucket.grantRead(adminModelsFinalizeFn)
     modelsBucket.grantRead(adminModelsListFn)
+    modelsBucket.grantPut(adminModelsAvatarUploadFn)
     modelsBucket.grantReadWrite(adminModelsDeleteFn)
 
     // ユーザー向けモデル一覧 Lambda
@@ -209,6 +218,10 @@ export class AdminNestedStack extends cdk.NestedStack {
     // /admin/models/{modelId}/finalize
     const adminModelFinalizeResource = adminModelByIdResource.addResource('finalize')
     adminModelFinalizeResource.addMethod('POST', new apigateway.LambdaIntegration(adminModelsFinalizeFn), authMethodOptions)
+
+    // /admin/models/{modelId}/avatar
+    const adminModelAvatarResource = adminModelByIdResource.addResource('avatar')
+    adminModelAvatarResource.addMethod('POST', new apigateway.LambdaIntegration(adminModelsAvatarUploadFn), authMethodOptions)
 
     // /models（ユーザー向け）
     const modelsResource = api.root.addResource('models')

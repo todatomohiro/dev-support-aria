@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { adminApi } from '@/services/adminApi'
 import { useAuthStore } from '@/auth/authStore'
@@ -32,6 +32,12 @@ export function ModelCharacterEditor() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
 
+  // アバター
+  const [avatarUrl, setAvatarUrl] = useState('')
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const [avatarMessage, setAvatarMessage] = useState('')
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
   const isDirty = JSON.stringify(config) !== JSON.stringify(savedConfig)
 
   /** モデルメタデータを取得 */
@@ -47,6 +53,7 @@ export function ModelCharacterEditor() {
         return
       }
       setModel(found)
+      setAvatarUrl(found.avatarUrl ?? '')
       const loaded = found.characterConfig ?? EMPTY_CONFIG
       setConfig(loaded)
       setSavedConfig(loaded)
@@ -65,6 +72,39 @@ export function ModelCharacterEditor() {
   const updateField = <K extends keyof CharacterConfig>(key: K, value: CharacterConfig[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }))
     setSaveMessage('')
+  }
+
+  /** アバター画像アップロード */
+  const handleAvatarUpload = async (file: File) => {
+    if (!token || !modelId) return
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      setAvatarMessage('PNG, JPEG, WebP のみ対応しています')
+      return
+    }
+
+    setIsUploadingAvatar(true)
+    setAvatarMessage('')
+    try {
+      // Presigned URL を取得（DynamoDB にも avatarUrl を保存）
+      const { uploadUrl, avatarUrl: newAvatarUrl } = await adminApi.prepareAvatarUpload(token, modelId, file.type)
+
+      // S3 にアップロード
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      })
+
+      setAvatarUrl(newAvatarUrl)
+      setAvatarMessage('アバター画像を更新しました')
+    } catch (e) {
+      setAvatarMessage(`アップロードエラー: ${e instanceof Error ? e.message : '不明'}`)
+    } finally {
+      setIsUploadingAvatar(false)
+      if (avatarInputRef.current) avatarInputRef.current.value = ''
+    }
   }
 
   /** 保存 */
@@ -110,6 +150,51 @@ export function ModelCharacterEditor() {
           ← モデル一覧
         </button>
         <h2 className="text-xl font-bold">キャラクター設定: {model?.name}</h2>
+      </div>
+
+      {/* アバター画像 */}
+      <div className="mb-6 p-4 bg-white rounded-lg border border-gray-200">
+        <h3 className="text-sm font-medium text-gray-700 mb-3">アバター画像</h3>
+        <div className="flex items-center gap-4">
+          {/* プレビュー */}
+          <div className="w-16 h-20 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center shrink-0 border border-gray-200">
+            {avatarUrl ? (
+              <img
+                src={`${avatarUrl}?t=${Date.now()}`}
+                alt="アバター"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            )}
+          </div>
+          <div>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleAvatarUpload(file)
+              }}
+              className="text-sm"
+              disabled={isUploadingAvatar}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              推奨: 256x320px（4:5）、PNG/JPEG/WebP
+            </p>
+            {isUploadingAvatar && (
+              <p className="text-xs text-blue-500 mt-1">アップロード中...</p>
+            )}
+            {avatarMessage && (
+              <p className={`text-xs mt-1 ${avatarMessage.startsWith('アップロードエラー') ? 'text-red-500' : 'text-green-600'}`}>
+                {avatarMessage}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* フォーム */}

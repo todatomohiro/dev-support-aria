@@ -9,6 +9,7 @@ import {
   signOut,
   getCurrentUser,
   fetchAuthSession,
+  autoSignIn,
 } from 'aws-amplify/auth'
 import { Hub } from 'aws-amplify/utils'
 import type { AuthUser, CognitoConfig } from './types'
@@ -75,15 +76,24 @@ export async function login(email: string, password: string): Promise<{ nextStep
 /**
  * アカウント新規登録
  */
-export async function signup(email: string, password: string): Promise<{ nextStep: string }> {
+export async function signup(email: string, password: string): Promise<{ nextStep: string; autoSignedIn?: boolean }> {
   configureAmplify()
   const result = await signUp({
     username: email,
     password,
     options: {
       userAttributes: { email },
+      autoSignIn: true,
     },
   })
+
+  // 自動確認 + autoSignIn が有効な場合、COMPLETE_AUTO_SIGN_IN が返る
+  if (result.nextStep.signUpStep === 'COMPLETE_AUTO_SIGN_IN') {
+    // autoSignIn() を呼んでサインインを完了させる
+    await autoSignIn()
+    return { nextStep: 'COMPLETE_AUTO_SIGN_IN', autoSignedIn: true }
+  }
+
   return { nextStep: result.nextStep.signUpStep }
 }
 

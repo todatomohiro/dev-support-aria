@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { useAppStore } from './stores'
-import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen, AibaAlphaScreen, VoiceChatScreen, VoiceChatSummary, StudioCamera, WeatherOverlay, SearchModal, ParticleBackground } from './components'
+import { ChatUI, Live2DCanvas, Settings, ProfileModal, ErrorNotification, MotionPanel, OAuthCallback, GroupChatScreen, ThemeScreen, AppLayout, MemoScreen, AibaScreen, AibaAlphaScreen, VoiceChatScreen, VoiceChatSummary, StudioCamera, WeatherOverlay, SearchModal, ParticleBackground, Onboarding } from './components'
+import type { OnboardingData } from './components'
 import type { Live2DCanvasHandle } from './components'
 import type { UIConfig, UserProfile } from './types'
+import { modelService } from './services/modelService'
 import { chatController } from './services/chatController'
 import { usageService } from './services/usageService'
 import { syncService } from './services/syncService'
@@ -17,7 +19,7 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { useActivityLogger } from './hooks/useActivityLogger'
 import { logPlatformInfo } from './platform'
 import { getMemoryUsage } from './utils/performance'
-import { AuthProvider, AuthModal, UserMenu, isAuthConfigured } from './auth'
+import { AuthProvider, AuthModal, UserMenu, isAuthConfigured, getIdToken } from './auth'
 import type { AuthView } from './auth'
 import { useAuthStore } from './auth'
 import { useThemeStore } from './stores/themeStore'
@@ -33,6 +35,7 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [authModalInitialView, setAuthModalInitialView] = useState<AuthView>('login')
   const [isInitialized, setIsInitialized] = useState(false)
@@ -43,6 +46,7 @@ function App() {
 
   // Auth store
   const authStatus = useAuthStore((s) => s.status)
+  const needsOnboarding = useAuthStore((s) => s.needsOnboarding)
 
   // 認証が必要かつ未認証かを判定
   const requiresAuth = isAuthConfigured() && authStatus !== 'authenticated'
@@ -388,6 +392,60 @@ function App() {
     setIsAuthModalOpen(true)
   }, [])
 
+  // オンボーディングが必要かどうか（サーバー側フラグベース）
+  const showOnboarding = !requiresAuth && needsOnboarding
+
+  /** オンボーディング完了ハンドラー */
+  const handleOnboardingComplete = useCallback(async (data: OnboardingData) => {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string
+    const token = await getIdToken()
+    if (token && apiBaseUrl) {
+      await fetch(`${apiBaseUrl}/settings/onboarding`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(data),
+      })
+    }
+    // ローカルストアも更新
+    updateConfig({
+      profile: {
+        ...config.profile,
+        nickname: data.nickname,
+        gender: data.gender === 'none' ? '' : data.gender,
+        aiName: data.aiName,
+      },
+      onboardingCompleted: true,
+    })
+
+    // モデル選択がある場合はモデルも更新
+    if (data.selectedModelId) {
+      try {
+        const models = await modelService.listModels()
+        const selected = models.find((m) => m.modelId === data.selectedModelId)
+        if (selected) {
+          updateConfig({
+            model: {
+              ...config.model,
+              selectedModelId: selected.modelId,
+              currentModelId: selected.modelUrl || config.model.currentModelId,
+            },
+          })
+          useAppStore.getState().setActiveModelMeta({
+            modelId: selected.modelId,
+            emotionMapping: selected.emotionMapping,
+            motionMapping: selected.motionMapping,
+          })
+        }
+      } catch (err) {
+        console.error('[App] モデル設定エラー:', err)
+      }
+    }
+
+    // サーバーフラグをクリア
+    useAuthStore.getState().setNeedsOnboarding(false)
+    setIsOnboardingOpen(false)
+  }, [config.profile, config.model, updateConfig])
+
   /** キャラクター表示/非表示トグル（メインチャット / トピックで独立） */
   const handleToggleCharacter = useCallback(() => {
     if (isThemeRoute) {
@@ -499,39 +557,72 @@ function App() {
 
   return (
     <AuthProvider>
+      {/* オンボーディング画面（初回 or メニューから再オープン） */}
+      {(showOnboarding || isOnboardingOpen) && !requiresAuth && (
+        <Onboarding
+          onComplete={handleOnboardingComplete}
+          mode={isOnboardingOpen ? 'edit' : 'initial'}
+          initialData={isOnboardingOpen ? {
+            nickname: config.profile.nickname,
+            gender: config.profile.gender || '',
+            aiName: config.profile.aiName,
+          } : undefined}
+        />
+      )}
+
       {requiresAuth ? (
         /* ウェルカム画面（AppLayout なし） */
         <div
-          className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900"
+          className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 px-4"
           data-testid="welcome-screen"
         >
-          <div className="text-center px-6 max-w-lg">
-            <img
-              src="/favicon.png"
-              alt="App Logo"
-              className="w-24 h-24 mx-auto mb-8 rounded-2xl shadow-lg"
-            />
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 mb-4">
-              AIサポートアプリへ、ようこそ。
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mb-10 leading-relaxed">
-              私たちは、あなたの思考と好みを深く理解するパートナーをアサインいたします。対話を重ねるごとに、AIはあなた固有の文脈を学び、代えがたい存在へと進化します。ぜひ、新しいデジタルライフの扉を叩いてみてください。
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <button
-                onClick={() => openAuthModal('login')}
-                className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl shadow-md hover:shadow-lg transition-all"
-                data-testid="welcome-login-button"
-              >
-                ログイン
-              </button>
-              <button
-                onClick={() => openAuthModal('signup')}
-                className="px-8 py-3 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium rounded-xl shadow-md hover:shadow-lg border border-gray-200 dark:border-gray-600 transition-all"
-                data-testid="welcome-signup-button"
-              >
-                新規登録
-              </button>
+          {/* モバイル: フルスクリーン / PC: カード型 */}
+          <div className="w-full md:w-[960px] md:max-w-[95vw] md:rounded-3xl md:shadow-2xl md:overflow-hidden flex flex-col md:flex-row md:min-h-[520px]">
+            {/* PC左パネル */}
+            <div className="hidden md:flex flex-col w-[340px] shrink-0 bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 p-8 text-white relative overflow-hidden">
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute -top-20 -right-20 w-60 h-60 rounded-full bg-white/20" />
+                <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-white/15" />
+              </div>
+              <div className="relative z-10 flex flex-col items-center justify-center h-full text-center">
+                <div className="text-4xl font-extrabold tracking-tight">Ai-Ba</div>
+                <div className="text-sm font-medium tracking-[4px] mt-1 text-blue-200">AI &nbsp; PARTNER</div>
+                <div className="mt-6 text-sm text-blue-100 leading-relaxed">
+                  あなただけの相棒を<br />一緒に作りましょう
+                </div>
+              </div>
+            </div>
+
+            {/* 右パネル（フォーム） */}
+            <div className="flex-1 flex flex-col items-center justify-center bg-white dark:bg-gray-900 px-6 py-12 md:px-12 md:py-8 text-center">
+              {/* モバイル用ロゴ */}
+              <div className="md:hidden mb-6">
+                <div className="text-4xl font-extrabold bg-gradient-to-br from-blue-500 to-blue-700 bg-clip-text text-transparent tracking-tight">Ai-Ba</div>
+                <div className="text-xs text-blue-500 font-medium tracking-[4px] mt-0.5">AI &nbsp; PARTNER</div>
+              </div>
+
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 mb-3">
+                ようこそ
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400 mb-10 leading-relaxed text-sm max-w-sm">
+                対話を重ねるごとに、AIはあなた固有の文脈を学び、<br className="hidden sm:inline" />代えがたい存在へと進化します。
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs">
+                <button
+                  onClick={() => openAuthModal('login')}
+                  className="flex-1 px-8 py-3.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold rounded-2xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+                  data-testid="welcome-login-button"
+                >
+                  ログイン
+                </button>
+                <button
+                  onClick={() => openAuthModal('signup')}
+                  className="flex-1 px-8 py-3.5 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold rounded-2xl shadow-md hover:shadow-lg border-2 border-gray-200 dark:border-gray-600 transition-all active:scale-[0.98]"
+                  data-testid="welcome-signup-button"
+                >
+                  新規登録
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -551,7 +642,7 @@ function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </button>
-              <UserMenu onOpenProfile={() => setIsProfileOpen(true)} onOpenSettings={() => setIsSettingsOpen(true)} />
+              <UserMenu onOpenProfile={() => setIsProfileOpen(true)} onOpenSettings={() => setIsSettingsOpen(true)} onOpenOnboarding={() => setIsOnboardingOpen(true)} />
               {config.ui.developerMode && (
                 isPocPage ? (
                   <button

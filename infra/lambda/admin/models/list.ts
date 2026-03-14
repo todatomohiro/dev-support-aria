@@ -39,11 +39,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         s3Prefix: m.s3Prefix as string,
         modelFile: m.modelFile as string,
         status: m.status as string,
+        modelTier: (m.modelTier as string) ?? 'standard',
         expressions: (m.expressions as unknown[]) ?? [],
         motions: (m.motions as unknown[]) ?? [],
         emotionMapping: (m.emotionMapping as Record<string, string>) ?? {},
         motionMapping: (m.motionMapping as Record<string, { group: string; index: number }>) ?? {},
         characterConfig: (m.characterConfig as Record<string, unknown>) ?? undefined,
+        avatarUrl: (m.avatarUrl as string) ?? '',
         createdAt: m.createdAt as string,
         updatedAt: m.updatedAt as string,
       }))

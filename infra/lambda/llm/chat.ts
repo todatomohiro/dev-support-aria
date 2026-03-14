@@ -206,42 +206,35 @@ const SKILL_RULES_PROMPT = `
 
 <skills>
 スキル（ツール）の使用ルール：
-- Google カレンダーのツール（list_events, create_event）が利用可能です
-- ユーザーが予定の確認を頼んだら list_events を使って予定を取得してください
-- ユーザーが予定の作成を頼んだら、まずタイトル・日時・時間を確認してから create_event を使ってください。確認なしに勝手に作成しないでください
-- 【重要】カレンダー予定（create_event）とToDo（create_task）を正しく使い分けること:
-  - create_event: 会議・アポ・イベントなど「特定の日時に行う予定」。開始時刻と終了時刻がある
-  - create_task: やるべきこと・タスク・宿題・買い物リストなど「完了すべき作業」。期限日のみ（時刻なし）
-  - 「タスク」「ToDo」「やること」「〜しなきゃ」「〜をやっておいて」→ create_task
-  - 「予定」「会議」「ミーティング」「〜時に〜」→ create_event
-  - 迷った場合はユーザーに「カレンダーの予定とToDoのどちらに追加しますか？」と確認すること
-- ツールがエラーを返した場合（Google カレンダー未連携など）は、エラーメッセージをそのままユーザーに伝えてください
-- 日時は日本時間（+09:00）で処理してください
-- 「明日」「来週」などの相対日時は、現在の日時を基準に正しい日付に変換してください
-- search_places ツールが利用可能です。ユーザーが「近くのカフェ」「渋谷のレストラン」など場所に関する質問をしたら search_places を使ってください
-- search_places の結果を受け取ったら、回答の JSON に mapData フィールドを含めてください。形式: {"center": {"lat": 数値, "lng": 数値}, "zoom": 15, "markers": [{"lat": 数値, "lng": 数値, "title": "店名", "address": "住所", "rating": 数値}]}
-- mapData の center は検索結果の中心座標にしてください
-- mapData は場所検索時のみ含め、通常の会話では省略してください
-- web_search ツールが利用可能です。ユーザーが「〜について調べて」「〜の最新情報」「〜って何？」など、最新の情報や知識の調査を求めた場合に使用してください
-- web_search の結果を受け取ったら、検索結果をもとにわかりやすく要約して回答してください
-- web_search の結果を使って回答する場合、参照した情報源のURLを必ず文中に含めてください。URLは省略せず、ユーザーがタップ/クリックでアクセスできる形で記載してください（例: 「〇〇によると〜です（https://example.com/article）」）
-- 画像が添付されている場合は、画像の内容を分析して回答してください。「これ何？」「何が見える？」などの質問には画像の内容を説明してください
-- get_weather ツールが利用可能です。ユーザーが「天気を教えて」「明日の天気は？」「傘いる？」「今日は暑い？」など天気に関する質問をしたら get_weather を使ってください
-- get_weather は緯度・経度を指定しなければユーザーの現在地の天気を返します。特定の都市の天気を聞かれた場合は、その都市の緯度・経度を指定してください（例: 東京=35.6762,139.6503、大阪=34.6937,135.5023、名古屋=35.1815,136.9066、札幌=43.0618,141.3545、福岡=33.5904,130.4017）
-- 天気予報の結果を受け取ったら、時間帯ごとの天気・気温・降水確率をわかりやすく整理して回答してください
-- 「傘いる？」と聞かれたら降水確率を確認して判断してください
-- save_memo: ユーザーが「メモして」「覚えておいて」「保存して」と言った場合に使用。会話の内容をメモとして保存する
-- search_memos: ユーザーが「メモを探して」「〜のメモある？」と聞いた場合に使用
-- list_memos: ユーザーが「メモ一覧」「最近のメモ」と聞いた場合に使用
-- delete_memo: ユーザーが「メモを消して」と言った場合に使用。必ず確認してから実行
-- メモのタイトルは内容を端的に表す短い文（15文字以内推奨）
-- タグは内容から適切なものを2〜3個自動付与
-- メモ一覧を表示するときは、タイトル・日時・タグを見やすく整理して表示
-- list_tasks: ユーザーが「ToDoを見せて」「やることリスト」と聞いた場合に使用。期限で絞り込み可能
-- create_task: ユーザーが「ToDoに追加して」「タスク作って」と言った場合に使用。会話の中でToDoに追加すべき内容（締め切りのある作業、買い物リスト等）があれば「ToDoに追加しましょうか？」と提案してもよい。ただし必ずユーザーの確認を得てから作成すること
-- complete_task: ユーザーが「ToDo完了」「タスク終わった」と言った場合に使用。事前に list_tasks でIDを確認してから実行
-- ToDo の期限は日付のみ（時刻指定不可）。「明日まで」→ 明日の日付、「来週金曜」→ その日付に変換
-- ToDo 一覧を表示するときは、期限・完了状態をわかりやすく整理して表示
+
+全般:
+- 複数の情報が必要な場合（例: 天気と予定の両方）は、1回の応答で複数ツールを同時に呼び出すこと
+- ツールがエラーを返した場合は、エラーメッセージをそのままユーザーに伝えること
+- 日時は日本時間（+09:00）で処理。相対日時（「明日」「来週」等）は現在日時を基準に変換
+- 画像が添付されている場合は画像の内容を分析して回答
+
+カレンダー・ToDo:
+- create_event: 「特定の日時に行う予定」（会議・アポ等）。開始/終了時刻あり
+- create_task: 「完了すべき作業」（タスク・買い物リスト等）。期限日のみ（時刻なし）
+- 迷った場合はユーザーに確認。作成系ツールは必ず内容確認してから実行
+- complete_task: 事前に list_tasks でID確認必須
+
+場所検索:
+- search_places の結果は mapData フィールドで返す: {"center": {"lat": 数値, "lng": 数値}, "zoom": 15, "markers": [...]}
+- mapData は場所検索時のみ含め、通常の会話では省略
+
+Web検索:
+- web_search の結果は参照URLを必ず含めて回答（例: 「〇〇によると〜です（URL）」）
+
+天気:
+- get_weather は1回の呼び出しで1地域のみ。地域指定なしなら現在地を使用
+- 主要都市の緯度経度: 東京=35.6762,139.6503 大阪=34.6937,135.5023 名古屋=35.1815,136.9066 札幌=43.0618,141.3545 福岡=33.5904,130.4017
+- 降水確率を含めて回答。「傘いる？」には降水確率で判断
+
+メモ:
+- save_memo: タイトル15文字以内、タグ2〜3個自動付与
+- delete_memo: 必ずユーザーに確認してから実行
+- 一覧表示時はタイトル・日時・タグを整理して表示
 </skills>`
 
 /**
@@ -258,7 +251,7 @@ function buildDateTimePrompt(): string {
   const hours = String(jstDate.getHours()).padStart(2, '0')
   const minutes = String(jstDate.getMinutes()).padStart(2, '0')
 
-  return `<current_datetime>現在の日時: ${year}年${month}月${day}日(${weekday}) ${hours}:${minutes} JST</current_datetime>`
+  return `<current_datetime>現在の日時: ${year}年${month}月${day}日(${weekday}曜日) ${hours}:${minutes} JST\n※ 曜日は上記の通り${weekday}曜日です。日付から独自に曜日を推測しないでください。</current_datetime>`
 }
 
 /**
@@ -2092,64 +2085,67 @@ ${userMood && userMood !== 'neutral' ? `
       }
     }
 
-    // カレンダー取得（失敗しても続行）
-    try {
+    // カレンダー・ToDo・天気を並列取得（各失敗しても他に影響しない）
+    {
       const now = new Date()
       const jstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
       const todayStart = new Date(jstNow)
       todayStart.setHours(0, 0, 0, 0)
       const tomorrowEnd = new Date(todayStart)
       tomorrowEnd.setDate(tomorrowEnd.getDate() + 2)
-
-      const calendarResult = await executeSkill('list_events', {
-        timeMin: todayStart.toISOString(),
-        timeMax: tomorrowEnd.toISOString(),
-        maxResults: 10,
-      }, 'briefing-cal', userId)
-      const calText = calendarResult.content?.[0] && 'text' in calendarResult.content[0] ? calendarResult.content[0].text : ''
-      if (calText && !calText.includes('エラー') && !calText.includes('未連携')) {
-        briefingParts.push(`<calendar>\n${calText}\n</calendar>`)
-      }
-    } catch (e) {
-      console.warn('[Briefing] カレンダー取得スキップ:', e)
-    }
-
-    // ToDo取得（失敗しても続行）
-    try {
-      const now = new Date()
-      const jstNow2 = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
-      const todayDate = `${jstNow2.getFullYear()}-${String(jstNow2.getMonth() + 1).padStart(2, '0')}-${String(jstNow2.getDate()).padStart(2, '0')}`
-      const nextWeek = new Date(jstNow2)
+      const todayDate = `${jstNow.getFullYear()}-${String(jstNow.getMonth() + 1).padStart(2, '0')}-${String(jstNow.getDate()).padStart(2, '0')}`
+      const nextWeek = new Date(jstNow)
       nextWeek.setDate(nextWeek.getDate() + 7)
       const nextWeekDate = `${nextWeek.getFullYear()}-${String(nextWeek.getMonth() + 1).padStart(2, '0')}-${String(nextWeek.getDate()).padStart(2, '0')}`
-
-      const tasksResult = await executeSkill('list_tasks', {
-        dueMax: `${nextWeekDate}T23:59:59Z`,
-        showCompleted: false,
-        maxResults: 10,
-      }, 'briefing-tasks', userId)
-      const tasksText = tasksResult.content?.[0] && 'text' in tasksResult.content[0] ? tasksResult.content[0].text : ''
-      if (tasksText && !tasksText.includes('エラー') && !tasksText.includes('未連携') && tasksText !== 'ToDo はありません。') {
-        briefingParts.push(`<tasks>\n今日（${todayDate}）〜1週間以内のToDo:\n${tasksText}\n</tasks>`)
-      }
-    } catch (e) {
-      console.warn('[Briefing] ToDo取得スキップ:', e)
-    }
-
-    // 天気取得（失敗しても続行）
-    try {
       const weatherInput: Record<string, unknown> = {}
       if (userLocation) {
         weatherInput.latitude = userLocation.lat
         weatherInput.longitude = userLocation.lng
       }
-      const weatherResult = await executeSkill('get_weather', weatherInput, 'briefing-weather', userId, undefined, userLocation)
-      const weatherText = weatherResult.content?.[0] && 'text' in weatherResult.content[0] ? weatherResult.content[0].text : ''
-      if (weatherText && !weatherText.includes('失敗') && !weatherText.includes('位置情報が取得できません')) {
-        briefingParts.push(`<weather>\n${weatherText}\n</weather>`)
+
+      const [calResult, tasksSettled, weatherSettled] = await Promise.allSettled([
+        executeSkill('list_events', {
+          timeMin: todayStart.toISOString(),
+          timeMax: tomorrowEnd.toISOString(),
+          maxResults: 10,
+        }, 'briefing-cal', userId),
+        executeSkill('list_tasks', {
+          dueMax: `${nextWeekDate}T23:59:59Z`,
+          showCompleted: false,
+          maxResults: 10,
+        }, 'briefing-tasks', userId),
+        executeSkill('get_weather', weatherInput, 'briefing-weather', userId, undefined, userLocation),
+      ])
+
+      // カレンダー結果
+      if (calResult.status === 'fulfilled') {
+        const calText = calResult.value.content?.[0] && 'text' in calResult.value.content[0] ? calResult.value.content[0].text : ''
+        if (calText && !calText.includes('エラー') && !calText.includes('未連携')) {
+          briefingParts.push(`<calendar>\n${calText}\n</calendar>`)
+        }
+      } else {
+        console.warn('[Briefing] カレンダー取得スキップ:', calResult.reason)
       }
-    } catch (e) {
-      console.warn('[Briefing] 天気取得スキップ:', e)
+
+      // ToDo結果
+      if (tasksSettled.status === 'fulfilled') {
+        const tasksText = tasksSettled.value.content?.[0] && 'text' in tasksSettled.value.content[0] ? tasksSettled.value.content[0].text : ''
+        if (tasksText && !tasksText.includes('エラー') && !tasksText.includes('未連携') && tasksText !== 'ToDo はありません。') {
+          briefingParts.push(`<tasks>\n今日（${todayDate}）〜1週間以内のToDo:\n${tasksText}\n</tasks>`)
+        }
+      } else {
+        console.warn('[Briefing] ToDo取得スキップ:', tasksSettled.reason)
+      }
+
+      // 天気結果
+      if (weatherSettled.status === 'fulfilled') {
+        const weatherText = weatherSettled.value.content?.[0] && 'text' in weatherSettled.value.content[0] ? weatherSettled.value.content[0].text : ''
+        if (weatherText && !weatherText.includes('失敗') && !weatherText.includes('位置情報が取得できません')) {
+          briefingParts.push(`<weather>\n${weatherText}\n</weather>`)
+        }
+      } else {
+        console.warn('[Briefing] 天気取得スキップ:', weatherSettled.reason)
+      }
     }
 
     // 永久記憶をブリーフィングコンテキストに追加
@@ -2242,6 +2238,12 @@ ${briefingParts.join('\n\n')}
 - キャラクターの口調を守る
 - 押し付けがましくならないように。さりげなく自然に
 - 通常の JSON レスポンス形式（text, emotion, motion, suggestedReplies）で返すこと`
+
+    // フェーズ消化済みの場合はブリーフィングを生成せずスキップ（バックエンド最終ゲート）
+    if (isPhaseConsumed) {
+      console.log(`[Briefing] フェーズ消化済みのためスキップ: phase=${phaseName}`)
+      return response(200, { text: '', skipped: true, reason: 'phase_already_consumed' })
+    }
 
     // サポートフェーズがスキップ判定の場合はブリーフィング自体を中止
     if (skipSupportPhase) {
@@ -2343,15 +2345,19 @@ ${briefingParts.join('\n\n')}
               content: streamResult.assistantContentBlocks,
             })
 
-            // ツール実行
-            const toolResults: ToolResultContentBlock[] = []
-            for (const block of streamResult.toolUseBlocks) {
-              console.log(`[Stream] Tool use: ${block.name}`, JSON.stringify(block.input))
-              const toolResult = await executeSkill(block.name, block.input, block.toolUseId, userId, mcpConn ?? undefined, userLocation)
-              console.log(`[Stream] Tool result:`, JSON.stringify(toolResult))
-              toolResults.push(toolResult)
+            // ツール並列実行
+            console.log(`[Stream] Executing ${streamResult.toolUseBlocks.length} tool(s) in parallel: ${streamResult.toolUseBlocks.map((b) => b.name).join(', ')}`)
+            const toolResultEntries = await Promise.all(
+              streamResult.toolUseBlocks.map(async (block) => {
+                console.log(`[Stream] Tool use: ${block.name}`, JSON.stringify(block.input))
+                const toolResult = await executeSkill(block.name, block.input, block.toolUseId, userId, mcpConn ?? undefined, userLocation)
+                console.log(`[Stream] Tool result (${block.name}):`, JSON.stringify(toolResult))
+                return { block, toolResult }
+              })
+            )
 
-              // ツール結果をクライアントに通知
+            // ツール結果をクライアントに一括通知
+            for (const { block } of toolResultEntries) {
               await wsPushAll(wsClient, connectionIds, {
                 type: 'chat_tool_result',
                 requestId,
@@ -2359,10 +2365,10 @@ ${briefingParts.join('\n\n')}
               })
             }
 
-            // ツール結果を user ロールで追加
+            // ツール結果を user ロールで追加（元の順序を維持）
             currentMessages.push({
               role: 'user',
-              content: toolResults.map((tr) => ({ toolResult: tr })),
+              content: toolResultEntries.map(({ toolResult }) => ({ toolResult })),
             })
             continue
           }
@@ -2533,19 +2539,22 @@ ${briefingParts.join('\n\n')}
           return response(200, { content: fallbackText || 'ツールの実行に失敗しました。もう一度お試しください。' })
         }
 
-        const toolResults: ToolResultContentBlock[] = []
-        for (const block of toolUseBlocks) {
-          const { toolUseId, name, input } = block
-          console.log(`[LLM] Tool use: ${name}`, JSON.stringify(input))
-          const toolResult = await executeSkill(name, input, toolUseId, userId, mcpConn ?? undefined, userLocation)
-          console.log(`[LLM] Tool result:`, JSON.stringify(toolResult))
-          toolResults.push(toolResult)
-        }
+        // ツール並列実行
+        console.log(`[LLM] Executing ${toolUseBlocks.length} tool(s) in parallel: ${toolUseBlocks.map((b) => b.name).join(', ')}`)
+        const toolResults: ToolResultContentBlock[] = await Promise.all(
+          toolUseBlocks.map(async (block) => {
+            const { toolUseId, name, input } = block
+            console.log(`[LLM] Tool use: ${name}`, JSON.stringify(input))
+            const toolResult = await executeSkill(name, input, toolUseId, userId, mcpConn ?? undefined, userLocation)
+            console.log(`[LLM] Tool result (${name}):`, JSON.stringify(toolResult))
+            return toolResult
+          })
+        )
 
-        // ツール結果を user ロールで追加
+        // ツール結果を user ロールで追加（元の順序を維持）
         currentMessages.push({
           role: 'user',
-          content: toolResults.map((tr) => ({ toolResult: tr })),
+          content: toolResults.map((tr: ToolResultContentBlock) => ({ toolResult: tr })),
         })
 
         continue

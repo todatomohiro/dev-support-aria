@@ -82,6 +82,17 @@ export class ButlerStack extends cdk.Stack {
       },
     })
 
+    // Pre Sign-up Lambda トリガー（自動確認 — 開発環境用）
+    const preSignUpFn = new lambdaNode.NodejsFunction(this, 'PreSignUpFn', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      entry: 'lambda/auth/preSignUp.ts',
+      handler: 'handler',
+      timeout: cdk.Duration.seconds(5),
+      memorySize: 128,
+    })
+    userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignUpFn)
+
     // App Client（SPA 用 — SRP 認証、client secret なし）
     const userPoolClient = userPool.addClient('ButlerAppClient', {
       userPoolClientName: 'butler-assistant-web',
@@ -698,6 +709,10 @@ export class ButlerStack extends cdk.Stack {
     const settingsResource = api.root.addResource('settings')
     settingsResource.addMethod('GET', new apigateway.LambdaIntegration(settingsGetFn), authMethodOptions)
     settingsResource.addMethod('PUT', new apigateway.LambdaIntegration(settingsGetFn), authMethodOptions)
+
+    // /settings/onboarding (POST: オンボーディング完了 — プロフィール保存 + 永久記憶初期化)
+    const onboardingResource = settingsResource.addResource('onboarding')
+    onboardingResource.addMethod('POST', new apigateway.LambdaIntegration(settingsGetFn), authMethodOptions)
 
     // /usage
     const usageResource = api.root.addResource('usage')

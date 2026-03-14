@@ -10,6 +10,8 @@ export interface ServerModel {
   modelFile: string
   emotionMapping: Record<string, string>
   motionMapping: Record<string, { group: string; index: number }>
+  modelTier?: string
+  avatarUrl?: string
   characterConfig?: {
     characterName: string
     characterAge: string

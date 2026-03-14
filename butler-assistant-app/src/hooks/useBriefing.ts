@@ -27,6 +27,8 @@ export function useBriefing() {
   const tryBriefing = useCallback(() => {
     // 実行中は新たなトリガーをブロック
     if (triggeredRef.current) return
+    // パターンロードが完了するまではスキップ（フォールバック誤発火を防止）
+    if (!patternLoadedRef.current) return
 
     const currentAuth = useAuthStore.getState().status
     const { isLoading } = useAppStore.getState()

@@ -136,7 +136,7 @@ export interface UserLocation {
 export interface UserProfile {
   nickname: string
   honorific: '' | 'さん' | 'くん' | '様'
-  gender: '' | 'female' | 'male'
+  gender: '' | 'female' | 'male' | 'other'
   aiName: string
 }
 
@@ -147,6 +147,8 @@ export interface AppConfig {
   model: ModelReference
   ui: UIConfig
   profile: UserProfile
+  /** オンボーディング完了フラグ */
+  onboardingCompleted?: boolean
 }
 
 /**

@@ -1,4 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useAuthStore } from '@/auth/authStore'
+import { modelService } from '@/services/modelService'
+import { useAppStore } from '@/stores'
+import type { ServerModel } from '@/services/modelService'
 import type { UserProfile } from '@/types'
 
 interface ProfileModalProps {
@@ -12,11 +16,34 @@ interface ProfileModalProps {
  * プロフィール設定モーダル コンポーネント
  */
 export function ProfileModal({ isOpen, onClose, profile, onSave }: ProfileModalProps) {
+  const authStatus = useAuthStore((s) => s.status)
+  const config = useAppStore((s) => s.config)
+  const updateConfig = useAppStore((s) => s.updateConfig)
+  const setActiveModelMeta = useAppStore((s) => s.setActiveModelMeta)
+
   const [nickname, setNickname] = useState(profile.nickname)
   const [honorific, setHonorific] = useState<UserProfile['honorific']>(profile.honorific)
   const [gender, setGender] = useState<UserProfile['gender']>(profile.gender)
   const [aiName, setAiName] = useState(profile.aiName ?? '')
   const [isSaving, setIsSaving] = useState(false)
+
+  // キャラクターモデル選択
+  const [standardModels, setStandardModels] = useState<ServerModel[]>([])
+  const [selectedModelId, setSelectedModelId] = useState(config.model.selectedModelId ?? '')
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
+
+  const loadModels = useCallback(async () => {
+    if (authStatus !== 'authenticated') return
+    setIsLoadingModels(true)
+    try {
+      const models = await modelService.listModels()
+      setStandardModels(models.filter((m) => (m.modelTier ?? 'standard') === 'standard'))
+    } catch (err) {
+      console.error('[ProfileModal] モデル取得エラー:', err)
+    } finally {
+      setIsLoadingModels(false)
+    }
+  }, [authStatus])
 
   // 設定が変更された時にローカル状態を更新
   useEffect(() => {
@@ -26,10 +53,38 @@ export function ProfileModal({ isOpen, onClose, profile, onSave }: ProfileModalP
     setAiName(profile.aiName ?? '')
   }, [profile])
 
+  // モーダルが開いた時にモデル一覧を取得
+  useEffect(() => {
+    if (isOpen) {
+      loadModels()
+      setSelectedModelId(config.model.selectedModelId ?? '')
+    }
+  }, [isOpen, loadModels, config.model.selectedModelId])
+
   const handleSave = async () => {
     setIsSaving(true)
     try {
       onSave({ nickname, honorific, gender, aiName })
+
+      // モデル選択が変わった場合はモデルも更新
+      if (selectedModelId !== (config.model.selectedModelId ?? '')) {
+        const selected = standardModels.find((m) => m.modelId === selectedModelId)
+        if (selected) {
+          updateConfig({
+            model: {
+              ...config.model,
+              selectedModelId,
+              currentModelId: selected.modelUrl || config.model.currentModelId,
+            },
+          })
+          setActiveModelMeta({
+            modelId: selected.modelId,
+            emotionMapping: selected.emotionMapping,
+            motionMapping: selected.motionMapping,
+          })
+        }
+      }
+
       onClose()
     } catch (error) {
       console.error('プロフィールの保存に失敗:', error)
@@ -154,6 +209,78 @@ export function ProfileModal({ isOpen, onClose, profile, onSave }: ProfileModalP
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 data-testid="ai-name-input"
               />
+            </div>
+
+            {/* キャラクター選択 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                キャラクター
+              </label>
+              {isLoadingModels ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500">読み込み中...</p>
+              ) : standardModels.length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500">利用可能なキャラクターがありません</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {standardModels.map((model) => {
+                    const isSelected = selectedModelId === model.modelId
+                    return (
+                      <button
+                        key={model.modelId}
+                        type="button"
+                        onClick={() => setSelectedModelId(model.modelId)}
+                        className={`flex flex-col items-center p-2.5 rounded-xl border-2 transition-all ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                            : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-500'
+                        }`}
+                        data-testid={`profile-model-${model.modelId}`}
+                      >
+                        <div className="w-12 h-[60px] rounded-[24px_24px_12px_12px] overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center mb-1.5">
+                          {model.avatarUrl ? (
+                            <img src={model.avatarUrl} alt={model.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <svg className="w-6 h-6 text-gray-300 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className={`text-[11px] font-medium text-center line-clamp-1 ${
+                          isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'
+                        }`}>
+                          {model.name}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* 選択中キャラクターの詳細 */}
+              {(() => {
+                const selected = standardModels.find((m) => m.modelId === selectedModelId)
+                const cc = selected?.characterConfig
+                if (!selected || !cc) return null
+                const genderLabel = cc.characterGender === 'female' ? '女性' : cc.characterGender === 'male' ? '男性' : cc.characterGender === 'other' ? 'その他' : ''
+                return (
+                  <div className="mt-3 p-3 rounded-lg bg-blue-50/60 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-800/30">
+                    <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1.5">
+                      {cc.characterName || selected.name}
+                      <span className="text-[10px] font-medium text-blue-500 dark:text-blue-400 ml-1.5 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/40 rounded">モデル</span>
+                      {(cc.characterAge || genderLabel) && (
+                        <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">
+                          ({[cc.characterAge, genderLabel].filter(Boolean).join(' / ')})
+                        </span>
+                      )}
+                    </div>
+                    {cc.characterPersonality && (
+                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed line-clamp-3">
+                        {cc.characterPersonality}
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>

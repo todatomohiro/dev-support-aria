@@ -201,7 +201,11 @@ function MyAibaTab() {
                   data-testid={`aiba-model-${model.modelId}`}
                 >
                   <div className="relative h-32 md:h-40 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center">
-                    <div className="w-16 h-20 md:w-20 md:h-24 bg-black/5 dark:bg-white/5 rounded-[40px_40px_20px_20px]" />
+                    {model.avatarUrl ? (
+                      <img src={model.avatarUrl} alt={model.name} className="w-16 h-20 md:w-20 md:h-24 object-cover rounded-[40px_40px_20px_20px]" />
+                    ) : (
+                      <div className="w-16 h-20 md:w-20 md:h-24 bg-black/5 dark:bg-white/5 rounded-[40px_40px_20px_20px]" />
+                    )}
                     {isInUse && (
                       <span className="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                         使用中

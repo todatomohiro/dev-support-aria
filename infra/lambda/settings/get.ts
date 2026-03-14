@@ -1,4 +1,4 @@
-import { DynamoDBClient, GetItemCommand, PutItemCommand, DeleteItemCommand, BatchGetItemCommand } from '@aws-sdk/client-dynamodb'
+import { DynamoDBClient, GetItemCommand, PutItemCommand, DeleteItemCommand, BatchGetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb'
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 
@@ -36,6 +36,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   // パスで分岐
   const resource = event.resource ?? event.path ?? ''
+  if (resource === '/settings/onboarding' && event.httpMethod === 'POST') {
+    return handleOnboarding(userId, event.body)
+  }
   if (resource === '/usage') {
     if (event.httpMethod === 'PUT') {
       return handlePlanChange(userId, event.body)
@@ -67,6 +70,131 @@ async function handleSettings(userId: string): Promise<APIGatewayProxyResult> {
     return response(200, { settings: item.data })
   } catch (error) {
     console.error('設定取得エラー:', error)
+    return response(500, { error: 'Internal server error' })
+  }
+}
+
+/** POST /settings/onboarding ハンドラー — プロフィール保存 + 永久記憶に初期情報を登録 */
+async function handleOnboarding(userId: string, body: string | null): Promise<APIGatewayProxyResult> {
+  if (!body) {
+    return response(400, { error: 'Request body is required' })
+  }
+  try {
+    const data = JSON.parse(body) as {
+      nickname?: string
+      gender?: string
+      aiName?: string
+      tone?: string
+      occupation?: string
+      interests?: string[]
+      lifestyle?: string
+    }
+
+    // 1. 既存設定を取得してマージ
+    const existingResult = await client.send(new GetItemCommand({
+      TableName: TABLE_NAME,
+      Key: { PK: { S: `USER#${userId}` }, SK: { S: 'SETTINGS' } },
+    }))
+    const existing = existingResult.Item ? unmarshall(existingResult.Item).data ?? {} : {}
+
+    // プロフィールをマージ
+    const profile = {
+      ...(existing.profile ?? {}),
+      nickname: data.nickname ?? '',
+      gender: data.gender === 'none' ? '' : (data.gender ?? ''),
+      aiName: data.aiName ?? '',
+    }
+
+    const settings = {
+      ...existing,
+      profile,
+      onboardingCompleted: true,
+    }
+
+    // SETTINGS 保存
+    await client.send(new PutItemCommand({
+      TableName: TABLE_NAME,
+      Item: marshall({
+        PK: `USER#${userId}`,
+        SK: 'SETTINGS',
+        data: settings,
+        updatedAt: Date.now(),
+      }, { removeUndefinedValues: true }),
+    }))
+
+    // 2. 永久記憶に初期情報を追加（facts + preferences）
+    const newFacts: string[] = []
+    const newPreferences: string[] = []
+
+    if (data.occupation) {
+      newFacts.push(`職業・立場: ${data.occupation}`)
+    }
+    if (data.interests && data.interests.length > 0) {
+      for (const interest of data.interests) {
+        newFacts.push(`${interest}に興味がある`)
+      }
+    }
+    if (data.lifestyle) {
+      newFacts.push(`ライフスタイル: ${data.lifestyle}`)
+    }
+    if (data.tone) {
+      const toneMap: Record<string, string> = {
+        friendly: 'フレンドリーなタメ口で話してほしい',
+        polite: '敬語で丁寧に話してほしい',
+        casual: 'カジュアルで親しみやすい口調で話してほしい',
+      }
+      if (toneMap[data.tone]) {
+        newPreferences.push(toneMap[data.tone]!)
+      }
+    }
+
+    // 永久記憶が存在する場合はマージ、存在しない場合は新規作成
+    if (newFacts.length > 0 || newPreferences.length > 0) {
+      const factsResult = await client.send(new GetItemCommand({
+        TableName: TABLE_NAME,
+        Key: { PK: { S: `USER#${userId}` }, SK: { S: 'PERMANENT_FACTS' } },
+      }))
+
+      let existingFacts: string[] = []
+      let existingPreferences: string[] = []
+      if (factsResult.Item) {
+        const factsData = unmarshall(factsResult.Item)
+        existingFacts = factsData.facts ?? []
+        existingPreferences = factsData.preferences ?? []
+      }
+
+      // 重複を避けてマージ
+      const mergedFacts = [...existingFacts]
+      for (const f of newFacts) {
+        if (!mergedFacts.some(ef => ef.includes(f) || f.includes(ef))) {
+          mergedFacts.push(f)
+        }
+      }
+      const mergedPreferences = [...existingPreferences]
+      for (const p of newPreferences) {
+        if (!mergedPreferences.some(ep => ep.includes(p) || p.includes(ep))) {
+          mergedPreferences.push(p)
+        }
+      }
+
+      await client.send(new PutItemCommand({
+        TableName: TABLE_NAME,
+        Item: marshall({
+          PK: `USER#${userId}`,
+          SK: 'PERMANENT_FACTS',
+          facts: mergedFacts,
+          preferences: mergedPreferences,
+          lastUpdatedAt: new Date().toISOString(),
+        }, { removeUndefinedValues: true }),
+      }))
+    }
+
+    return response(200, { success: true })
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return response(400, { error: 'Invalid JSON' })
+    }
+    console.error('オンボーディング保存エラー:', error)
     return response(500, { error: 'Internal server error' })
   }
 }

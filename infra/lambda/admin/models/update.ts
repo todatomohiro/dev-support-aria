@@ -30,6 +30,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       name?: string
       description?: string
       status?: 'active' | 'inactive'
+      modelTier?: 'standard' | 'platinum'
       emotionMapping?: Record<string, string>
       motionMapping?: Record<string, { group: string; index: number }>
       characterConfig?: {
@@ -60,6 +61,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       expressionNames.push('#status = :status')
       expressionValues[':status'] = body.status
       expressionAttrNames['#status'] = 'status'
+    }
+    if (body.modelTier !== undefined) {
+      expressionNames.push('modelTier = :modelTier')
+      expressionValues[':modelTier'] = body.modelTier
     }
     if (body.emotionMapping !== undefined) {
       expressionNames.push('emotionMapping = :emotionMapping')

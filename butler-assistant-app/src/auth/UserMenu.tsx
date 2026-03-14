@@ -5,13 +5,14 @@ import { logout as authLogout } from './authClient'
 interface UserMenuProps {
   onOpenProfile?: () => void
   onOpenSettings?: () => void
+  onOpenOnboarding?: () => void
 }
 
 /**
  * ユーザーメニュー（アバター + ログアウト）
  * 認証済みの場合のみ表示
  */
-export function UserMenu({ onOpenProfile, onOpenSettings }: UserMenuProps = {}) {
+export function UserMenu({ onOpenProfile, onOpenSettings, onOpenOnboarding }: UserMenuProps = {}) {
   const { status, user } = useAuthStore()
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -102,6 +103,18 @@ export function UserMenu({ onOpenProfile, onOpenSettings }: UserMenuProps = {}) 
                 data-testid="settings-menu-button"
               >
                 設定
+              </button>
+            )}
+            {onOpenOnboarding && (
+              <button
+                onClick={() => {
+                  setIsOpen(false)
+                  onOpenOnboarding()
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                data-testid="onboarding-menu-button"
+              >
+                初期設定
               </button>
             )}
             <button

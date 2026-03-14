@@ -4,6 +4,9 @@ export type UserRole = 'admin' | 'user'
 /** ユーザープラン */
 export type UserPlan = 'free' | 'paid'
 
+/** モデル使用設定（スタンダード: 全ユーザー利用可, プラチナ: 有償契約ユーザーのみ） */
+export type ModelTier = 'standard' | 'platinum'
+
 /** ユーザー一覧アイテム */
 export interface AdminUser {
   userId: string
@@ -72,11 +75,13 @@ export interface ModelMeta {
   s3Prefix: string
   modelFile: string
   status: 'active' | 'inactive'
+  modelTier: ModelTier
   expressions: ModelExpression[]
   motions: ModelMotion[]
   emotionMapping: Record<string, string>
   motionMapping: Record<string, { group: string; index: number }>
   characterConfig?: CharacterConfig
+  avatarUrl?: string
   createdAt: string
   updatedAt: string
 }

@@ -1,5 +1,7 @@
 import { useAppStore } from '@/stores/appStore'
+import { useAuthStore } from '@/auth/authStore'
 import type { Message, AppConfig } from '@/types'
+import { DEFAULT_USER_PROFILE } from '@/types'
 import { debounce } from '@/utils/performance'
 import { getIdToken } from '@/auth'
 
@@ -48,9 +50,21 @@ class SyncServiceImpl {
 
       const store = useAppStore.getState()
 
-      // 設定のマージ
-      if (settingsResult.status === 'fulfilled' && settingsResult.value) {
-        store.updateConfig(settingsResult.value)
+      // 設定のマージ + 初回フラグ判定
+      if (settingsResult.status === 'fulfilled') {
+        const serverSettings = settingsResult.value
+        if (serverSettings) {
+          store.updateConfig(serverSettings)
+          // サーバー側の onboardingCompleted フラグで初期設定要否を判定
+          useAuthStore.getState().setNeedsOnboarding(!serverSettings.onboardingCompleted)
+        } else {
+          // 新規ユーザー: サーバーに設定なし → 初期設定が必要
+          store.updateConfig({
+            onboardingCompleted: undefined,
+            profile: { ...DEFAULT_USER_PROFILE },
+          })
+          useAuthStore.getState().setNeedsOnboarding(true)
+        }
       }
 
       // メッセージのマージ
@@ -84,6 +98,11 @@ class SyncServiceImpl {
     this.stopConfigSubscription()
     this.stopBroadcastChannel()
     this.stopPolling()
+    // プロフィール・オンボーディング状態をリセット（次ユーザーへの引き継ぎ防止）
+    useAppStore.getState().updateConfig({
+      onboardingCompleted: undefined,
+      profile: { ...DEFAULT_USER_PROFILE },
+    })
   }
 
   /**

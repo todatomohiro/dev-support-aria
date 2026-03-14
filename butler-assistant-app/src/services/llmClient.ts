@@ -263,6 +263,11 @@ class LLMClientImpl implements LLMClientService {
         return { text: '__streamed__', emotion: 'neutral', motion: 'idle', _streamed: true, _requestId: data.requestId } as StructuredResponse & { _streamed: boolean; _requestId?: string }
       }
 
+      // スキップレスポンス（ブリーフィング消化済み等）: content がない
+      if ((data as Record<string, unknown>).skipped || !data.content) {
+        return { text: '', emotion: 'neutral', motion: 'idle' } as StructuredResponse
+      }
+
       // JSON を抽出（マークダウンコードブロック対応）
       let cleanJson = data.content.trim()
       if (cleanJson.startsWith('```json')) {

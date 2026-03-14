@@ -8,7 +8,7 @@ export const GOOGLE_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'list_events',
-      description: 'Google カレンダーから指定期間の予定を取得します。ユーザーが「今日の予定」「明日のスケジュール」などと聞いた場合に使用してください。',
+      description: '指定期間のGoogle カレンダー予定を取得。',
       inputSchema: {
         json: {
           type: 'object',
@@ -34,7 +34,7 @@ export const GOOGLE_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'create_event',
-      description: 'Google カレンダーに新しい予定を作成します。ユーザーが予定の詳細（タイトル、日時）を確認した後に使用してください。確認なしに勝手に予定を作成しないでください。',
+      description: 'Google カレンダーに新しい予定を作成。必ずユーザーに内容を確認してから実行。',
       inputSchema: {
         json: {
           type: 'object',
@@ -68,7 +68,7 @@ export const GOOGLE_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'list_tasks',
-      description: 'Google ToDo リストからタスクを取得します。ユーザーが「ToDoを見せて」「やることリスト」「タスク一覧」などと聞いた場合に使用してください。',
+      description: 'Google ToDo リストからタスクを取得。',
       inputSchema: {
         json: {
           type: 'object',
@@ -97,7 +97,7 @@ export const GOOGLE_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'create_task',
-      description: 'Google ToDo リストに新しいタスクを作成します。ユーザーが「ToDoに追加して」「タスク作って」と言った場合に使用してください。必ずユーザーに内容を確認してから作成してください。',
+      description: 'Google ToDo リストに新しいタスクを作成。必ずユーザーに内容を確認してから実行。',
       inputSchema: {
         json: {
           type: 'object',
@@ -123,7 +123,7 @@ export const GOOGLE_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'complete_task',
-      description: 'Google ToDo リストのタスクを完了にします。事前に list_tasks でタスクIDを確認してから実行してください。',
+      description: 'Google ToDo リストのタスクを完了にする。事前に list_tasks でID確認必須。',
       inputSchema: {
         json: {
           type: 'object',
@@ -147,7 +147,7 @@ export const BASE_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'search_places',
-      description: '場所やお店を検索します。ユーザーが「近くのカフェ」「渋谷のレストラン」などと聞いた場合に使用してください。',
+      description: '場所やお店を検索。locationBias で検索中心座標を指定可能。',
       inputSchema: {
         json: {
           type: 'object',
@@ -173,7 +173,7 @@ export const BASE_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'web_search',
-      description: 'インターネットで情報を検索します。ユーザーが「〜について調べて」「〜の最新情報」などと聞いた場合に使用してください。',
+      description: 'インターネットで情報を検索。',
       inputSchema: {
         json: {
           type: 'object',
@@ -191,7 +191,7 @@ export const BASE_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'get_weather',
-      description: '天気予報を取得します。ユーザーが「天気を教えて」「明日の天気は？」などと聞いた場合に使用してください。**【重要】必ず直近のユーザーの発言で求められた地域のみを対象としてください。ユーザーが明示的に複数地域の比較を求めていない限り、過去の会話履歴にある地域や現在地の天気を勝手に推測して同時に取得しないでください。**',
+      description: '指定座標の天気予報を取得。地域指定がなければ現在地を使用。1回の呼び出しで1地域のみ。',
       inputSchema: {
         json: {
           type: 'object',
@@ -221,7 +221,7 @@ export const MEMO_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'save_memo',
-      description: 'ユーザーが「これメモして」「覚えておいて」「メモに保存して」と言った場合に使用します。会話の内容やユーザーが指定した内容をメモとして保存します。',
+      description: '会話の内容やユーザーが指定した内容をメモとして保存。',
       inputSchema: {
         json: {
           type: 'object',
@@ -248,7 +248,7 @@ export const MEMO_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'search_memos',
-      description: 'ユーザーが「メモを探して」「〜のメモある？」と聞いた場合に使用します。キーワードでメモを検索します。',
+      description: 'キーワードでメモを検索。',
       inputSchema: {
         json: {
           type: 'object',
@@ -266,7 +266,7 @@ export const MEMO_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'list_memos',
-      description: 'ユーザーが「メモ一覧を見せて」「最近のメモは？」と聞いた場合に使用します。メモの一覧を取得します。',
+      description: 'メモの一覧を取得。',
       inputSchema: {
         json: {
           type: 'object',
@@ -283,7 +283,7 @@ export const MEMO_TOOL_DEFINITIONS: Tool[] = [
   {
     toolSpec: {
       name: 'delete_memo',
-      description: 'ユーザーが「メモを消して」「このメモ削除して」と言った場合に使用します。指定されたメモを削除します。必ずユーザーに確認してから実行してください。',
+      description: '指定されたメモを削除。必ずユーザーに確認してから実行。',
       inputSchema: {
         json: {
           type: 'object',

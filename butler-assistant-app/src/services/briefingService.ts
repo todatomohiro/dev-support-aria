@@ -111,9 +111,14 @@ class BriefingServiceImpl implements BriefingServiceInterface {
 
       const data: BriefingHistoryResponse = await res.json()
 
-      // メモリキャッシュを更新
+      // メモリキャッシュを更新（localStorage の復元結果とマージ）
+      // recordFired() がまだバックエンドに到達していない場合でも、
+      // localStorage に記録された発火済みウィンドウを保持する
       this.todayDate = today
-      this.todayTriggeredWindows = new Set(data.triggeredWindows.map((w) => w.windowFrom))
+      const backendWindows = data.triggeredWindows.map((w) => w.windowFrom)
+      for (const w of backendWindows) {
+        this.todayTriggeredWindows.add(w)
+      }
 
       // localStorage も同期（オフラインフォールバック用）
       const windowData: WindowTriggered = {

@@ -131,6 +131,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       s3Prefix,
       modelFile: model3Path,
       status: 'active',
+      modelTier: 'standard',
+      avatarUrl: '',
       expressions,
       motions,
       textures,

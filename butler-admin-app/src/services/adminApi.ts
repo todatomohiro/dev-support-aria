@@ -79,10 +79,18 @@ export const adminApi = {
   },
 
   /** モデル更新（マッピング・ステータス・キャラクター設定等） */
-  async updateModel(token: string, modelId: string, data: Partial<Pick<ModelMeta, 'name' | 'description' | 'status' | 'emotionMapping' | 'motionMapping'>> & { characterConfig?: CharacterConfig }): Promise<{ modelId: string; updated: boolean }> {
+  async updateModel(token: string, modelId: string, data: Partial<Pick<ModelMeta, 'name' | 'description' | 'status' | 'modelTier' | 'emotionMapping' | 'motionMapping'>> & { characterConfig?: CharacterConfig }): Promise<{ modelId: string; updated: boolean }> {
     return authFetch(`/admin/models/${modelId}`, token, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    })
+  },
+
+  /** アバター画像アップロード用 Presigned URL 取得 */
+  async prepareAvatarUpload(token: string, modelId: string, contentType: string): Promise<{ uploadUrl: string; avatarUrl: string }> {
+    return authFetch(`/admin/models/${modelId}/avatar`, token, {
+      method: 'POST',
+      body: JSON.stringify({ contentType }),
     })
   },
 

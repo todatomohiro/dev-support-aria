@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { adminApi } from '@/services/adminApi'
 import { useAuthStore } from '@/auth/authStore'
-import type { ModelMeta } from '@/types/admin'
+import type { ModelMeta, ModelTier } from '@/types/admin'
 
 /**
  * モデル管理ページ（一覧）
@@ -128,6 +128,17 @@ export function ModelManagement() {
     }
   }, [token, loadModels])
 
+  /** ティア切替 */
+  const handleChangeTier = useCallback(async (model: ModelMeta, tier: ModelTier) => {
+    if (!token) return
+    try {
+      await adminApi.updateModel(token, model.modelId, { modelTier: tier })
+      await loadModels()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ティアの更新に失敗しました')
+    }
+  }, [token, loadModels])
+
   /** 削除 */
   const handleDelete = useCallback(async (model: ModelMeta) => {
     if (!token) return
@@ -216,6 +227,13 @@ export function ModelManagement() {
                   }`}>
                     {model.status === 'active' ? '有効' : '無効'}
                   </span>
+                  <span className={`px-2 py-0.5 text-xs rounded ${
+                    (model.modelTier ?? 'standard') === 'platinum'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {(model.modelTier ?? 'standard') === 'platinum' ? 'プラチナ' : 'スタンダード'}
+                  </span>
                 </div>
                 {model.description && (
                   <p className="text-sm text-gray-500 mt-0.5">{model.description}</p>
@@ -226,6 +244,14 @@ export function ModelManagement() {
               </div>
 
               <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                <select
+                  value={model.modelTier ?? 'standard'}
+                  onChange={(e) => handleChangeTier(model, e.target.value as ModelTier)}
+                  className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white cursor-pointer"
+                >
+                  <option value="standard">スタンダード</option>
+                  <option value="platinum">プラチナ</option>
+                </select>
                 <button
                   onClick={() => navigate(`/models/${model.modelId}/character`)}
                   className="px-3 py-1.5 text-xs bg-purple-50 text-purple-700 rounded hover:bg-purple-100"

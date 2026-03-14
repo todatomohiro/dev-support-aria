@@ -36,6 +36,8 @@ export interface AuthState {
   pendingEmail: string | null
   /** 管理者権限を持つか */
   isAdmin: boolean
+  /** 初期設定が必要か（サーバー側フラグベース） */
+  needsOnboarding: boolean
 
   // アクション
   setStatus: (status: AuthStatus) => void
@@ -43,6 +45,7 @@ export interface AuthState {
   setAccessToken: (token: string | null) => void
   setPendingEmail: (email: string | null) => void
   setIsAdmin: (isAdmin: boolean) => void
+  setNeedsOnboarding: (needs: boolean) => void
   login: (user: AuthUser, token: string) => void
   logout: () => void
 }

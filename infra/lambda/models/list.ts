@@ -53,9 +53,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           modelUrl,
           s3Prefix: m.s3Prefix,
           modelFile: m.modelFile,
+          modelTier: m.modelTier ?? 'standard',
           emotionMapping: m.emotionMapping ?? {},
           motionMapping: m.motionMapping ?? {},
           characterConfig: m.characterConfig ?? undefined,
+          avatarUrl: m.avatarUrl ?? '',
         }
       })
       .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name))

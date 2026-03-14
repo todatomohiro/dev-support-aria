@@ -10,6 +10,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
   accessToken: null,
   pendingEmail: null,
   isAdmin: false,
+  needsOnboarding: false,
 
   setStatus: (status) => set({ status }),
 
@@ -20,6 +21,8 @@ export const useAuthStore = create<AuthState>()((set) => ({
   setPendingEmail: (email) => set({ pendingEmail: email }),
 
   setIsAdmin: (isAdmin) => set({ isAdmin }),
+
+  setNeedsOnboarding: (needs) => set({ needsOnboarding: needs }),
 
   login: (user, token) =>
     set({
@@ -36,5 +39,6 @@ export const useAuthStore = create<AuthState>()((set) => ({
       accessToken: null,
       pendingEmail: null,
       isAdmin: false,
+      needsOnboarding: false,
     }),
 }))
